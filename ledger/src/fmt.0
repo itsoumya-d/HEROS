@@ -1,0 +1,365 @@
+// fmt: number-to-string helpers for agent-facing JSON output.
+// Zero 0.1 has no bitwise operators — nibble extraction uses / and %.
+
+fun hexNibble(n: u8) -> String {
+    if n == 0 { return "0" }
+    if n == 1 { return "1" }
+    if n == 2 { return "2" }
+    if n == 3 { return "3" }
+    if n == 4 { return "4" }
+    if n == 5 { return "5" }
+    if n == 6 { return "6" }
+    if n == 7 { return "7" }
+    if n == 8 { return "8" }
+    if n == 9 { return "9" }
+    if n == 10 { return "a" }
+    if n == 11 { return "b" }
+    if n == 12 { return "c" }
+    if n == 13 { return "d" }
+    if n == 14 { return "e" }
+    return "f"
+}
+
+fun decDigit(n: u8) -> String {
+    if n == 0 { return "0" }
+    if n == 1 { return "1" }
+    if n == 2 { return "2" }
+    if n == 3 { return "3" }
+    if n == 4 { return "4" }
+    if n == 5 { return "5" }
+    if n == 6 { return "6" }
+    if n == 7 { return "7" }
+    if n == 8 { return "8" }
+    return "9"
+}
+
+// Write u32 as 8 lowercase hex digits to stdout.
+// Extracts nibbles via repeated % 16 / division (no bitwise ops).
+pub fun writeU32Hex(world: World, n: u32) -> Void raises {
+    let mut digits: [8]u8 = [0, 0, 0, 0, 0, 0, 0, 0]
+    let mut val: u32 = n
+    let mut i: usize = 0
+    while i < 8 {
+        digits[7 - i] = (val % 16) as u8
+        val = val / 16
+        i = i + 1
+    }
+    let mut j: usize = 0
+    while j < 8 {
+        check world.out.write(hexNibble(digits[j]))
+        j = j + 1
+    }
+}
+
+// Write u32 as 8 lowercase hex digits to a file.
+pub fun writeU32HexToFile(file: mutref<File>, n: u32) -> Bool {
+    let mut digits: [8]u8 = [0, 0, 0, 0, 0, 0, 0, 0]
+    let mut val: u32 = n
+    let mut i: usize = 0
+    while i < 8 {
+        digits[7 - i] = (val % 16) as u8
+        val = val / 16
+        i = i + 1
+    }
+    let mut j: usize = 0
+    while j < 8 {
+        if std.fs.writeAll(file, std.mem.span(hexNibble(digits[j]))) == false { return false }
+        j = j + 1
+    }
+    return true
+}
+
+// Write non-negative i64 as decimal digits to stdout.
+pub fun writeI64(world: World, n: i64) -> Void raises {
+    if n == 0 {
+        check world.out.write("0")
+        return
+    }
+    let mut digits: [20]u8 = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    let mut len: usize = 0
+    let mut val: i64 = n
+    while val > 0 {
+        let d: i64 = val % 10
+        digits[len] = d as u8
+        len = len + 1
+        val = val / 10
+    }
+    let mut i: usize = 0
+    while i < len {
+        check world.out.write(decDigit(digits[len - 1 - i]))
+        i = i + 1
+    }
+}
+
+// Write non-negative i64 as decimal digits to a file.
+pub fun writeI64ToFile(file: mutref<File>, n: i64) -> Bool {
+    if n == 0 {
+        return std.fs.writeAll(file, std.mem.span("0"))
+    }
+    let mut digits: [20]u8 = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    let mut len: usize = 0
+    let mut val: i64 = n
+    while val > 0 {
+        let d: i64 = val % 10
+        digits[len] = d as u8
+        len = len + 1
+        val = val / 10
+    }
+    let mut i: usize = 0
+    while i < len {
+        if std.fs.writeAll(file, std.mem.span(decDigit(digits[len - 1 - i]))) == false { return false }
+        i = i + 1
+    }
+    return true
+}
+
+// byteChar maps a printable ASCII byte (32-126) to its single-character string.
+// Returns empty string for bytes outside handled range.
+// For JSON-safe output, use jsonEscapeWrite — byteChar does NOT escape " or \.
+pub fun byteChar(b: u8) -> String {
+    if b == 9   { return "\t" }
+    if b == 10  { return "\n" }
+    if b == 13  { return "\r" }
+    if b == 32  { return " " }
+    if b == 33  { return "!" }
+    if b == 34  { return "\"" }
+    if b == 35  { return "#" }
+    if b == 36  { return "$" }
+    if b == 37  { return "%" }
+    if b == 38  { return "&" }
+    if b == 39  { return "'" }
+    if b == 40  { return "(" }
+    if b == 41  { return ")" }
+    if b == 42  { return "*" }
+    if b == 43  { return "+" }
+    if b == 44  { return "," }
+    if b == 45  { return "-" }
+    if b == 46  { return "." }
+    if b == 47  { return "/" }
+    if b == 48  { return "0" }
+    if b == 49  { return "1" }
+    if b == 50  { return "2" }
+    if b == 51  { return "3" }
+    if b == 52  { return "4" }
+    if b == 53  { return "5" }
+    if b == 54  { return "6" }
+    if b == 55  { return "7" }
+    if b == 56  { return "8" }
+    if b == 57  { return "9" }
+    if b == 58  { return ":" }
+    if b == 59  { return ";" }
+    if b == 60  { return "<" }
+    if b == 61  { return "=" }
+    if b == 62  { return ">" }
+    if b == 63  { return "?" }
+    if b == 64  { return "@" }
+    if b == 65  { return "A" }
+    if b == 66  { return "B" }
+    if b == 67  { return "C" }
+    if b == 68  { return "D" }
+    if b == 69  { return "E" }
+    if b == 70  { return "F" }
+    if b == 71  { return "G" }
+    if b == 72  { return "H" }
+    if b == 73  { return "I" }
+    if b == 74  { return "J" }
+    if b == 75  { return "K" }
+    if b == 76  { return "L" }
+    if b == 77  { return "M" }
+    if b == 78  { return "N" }
+    if b == 79  { return "O" }
+    if b == 80  { return "P" }
+    if b == 81  { return "Q" }
+    if b == 82  { return "R" }
+    if b == 83  { return "S" }
+    if b == 84  { return "T" }
+    if b == 85  { return "U" }
+    if b == 86  { return "V" }
+    if b == 87  { return "W" }
+    if b == 88  { return "X" }
+    if b == 89  { return "Y" }
+    if b == 90  { return "Z" }
+    if b == 91  { return "[" }
+    if b == 92  { return "\\" }
+    if b == 93  { return "]" }
+    if b == 94  { return "^" }
+    if b == 95  { return "_" }
+    if b == 96  { return "`" }
+    if b == 97  { return "a" }
+    if b == 98  { return "b" }
+    if b == 99  { return "c" }
+    if b == 100 { return "d" }
+    if b == 101 { return "e" }
+    if b == 102 { return "f" }
+    if b == 103 { return "g" }
+    if b == 104 { return "h" }
+    if b == 105 { return "i" }
+    if b == 106 { return "j" }
+    if b == 107 { return "k" }
+    if b == 108 { return "l" }
+    if b == 109 { return "m" }
+    if b == 110 { return "n" }
+    if b == 111 { return "o" }
+    if b == 112 { return "p" }
+    if b == 113 { return "q" }
+    if b == 114 { return "r" }
+    if b == 115 { return "s" }
+    if b == 116 { return "t" }
+    if b == 117 { return "u" }
+    if b == 118 { return "v" }
+    if b == 119 { return "w" }
+    if b == 120 { return "x" }
+    if b == 121 { return "y" }
+    if b == 122 { return "z" }
+    if b == 123 { return "{" }
+    if b == 124 { return "|" }
+    if b == 125 { return "}" }
+    if b == 126 { return "~" }
+    return ""
+}
+
+// hasControlChar returns true if s contains any byte in 0x00-0x1F or 0x7F (control chars + DEL).
+// Apply to identifier fields (org_name, to, idem_key) — control chars in idem_key
+// break idempotency: they are stored as \u00XX escapes but compared as raw bytes.
+pub fun hasControlChar(s: String) -> Bool {
+    let span = std.mem.span(s)
+    let len = span.len
+    let mut i: usize = 0
+    while i < len {
+        if span[i] < 32 { return true }
+        if span[i] == 127 { return true }
+        i = i + 1
+    }
+    return false
+}
+
+// hasMemoControlChar returns true if s contains control chars disallowed in memo.
+// Allows TAB (9) and LF (10) as legitimate whitespace in multi-line memos.
+// Rejects 0x00-0x08, 0x0B (VT), 0x0C (FF), 0x0D (CR — use LF instead), 0x0E-0x1F.
+pub fun hasMemoControlChar(s: String) -> Bool {
+    let span = std.mem.span(s)
+    let len = span.len
+    let mut i: usize = 0
+    while i < len {
+        let b: u8 = span[i]
+        if b == 127 { return true }
+        if b < 32 {
+            if b != 9 {
+                if b != 10 {
+                    return true
+                }
+            }
+        }
+        i = i + 1
+    }
+    return false
+}
+
+// hasNonAscii returns true if s contains any byte >= 128 (multi-byte UTF-8 or raw high bytes).
+// Apply to all identifier fields — jsonEscapeWrite/jsonEscapeFileWrite silently drop bytes >= 128,
+// which causes data corruption without a visible error. Reject at the boundary instead.
+pub fun hasNonAscii(s: String) -> Bool {
+    let span = std.mem.span(s)
+    let len = span.len
+    let mut i: usize = 0
+    while i < len {
+        if span[i] >= 128 { return true }
+        i = i + 1
+    }
+    return false
+}
+
+// hasJsonEscapeChar returns true if s contains '"' (0x22) or '\' (0x5C).
+// RT-184: these chars are stored as \" and \\ by jsonEscapeFileWrite but
+// hasIdempotencyKey compares raw bytes → stored form never matches unescaped needle → idempotency bypass.
+pub fun hasJsonEscapeChar(s: String) -> Bool {
+    let sp = std.mem.span(s)
+    let mut i: usize = 0
+    while i < sp.len {
+        if sp[i] == 34 || sp[i] == 92 { return true }
+        i = i + 1
+    }
+    return false
+}
+
+// jsonEscapeWrite writes s to stdout as a JSON-safe string value (no surrounding quotes).
+// Escapes: " → \", \ → \\, LF → \n, CR → \r, TAB → \t, control chars 0x00-0x1F → \u00XX.
+// Bytes >= 128 (UTF-8 multi-byte sequences) delegate to byteChar; currently returns "" for those.
+// SECURITY: call this for ALL user-supplied strings written into JSON output.
+pub fun jsonEscapeWrite(world: World, s: String) -> Void raises {
+    let span = std.mem.span(s)
+    let len = span.len
+    let mut i: usize = 0
+    while i < len {
+        let b: u8 = span[i]
+        if b == 34 {
+            check world.out.write("\\\"")
+        } else {
+            if b == 92 {
+                check world.out.write("\\\\")
+            } else {
+                if b == 10 {
+                    check world.out.write("\\n")
+                } else {
+                    if b == 13 {
+                        check world.out.write("\\r")
+                    } else {
+                        if b == 9 {
+                            check world.out.write("\\t")
+                        } else {
+                            if b < 32 {
+                                check world.out.write("\\u00")
+                                check world.out.write(hexNibble((b / 16) as u8))
+                                check world.out.write(hexNibble((b % 16) as u8))
+                            } else {
+                                check world.out.write(byteChar(b))
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        i = i + 1
+    }
+}
+
+// jsonEscapeFileWrite writes s to file as a JSON-safe string value (no surrounding quotes).
+// Same escaping rules as jsonEscapeWrite. Returns false on write failure.
+// SECURITY: call this for ALL user-supplied strings written into stored JSON records.
+pub fun jsonEscapeFileWrite(file: mutref<File>, s: String) -> Bool {
+    let span = std.mem.span(s)
+    let len = span.len
+    let mut i: usize = 0
+    while i < len {
+        let b: u8 = span[i]
+        if b == 34 {
+            if std.fs.writeAll(file, std.mem.span("\\\"")) == false { return false }
+        } else {
+            if b == 92 {
+                if std.fs.writeAll(file, std.mem.span("\\\\")) == false { return false }
+            } else {
+                if b == 10 {
+                    if std.fs.writeAll(file, std.mem.span("\\n")) == false { return false }
+                } else {
+                    if b == 13 {
+                        if std.fs.writeAll(file, std.mem.span("\\r")) == false { return false }
+                    } else {
+                        if b == 9 {
+                            if std.fs.writeAll(file, std.mem.span("\\t")) == false { return false }
+                        } else {
+                            if b < 32 {
+                                if std.fs.writeAll(file, std.mem.span("\\u00")) == false { return false }
+                                if std.fs.writeAll(file, std.mem.span(hexNibble((b / 16) as u8))) == false { return false }
+                                if std.fs.writeAll(file, std.mem.span(hexNibble((b % 16) as u8))) == false { return false }
+                            } else {
+                                if std.fs.writeAll(file, std.mem.span(byteChar(b))) == false { return false }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        i = i + 1
+    }
+    return true
+}

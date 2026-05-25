@@ -1,0 +1,12 @@
+TABLE users
+COLUMN id serial NOT_NULL PRIMARY_KEY
+COLUMN email text NOT_NULL
+COLUMN name text NULLABLE
+COLUMN created_at timestamptz NOT_NULL DEFAULT
+
+TABLE posts
+COLUMN id serial NOT_NULL PRIMARY_KEY
+COLUMN user_id integer NOT_NULL
+COLUMN title text NOT_NULL
+COLUMN body text NULLABLE
+COLUMN published boolean NOT_NULL DEFAULT

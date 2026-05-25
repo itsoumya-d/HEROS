@@ -1,0 +1,475 @@
+use fmt
+// byteChar moved to fmt.0 as fmt.byteChar
+
+// isValidAmount: returns true if s is a valid decimal number.
+// Accepts optional leading sign, one or more digits, optional single decimal point.
+fun isValidAmount(s: String) -> Bool {
+    let span = std.mem.span(s)
+    let len = span.len
+    if len == 0 { return false }
+    let mut i: usize = 0
+    if span[0] == 43 { i = 1 }
+    if span[0] == 45 { i = 1 }
+    if i >= len { return false }
+    let mut has_digit: bool = false
+    let mut has_dot: bool = false
+    while i < len {
+        let b: u8 = span[i]
+        let mut is_digit: bool = false
+        if b >= 48 {
+            if b <= 57 {
+                is_digit = true
+            }
+        }
+        if is_digit {
+            has_digit = true
+        } else {
+            if b == 46 {
+                if has_dot { return false }
+                has_dot = true
+            } else {
+                return false
+            }
+        }
+        i = i + 1
+    }
+    return has_digit
+}
+
+// hasIdempotencyKey: linear scan for needle (a String) inside the first
+// buf_len bytes of buf. Used to detect duplicate idempotency keys.
+fun hasIdempotencyKey(buf: [256]u8, buf_len: usize, needle: String) -> Bool {
+    let key = std.mem.span(needle)
+    let key_len = key.len
+    if key_len == 0 { return false }
+    if buf_len < key_len { return false }
+    let limit = buf_len - key_len
+    let mut i: usize = 0
+    while i <= limit {
+        let mut j: usize = 0
+        let mut matched: bool = true
+        while j < key_len {
+            if buf[i + j] != key[j] {
+                matched = false
+                j = key_len
+            } else {
+                j = j + 1
+            }
+        }
+        if matched { return true }
+        i = i + 1
+    }
+    return false
+}
+
+// hasIdempotencyKeyAcross: checks if needle starts in prev[0..prev_len] and ends in curr[0..curr_len].
+// Covers keys that span the chunk boundary. Use alongside hasIdempotencyKey(curr,..) for full coverage.
+// prev holds the tail of the previous chunk (at most 127 bytes).
+fun hasIdempotencyKeyAcross(prev: [128]u8, prev_len: usize, curr: [256]u8, curr_len: usize, needle: String) -> Bool {
+    let key = std.mem.span(needle)
+    let key_len = key.len
+    if key_len < 2 { return false }
+    if prev_len == 0 { return false }
+    let mut start: usize = 0
+    if prev_len >= key_len {
+        start = prev_len - key_len + 1
+    }
+    while start < prev_len {
+        let mut j: usize = 0
+        let mut matched: bool = true
+        while j < key_len {
+            let abs_pos: usize = start + j
+            if abs_pos < prev_len {
+                if prev[abs_pos] != key[j] {
+                    matched = false
+                    j = key_len
+                } else {
+                    j = j + 1
+                }
+            } else {
+                let curr_idx: usize = abs_pos - prev_len
+                if curr_idx >= curr_len {
+                    matched = false
+                    j = key_len
+                } else {
+                    if curr[curr_idx] != key[j] {
+                        matched = false
+                        j = key_len
+                    } else {
+                        j = j + 1
+                    }
+                }
+            }
+        }
+        if matched { return true }
+        start = start + 1
+    }
+    return false
+}
+
+pub fun run(world: World) -> Void raises {
+    let arg_sub = std.args.get(2)
+    if arg_sub.has == false {
+        check world.out.write("{\"error_code\":\"UNKNOWN_COMMAND\",\"retryable\":false,\"error\":\"Usage: ledger invoice <create|list|count>\"}\n")
+        raise UnknownCommand
+    }
+    if std.mem.eql(std.mem.span(arg_sub.value), std.mem.span("create")) {
+        check runCreate(world)
+        return
+    }
+    if std.mem.eql(std.mem.span(arg_sub.value), std.mem.span("list")) {
+        check runList(world)
+        return
+    }
+    if std.mem.eql(std.mem.span(arg_sub.value), std.mem.span("count")) {
+        check runCount(world)
+        return
+    }
+    check world.out.write("{\"error_code\":\"UNKNOWN_COMMAND\",\"retryable\":false,\"error\":\"Unknown invoice subcommand. Valid: create, list, count\"}\n")
+    raise UnknownCommand
+}
+
+fun runCreate(world: World) -> Void raises {
+    let fs = std.fs.host()
+
+    let org_check = std.fs.open(fs, ".ledger-data")
+    if org_check.has == false {
+        check world.out.write("{\"error_code\":\"NO_ORG_REGISTERED\",\"retryable\":true,\"error\":\"Run: ledger register --org-name <name>\"}\n")
+        raise NoOrgRegistered
+    }
+    let mut org_file: owned<File> = org_check.value
+    std.fs.close(&mut org_file)
+
+    // Parse flags; invoice create flags start at index 3
+    let mut to_val: String = ""
+    let mut amount_val: String = ""
+    let mut currency_val: String = ""
+    let mut memo_val: String = ""
+    let mut idem_key: String = ""
+
+    let arg_count = std.args.len()
+    let mut i: usize = 3
+    while i < arg_count {
+        let arg = std.args.get(i)
+        if arg.has {
+            if std.mem.eql(std.mem.span(arg.value), std.mem.span("--to")) {
+                let next = std.args.get(i + 1)
+                if next.has { to_val = next.value }
+            }
+            if std.mem.eql(std.mem.span(arg.value), std.mem.span("--amount")) {
+                let next = std.args.get(i + 1)
+                if next.has { amount_val = next.value }
+            }
+            if std.mem.eql(std.mem.span(arg.value), std.mem.span("--currency")) {
+                let next = std.args.get(i + 1)
+                if next.has { currency_val = next.value }
+            }
+            if std.mem.eql(std.mem.span(arg.value), std.mem.span("--memo")) {
+                let next = std.args.get(i + 1)
+                if next.has { memo_val = next.value }
+            }
+            if std.mem.eql(std.mem.span(arg.value), std.mem.span("--idempotency-key")) {
+                let next = std.args.get(i + 1)
+                if next.has { idem_key = next.value }
+            }
+        }
+        i = i + 1
+    }
+
+    if std.mem.eql(std.mem.span(to_val), std.mem.span("")) {
+        check world.out.write("{\"error_code\":\"MISSING_FLAG\",\"flag\":\"--to\",\"retryable\":true,\"error\":\"Required flag not provided.\"}\n")
+        raise MissingFlag
+    }
+    if std.mem.eql(std.mem.span(amount_val), std.mem.span("")) {
+        check world.out.write("{\"error_code\":\"MISSING_FLAG\",\"flag\":\"--amount\",\"retryable\":true,\"error\":\"Required flag not provided.\"}\n")
+        raise MissingFlag
+    }
+    if std.mem.eql(std.mem.span(currency_val), std.mem.span("")) {
+        check world.out.write("{\"error_code\":\"MISSING_FLAG\",\"flag\":\"--currency\",\"retryable\":true,\"error\":\"Required flag not provided.\"}\n")
+        raise MissingFlag
+    }
+    if std.mem.eql(std.mem.span(idem_key), std.mem.span("")) {
+        check world.out.write("{\"error_code\":\"MISSING_FLAG\",\"flag\":\"--idempotency-key\",\"retryable\":true,\"error\":\"Required flag not provided.\"}\n")
+        raise MissingFlag
+    }
+
+    // Length limits — prevent context flooding and idempotency bypass (keys > 128B exceed scan buffer).
+    if std.mem.span(to_val).len > 256 {
+        check world.out.write("{\"error_code\":\"INVALID_INPUT\",\"field\":\"--to\",\"max_length\":256,\"retryable\":true,\"error\":\"--to exceeds maximum length of 256 bytes.\"}\n")
+        raise InvalidInput
+    }
+    if fmt.hasControlChar(to_val) {
+        check world.out.write("{\"error_code\":\"INVALID_INPUT\",\"field\":\"--to\",\"retryable\":true,\"error\":\"--to must not contain control characters (bytes 0x00-0x1F, 0x7F).\"}\n")
+        raise InvalidInput
+    }
+    if fmt.hasNonAscii(to_val) {
+        check world.out.write("{\"error_code\":\"INVALID_INPUT\",\"field\":\"--to\",\"retryable\":true,\"error\":\"--to must be ASCII only (bytes 0x20-0x7E). Non-ASCII bytes are not supported in v0.1.\"}\n")
+        raise InvalidInput
+    }
+    if std.mem.span(amount_val).len > 32 {
+        check world.out.write("{\"error_code\":\"INVALID_INPUT\",\"field\":\"--amount\",\"max_length\":32,\"retryable\":true,\"error\":\"--amount exceeds maximum length of 32 bytes.\"}\n")
+        raise InvalidInput
+    }
+    if fmt.hasNonAscii(amount_val) {
+        check world.out.write("{\"error_code\":\"INVALID_INPUT\",\"field\":\"--amount\",\"retryable\":true,\"error\":\"--amount must be ASCII only. Use digits, decimal point, and optional sign.\"}\n")
+        raise InvalidInput
+    }
+    if isValidAmount(amount_val) == false {
+        check world.out.write("{\"error_code\":\"INVALID_INPUT\",\"field\":\"--amount\",\"constraint\":\"decimal_number\",\"format\":\"[-+]?[0-9]+([.][0-9]*)?\",\"retryable\":true,\"error\":\"--amount must be a valid decimal number (e.g., '100', '9.99', '-50'). No spaces, letters, or symbols.\"}\n")
+        raise InvalidInput
+    }
+    if std.mem.span(currency_val).len != 3 {
+        check world.out.write("{\"error_code\":\"INVALID_INPUT\",\"field\":\"--currency\",\"retryable\":true,\"error\":\"--currency must be exactly 3 characters (ISO 4217, e.g., USD, EUR, GBP).\"}\n")
+        raise InvalidInput
+    }
+    // Validate ISO 4217: all three bytes must be uppercase A-Z (65-90)
+    let cur_span = std.mem.span(currency_val)
+    let mut ci: usize = 0
+    let mut cur_valid: bool = true
+    while ci < 3 {
+        let cb: u8 = cur_span[ci]
+        if cb < 65 { cur_valid = false }
+        if cb > 90 { cur_valid = false }
+        ci = ci + 1
+    }
+    if cur_valid == false {
+        check world.out.write("{\"error_code\":\"INVALID_INPUT\",\"field\":\"--currency\",\"constraint\":\"iso4217_uppercase\",\"format\":\"[A-Z]{3}\",\"retryable\":true,\"error\":\"--currency must use uppercase letters A-Z only (ISO 4217, e.g., USD, EUR, GBP).\"}\n")
+        raise InvalidInput
+    }
+    if std.mem.span(memo_val).len > 1024 {
+        check world.out.write("{\"error_code\":\"INVALID_INPUT\",\"field\":\"--memo\",\"max_length\":1024,\"retryable\":true,\"error\":\"--memo exceeds maximum length of 1024 bytes.\"}\n")
+        raise InvalidInput
+    }
+    if fmt.hasMemoControlChar(memo_val) {
+        check world.out.write("{\"error_code\":\"INVALID_INPUT\",\"field\":\"--memo\",\"retryable\":true,\"error\":\"--memo contains disallowed control characters. TAB and LF are permitted; other control bytes (0x00-0x08, 0x0B-0x0D, 0x0E-0x1F) are not.\"}\n")
+        raise InvalidInput
+    }
+    if fmt.hasNonAscii(memo_val) {
+        check world.out.write("{\"error_code\":\"INVALID_INPUT\",\"field\":\"--memo\",\"retryable\":true,\"error\":\"--memo must be ASCII only in v0.1. Non-ASCII bytes (UTF-8 multi-byte sequences) are not supported yet.\"}\n")
+        raise InvalidInput
+    }
+    if std.mem.span(idem_key).len > 128 {
+        check world.out.write("{\"error_code\":\"INVALID_INPUT\",\"field\":\"--idempotency-key\",\"max_length\":128,\"retryable\":true,\"error\":\"--idempotency-key exceeds maximum length of 128 bytes. Keys above 128 bytes cannot be matched by the idempotency scan.\"}\n")
+        raise InvalidInput
+    }
+    // Control chars in idem_key break idempotency: stored as \u00XX escapes, compared as raw bytes.
+    // A key with a control char would never match in hasIdempotencyKey → every call creates a new invoice.
+    if fmt.hasControlChar(idem_key) {
+        check world.out.write("{\"error_code\":\"INVALID_INPUT\",\"field\":\"--idempotency-key\",\"retryable\":true,\"error\":\"--idempotency-key must not contain control characters (bytes 0x00-0x1F, 0x7F). Use UUID v4 or printable ASCII only.\"}\n")
+        raise InvalidInput
+    }
+    // Non-ASCII in idem_key would be silently dropped by jsonEscapeFileWrite → stored key differs from input →
+    // idempotency bypass: key never matches on retry. Rejected above by hasNonAscii.
+    if fmt.hasNonAscii(idem_key) {
+        check world.out.write("{\"error_code\":\"INVALID_INPUT\",\"field\":\"--idempotency-key\",\"retryable\":true,\"error\":\"--idempotency-key must be ASCII only. Non-ASCII bytes cause idempotency bypass in v0.1.\"}\n")
+        raise InvalidInput
+    }
+    // RT-184: '"' and '\' are stored escaped by jsonEscapeFileWrite but compared raw by hasIdempotencyKey →
+    // raw scan never matches stored form → every retry creates a new invoice (idempotency bypass).
+    if fmt.hasJsonEscapeChar(idem_key) {
+        check world.out.write("{\"error_code\":\"INVALID_INPUT\",\"field\":\"--idempotency-key\",\"retryable\":true,\"error\":\"--idempotency-key must not contain '\\\"' or '\\\\'. These characters are JSON-escaped on storage but compared raw in the idempotency scan, causing bypass. Use UUID v4 format (alphanumeric + hyphens only).\"}\n")
+        raise InvalidInput
+    }
+
+    // invoice_id is deterministic: "inv_" + hex(hash32(idempotency_key))
+    let inv_hash = std.crypto.hash32(std.mem.span(idem_key))
+    let ts = std.time.wallSeconds()
+
+    // Phase 1: Chunked idempotency scan — reads full .ledger-invoices regardless of size.
+    // Decoupled from write-back so a full store still returns correct idempotent responses.
+    let mut key_found: bool = false
+    let mut total_scan_bytes: usize = 0
+    let mut scan_boundary: [128]u8 = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    let mut boundary_len: usize = 0
+    let mut scan_chunk: [256]u8 = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    let scan_check = std.fs.open(fs, ".ledger-invoices")
+    if scan_check.has {
+        let mut scan_file: owned<File> = scan_check.value
+        let mut scan_done: bool = false
+        while scan_done == false {
+            let scan_n = std.fs.readOrRaise(&mut scan_file, scan_chunk)
+            if scan_n == 0 {
+                scan_done = true
+            } else {
+                if key_found == false {
+                    if hasIdempotencyKeyAcross(scan_boundary, boundary_len, scan_chunk, scan_n, idem_key) {
+                        key_found = true
+                    }
+                }
+                if key_found == false {
+                    if hasIdempotencyKey(scan_chunk, scan_n, idem_key) {
+                        key_found = true
+                    }
+                }
+                total_scan_bytes = total_scan_bytes + scan_n
+                let mut copy_start: usize = 0
+                let mut copy_len: usize = scan_n
+                if scan_n > 127 {
+                    copy_start = scan_n - 127
+                    copy_len = 127
+                }
+                let mut bi: usize = 0
+                while bi < copy_len {
+                    scan_boundary[bi] = scan_chunk[copy_start + bi]
+                    bi = bi + 1
+                }
+                boundary_len = copy_len
+            }
+        }
+        std.fs.close(&mut scan_file)
+    }
+
+    if key_found {
+        // V111 fix: return only deterministic fields; mutable fields (to, amount, currency,
+        // memo, created_at) are NOT echoed — they reflect the CURRENT call's args, not the
+        // stored invoice. Agents must use invoice list to retrieve stored field values.
+        check world.out.write("{\"invoice_id\":\"inv_")
+        check fmt.writeU32Hex(world, inv_hash)
+        check world.out.write("\",\"status\":\"draft\",\"_idempotent\":true}\n")
+        return
+    }
+
+    // Phase 2: Block new writes when file cannot fit in write-back buffer.
+    if total_scan_bytes >= 256 {
+        check world.out.write("{\"error_code\":\"STORAGE_LIMIT_EXCEEDED\",\"error\":\"Invoice store has reached the v0.1 capacity limit (~1-2 invoices). Upgrade to v0.2 for unlimited storage.\",\"retryable\":false,\"recovery\":\"none_in_v0.1\",\"upgrade_path\":\"v0.2\"}\n")
+        raise StorageLimitExceeded
+    }
+
+    // Phase 3: Re-read for write-back (guaranteed < 256 bytes — scan confirmed size above).
+    let mut inv_read_buf: [256]u8 = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    let mut inv_buf_len: usize = 0
+    let existing_inv = std.fs.open(fs, ".ledger-invoices")
+    if existing_inv.has {
+        let mut inv_check: owned<File> = existing_inv.value
+        inv_buf_len = std.fs.readOrRaise(&mut inv_check, inv_read_buf)
+        std.fs.close(&mut inv_check)
+    }
+
+    // Write new invoice: recreate file with old content + new line
+    // createOrRaise truncates the file — any WriteError after this point is data-loss.
+    // Emit the JSON error before raising so the agent receives a parseable response.
+    let mut inv_file: owned<File> = check std.fs.createOrRaise(fs, ".ledger-invoices")
+    let mut store_ok: bool = true
+    // Write back existing content byte-by-byte; LF (10) special-cased for clarity (byteChar handles it too).
+    let mut k: usize = 0
+    while k < inv_buf_len {
+        if store_ok {
+            if inv_read_buf[k] == 10 {
+                if std.fs.writeAll(&mut inv_file, std.mem.span("\n")) == false { store_ok = false }
+            } else {
+                if std.fs.writeAll(&mut inv_file, std.mem.span(fmt.byteChar(inv_read_buf[k]))) == false { store_ok = false }
+            }
+        }
+        k = k + 1
+    }
+    // Append new invoice JSON line
+    if store_ok { if std.fs.writeAll(&mut inv_file, std.mem.span("{\"invoice_id\":\"inv_")) == false { store_ok = false } }
+    if store_ok { if fmt.writeU32HexToFile(&mut inv_file, inv_hash) == false { store_ok = false } }
+    if store_ok { if std.fs.writeAll(&mut inv_file, std.mem.span("\",\"to\":\"")) == false { store_ok = false } }
+    if store_ok { if fmt.jsonEscapeFileWrite(&mut inv_file, to_val) == false { store_ok = false } }
+    if store_ok { if std.fs.writeAll(&mut inv_file, std.mem.span("\",\"amount\":\"")) == false { store_ok = false } }
+    if store_ok { if fmt.jsonEscapeFileWrite(&mut inv_file, amount_val) == false { store_ok = false } }
+    if store_ok { if std.fs.writeAll(&mut inv_file, std.mem.span("\",\"currency\":\"")) == false { store_ok = false } }
+    if store_ok { if fmt.jsonEscapeFileWrite(&mut inv_file, currency_val) == false { store_ok = false } }
+    if store_ok { if std.fs.writeAll(&mut inv_file, std.mem.span("\",\"memo\":\"")) == false { store_ok = false } }
+    if store_ok { if fmt.jsonEscapeFileWrite(&mut inv_file, memo_val) == false { store_ok = false } }
+    if store_ok { if std.fs.writeAll(&mut inv_file, std.mem.span("\",\"status\":\"draft\",\"created_at\":")) == false { store_ok = false } }
+    if store_ok { if fmt.writeI64ToFile(&mut inv_file, ts) == false { store_ok = false } }
+    if store_ok { if std.fs.writeAll(&mut inv_file, std.mem.span(",\"idempotency_key\":\"")) == false { store_ok = false } }
+    if store_ok { if fmt.jsonEscapeFileWrite(&mut inv_file, idem_key) == false { store_ok = false } }
+    if store_ok { if std.fs.writeAll(&mut inv_file, std.mem.span("\"}\n")) == false { store_ok = false } }
+    std.fs.close(&mut inv_file)
+    if store_ok == false {
+        check world.out.write("{\"error_code\":\"STORE_WRITE_FAILED\",\"error\":\"Invoice store write failed. Store may be corrupted. Check disk space.\",\"retryable\":false}\n")
+        raise WriteError
+    }
+
+    // Output confirmation to stdout
+    check world.out.write("{\"invoice_id\":\"inv_")
+    check fmt.writeU32Hex(world, inv_hash)
+    check world.out.write("\",\"to\":\"")
+    check fmt.jsonEscapeWrite(world, to_val)
+    check world.out.write("\",\"amount\":\"")
+    check fmt.jsonEscapeWrite(world, amount_val)
+    check world.out.write("\",\"currency\":\"")
+    check fmt.jsonEscapeWrite(world, currency_val)
+    check world.out.write("\",\"memo\":\"")
+    check fmt.jsonEscapeWrite(world, memo_val)
+    check world.out.write("\",\"status\":\"draft\",\"created_at\":")
+    check fmt.writeI64(world, ts)
+    check world.out.write(",\"idempotency_key\":\"")
+    check fmt.jsonEscapeWrite(world, idem_key)
+    check world.out.write("\"}\n")
+}
+
+fun runList(world: World) -> Void raises {
+    let fs = std.fs.host()
+
+    let org_check = std.fs.open(fs, ".ledger-data")
+    if org_check.has == false {
+        check world.out.write("{\"error_code\":\"NO_ORG_REGISTERED\",\"retryable\":true,\"error\":\"Run: ledger register --org-name <name>\"}\n")
+        raise NoOrgRegistered
+    }
+    let mut org_file: owned<File> = org_check.value
+    std.fs.close(&mut org_file)
+
+    let inv_check = std.fs.open(fs, ".ledger-invoices")
+    if inv_check.has == false {
+        // No invoices yet; JSONL with zero records = empty output
+        return
+    }
+    let mut inv_file: owned<File> = inv_check.value
+    let mut chunk: [256]u8 = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    let mut list_done: bool = false
+    while list_done == false {
+        let n = std.fs.readOrRaise(&mut inv_file, chunk)
+        if n == 0 {
+            list_done = true
+        } else {
+            let mut k: usize = 0
+            while k < n {
+                check world.out.write(fmt.byteChar(chunk[k]))
+                k = k + 1
+            }
+        }
+    }
+    std.fs.close(&mut inv_file)
+}
+
+fun runCount(world: World) -> Void raises {
+    let fs = std.fs.host()
+
+    let org_check = std.fs.open(fs, ".ledger-data")
+    if org_check.has == false {
+        check world.out.write("{\"error_code\":\"NO_ORG_REGISTERED\",\"retryable\":true,\"error\":\"Run: ledger register --org-name <name>\"}\n")
+        raise NoOrgRegistered
+    }
+    let mut org_count_file: owned<File> = org_check.value
+    std.fs.close(&mut org_count_file)
+
+    let inv_count_check = std.fs.open(fs, ".ledger-invoices")
+    if inv_count_check.has == false {
+        check world.out.write("{\"count\":0,\"status\":\"ok\",\"storage_note\":\"v0.1 store limit: approximately 1-2 invoices. Use count to detect approach before STORAGE_LIMIT_EXCEEDED.\"}\n")
+        return
+    }
+    let mut inv_count_file: owned<File> = inv_count_check.value
+    let mut count_chunk: [256]u8 = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    let mut inv_count: u32 = 0
+    let mut count_done: bool = false
+    while count_done == false {
+        let cn = std.fs.readOrRaise(&mut inv_count_file, count_chunk)
+        if cn == 0 {
+            count_done = true
+        } else {
+            let mut ci: usize = 0
+            while ci < cn {
+                if count_chunk[ci] == 10 { inv_count = inv_count + 1 }
+                ci = ci + 1
+            }
+        }
+    }
+    std.fs.close(&mut inv_count_file)
+    check world.out.write("{\"count\":")
+    check fmt.writeI64(world, inv_count as i64)
+    check world.out.write(",\"status\":\"ok\",\"storage_note\":\"v0.1 store limit: approximately 1-2 invoices. Use count to detect approach before STORAGE_LIMIT_EXCEEDED.\"}\n")
+}

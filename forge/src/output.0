@@ -1,0 +1,222 @@
+// JSON output helpers for Forge.
+// All functions write directly to world.out.
+// No ANSI codes. No interactive output. Pure JSON.
+
+use types
+
+// Write a JSON risk tier string (uppercase).
+pub fun writeRiskTier(world: World, risk: RiskLevel) -> Void raises {
+    match risk {
+        .safe { check world.out.write("\"SAFE\"") }
+        .notable { check world.out.write("\"NOTABLE\"") }
+        .medium { check world.out.write("\"MEDIUM\"") }
+        .high { check world.out.write("\"HIGH\"") }
+        .critical { check world.out.write("\"CRITICAL\"") }
+    }
+}
+
+// Write a JSON risk score number (0.0 to 1.0).
+pub fun writeRiskScore(world: World, risk: RiskLevel) -> Void raises {
+    match risk {
+        .safe { check world.out.write("0.0") }
+        .notable { check world.out.write("0.25") }
+        .medium { check world.out.write("0.5") }
+        .high { check world.out.write("0.75") }
+        .critical { check world.out.write("1.0") }
+    }
+}
+
+// Write a JSON operation type string.
+pub fun writeOpKind(world: World, kind: OpKind) -> Void raises {
+    match kind {
+        .add_table { check world.out.write("\"add_table\"") }
+        .drop_table { check world.out.write("\"drop_table\"") }
+        .add_col { check world.out.write("\"add_column\"") }
+        .drop_col { check world.out.write("\"drop_column\"") }
+        .set_not_null { check world.out.write("\"set_not_null\"") }
+        .drop_not_null { check world.out.write("\"drop_not_null\"") }
+        .set_default { check world.out.write("\"set_default\"") }
+        .drop_default { check world.out.write("\"drop_default\"") }
+        .change_type { check world.out.write("\"change_type\"") }
+    }
+}
+
+// Write a JSON risk level string (lowercase).
+pub fun writeRiskStr(world: World, risk: RiskLevel) -> Void raises {
+    match risk {
+        .safe { check world.out.write("\"safe\"") }
+        .notable { check world.out.write("\"notable\"") }
+        .medium { check world.out.write("\"medium\"") }
+        .high { check world.out.write("\"high\"") }
+        .critical { check world.out.write("\"critical\"") }
+    }
+}
+
+// Write a JSON boolean.
+pub fun writeBool(world: World, v: Bool) -> Void raises {
+    if v {
+        check world.out.write("true")
+    } else {
+        check world.out.write("false")
+    }
+}
+
+// Write an estimated lock time as a JSON integer string.
+pub fun writeLockMs(world: World, ms: u32) -> Void raises {
+    if ms == 30000 {
+        check world.out.write("30000")
+        return
+    }
+    if ms == 5000 {
+        check world.out.write("5000")
+        return
+    }
+    check world.out.write("0")
+}
+
+// Write agent guidance for an operation.
+pub fun writeGuidance(world: World, kind: OpKind, col_nullable: Bool) -> Void raises {
+    match kind {
+        .add_col {
+            if col_nullable {
+                check world.out.write("\"Adding a nullable column is safe. No table lock required. Existing rows receive NULL.\"")
+            } else {
+                check world.out.write("\"Adding a NOT NULL column without a default requires backfilling all existing rows before the constraint is applied.\"")
+            }
+        }
+        .drop_col {
+            check world.out.write("\"Dropping a column is irreversible. Verify no application code reads this column before executing. Data cannot be recovered without a backup restore.\"")
+        }
+        .set_not_null {
+            check world.out.write("\"Adding NOT NULL to an existing column requires a full table scan to verify no NULL values exist. May lock the table for seconds to minutes on large tables.\"")
+        }
+        .drop_not_null {
+            check world.out.write("\"Removing NOT NULL constraint is safe. No data is modified. Only affects future inserts.\"")
+        }
+        .add_table {
+            check world.out.write("\"Adding a new table is safe. No impact on existing tables or application code.\"")
+        }
+        .drop_table {
+            check world.out.write("\"Dropping a table is irreversible. All data in this table will be permanently deleted. Verify no foreign key references or application queries target this table.\"")
+        }
+        .change_type {
+            check world.out.write("\"Changing a column type may require a full table rewrite and lock. Risk depends on type compatibility. Test on a staging database first.\"")
+        }
+        .set_default {
+            check world.out.write("\"Setting a column default is safe. Only affects new rows inserted after the migration.\"")
+        }
+        .drop_default {
+            check world.out.write("\"Removing a column default is safe. Existing rows are not modified.\"")
+        }
+    }
+}
+
+// Write a single ASCII byte to world.out via a lookup table of string literals.
+// This is the bridge between byte-valued schema names and the String-typed write API.
+pub fun writeAsciiChar(world: World, b: u8) -> Void raises {
+    if b == 32 { check world.out.write(" ") }
+    if b == 33 { check world.out.write("!") }
+    if b == 45 { check world.out.write("-") }
+    if b == 46 { check world.out.write(".") }
+    if b == 47 { check world.out.write("/") }
+    if b == 48 { check world.out.write("0") }
+    if b == 49 { check world.out.write("1") }
+    if b == 50 { check world.out.write("2") }
+    if b == 51 { check world.out.write("3") }
+    if b == 52 { check world.out.write("4") }
+    if b == 53 { check world.out.write("5") }
+    if b == 54 { check world.out.write("6") }
+    if b == 55 { check world.out.write("7") }
+    if b == 56 { check world.out.write("8") }
+    if b == 57 { check world.out.write("9") }
+    if b == 65 { check world.out.write("A") }
+    if b == 66 { check world.out.write("B") }
+    if b == 67 { check world.out.write("C") }
+    if b == 68 { check world.out.write("D") }
+    if b == 69 { check world.out.write("E") }
+    if b == 70 { check world.out.write("F") }
+    if b == 71 { check world.out.write("G") }
+    if b == 72 { check world.out.write("H") }
+    if b == 73 { check world.out.write("I") }
+    if b == 74 { check world.out.write("J") }
+    if b == 75 { check world.out.write("K") }
+    if b == 76 { check world.out.write("L") }
+    if b == 77 { check world.out.write("M") }
+    if b == 78 { check world.out.write("N") }
+    if b == 79 { check world.out.write("O") }
+    if b == 80 { check world.out.write("P") }
+    if b == 81 { check world.out.write("Q") }
+    if b == 82 { check world.out.write("R") }
+    if b == 83 { check world.out.write("S") }
+    if b == 84 { check world.out.write("T") }
+    if b == 85 { check world.out.write("U") }
+    if b == 86 { check world.out.write("V") }
+    if b == 87 { check world.out.write("W") }
+    if b == 88 { check world.out.write("X") }
+    if b == 89 { check world.out.write("Y") }
+    if b == 90 { check world.out.write("Z") }
+    if b == 95 { check world.out.write("_") }
+    if b == 97 { check world.out.write("a") }
+    if b == 98 { check world.out.write("b") }
+    if b == 99 { check world.out.write("c") }
+    if b == 100 { check world.out.write("d") }
+    if b == 101 { check world.out.write("e") }
+    if b == 102 { check world.out.write("f") }
+    if b == 103 { check world.out.write("g") }
+    if b == 104 { check world.out.write("h") }
+    if b == 105 { check world.out.write("i") }
+    if b == 106 { check world.out.write("j") }
+    if b == 107 { check world.out.write("k") }
+    if b == 108 { check world.out.write("l") }
+    if b == 109 { check world.out.write("m") }
+    if b == 110 { check world.out.write("n") }
+    if b == 111 { check world.out.write("o") }
+    if b == 112 { check world.out.write("p") }
+    if b == 113 { check world.out.write("q") }
+    if b == 114 { check world.out.write("r") }
+    if b == 115 { check world.out.write("s") }
+    if b == 116 { check world.out.write("t") }
+    if b == 117 { check world.out.write("u") }
+    if b == 118 { check world.out.write("v") }
+    if b == 119 { check world.out.write("w") }
+    if b == 120 { check world.out.write("x") }
+    if b == 121 { check world.out.write("y") }
+    if b == 122 { check world.out.write("z") }
+    if b != 32 && b != 33 && b != 45 && b != 46 && b != 47 && b != 48 && b != 49 && b != 50 && b != 51 && b != 52 && b != 53 && b != 54 && b != 55 && b != 56 && b != 57 && b != 65 && b != 66 && b != 67 && b != 68 && b != 69 && b != 70 && b != 71 && b != 72 && b != 73 && b != 74 && b != 75 && b != 76 && b != 77 && b != 78 && b != 79 && b != 80 && b != 81 && b != 82 && b != 83 && b != 84 && b != 85 && b != 86 && b != 87 && b != 88 && b != 89 && b != 90 && b != 95 && b != 97 && b != 98 && b != 99 && b != 100 && b != 101 && b != 102 && b != 103 && b != 104 && b != 105 && b != 106 && b != 107 && b != 108 && b != 109 && b != 110 && b != 111 && b != 112 && b != 113 && b != 114 && b != 115 && b != 116 && b != 117 && b != 118 && b != 119 && b != 120 && b != 121 && b != 122 {
+        check world.out.write("?")
+    }
+}
+
+// Write a JSON string from pool bytes (quoted, basic escaping for quotes/backslash).
+pub fun writePoolStr(world: World, pool: ref<[16384]u8>, off: u16, len: u16) -> Void raises {
+    check world.out.write("\"")
+    let len_sz: usize = len as usize
+    let off_sz: usize = off as usize
+    let mut i: usize = 0
+    while i < len_sz {
+        let b = pool[off_sz + i]
+        if b == 34 {
+            check world.out.write("\\\"")
+        } else {
+            if b == 92 {
+                check world.out.write("\\\\")
+            } else {
+                check writeAsciiChar(world, b)
+            }
+        }
+        i = i + 1
+    }
+    check world.out.write("\"")
+}
+
+// Write a structured error JSON to stdout.
+// All errors go to stdout (not stderr) so agents can always parse the response.
+pub fun writeError(world: World, code: String, msg: String, retryable: Bool) -> Void raises {
+    check world.out.write("{\"error\":{\"code\":\"")
+    check world.out.write(code)
+    check world.out.write("\",\"message\":\"")
+    check world.out.write(msg)
+    check world.out.write("\",\"retryable\":")
+    check writeBool(world, retryable)
+    check world.out.write("}}\n")
+}

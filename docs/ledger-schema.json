@@ -1,0 +1,197 @@
+{
+  "tool": "ledger",
+  "version": "0.1.0",
+  "description": "Agent-native accounting operations. Double-entry bookkeeping rebuilt for autonomous agents. No GUI, no human approval, no browser OAuth. Every operation returns structured JSON with stable error codes. Idempotent mutations. Programmatic signup.",
+  "quickstart": [
+    "1. ledger register --org-name 'My Org'   → save org_id",
+    "2. ledger invoice create --to 'Vendor' --amount 10000 --currency USD --idempotency-key <uuid>",
+    "3. ledger invoice list",
+    "4. ledger balance"
+  ],
+  "authentication": {
+    "description": "ledger register creates a local org. Pass --org-id to commands or set LEDGER_ORG_ID env var. No passwords. No tokens. Local by default.",
+    "signup_endpoint": "ledger register --org-name <name>",
+    "no_human_required": true
+  },
+  "output_format": {
+    "all_output_json": true,
+    "stdout_only": true,
+    "no_ansi": true,
+    "no_interactive_prompts": true,
+    "error_in_json": true,
+    "newline_delimited_for_lists": true
+  },
+  "commands": {
+    "--describe": {
+      "description": "Print this machine-readable schema as JSON. Use this first to learn all available commands and their parameters.",
+      "flags": {},
+      "returns": {
+        "type": "object",
+        "description": "This schema document"
+      },
+      "idempotent": true,
+      "readonly": true,
+      "example": "ledger --describe"
+    },
+    "--version": {
+      "description": "Print tool version as JSON.",
+      "flags": {},
+      "returns": {
+        "tool": "string",
+        "version": "string — semver",
+        "commit": "string"
+      },
+      "idempotent": true,
+      "readonly": true,
+      "example": "ledger --version"
+    },
+    "register": {
+      "description": "Create an accounting organization and receive an org_id. No email, no CAPTCHA, no human approval. Must be run once before any other commands. IDEMPOTENT: running again with same org-name returns the existing org.",
+      "flags": {
+        "--org-name": {
+          "type": "string",
+          "required": true,
+          "description": "Organization name. Any string. Example: 'Acme Corp', 'agent-accounting-v1'."
+        }
+      },
+      "returns": {
+        "org_id": "string — stable identifier for this organization. Example: 'org_a1b2c3d4'.",
+        "org_name": "string",
+        "created_at": "integer — Unix timestamp (seconds)",
+        "status": "string — always 'ok' on success"
+      },
+      "errors": ["MISSING_FLAG", "ORG_EXISTS", "STORE_WRITE_FAILED"],
+      "idempotent": true,
+      "side_effects": ["writes .ledger-data file in current directory"],
+      "example": "ledger register --org-name 'Acme Corp'"
+    },
+    "invoice": {
+      "description": "Invoice operations. Subcommands: create, list.",
+      "subcommands": {
+        "create": {
+          "description": "Create a new invoice draft. IDEMPOTENT: same --idempotency-key returns the original invoice without creating a duplicate. Safe to retry on network failure.",
+          "flags": {
+            "--to": {
+              "type": "string",
+              "required": true,
+              "description": "Recipient name or identifier. Example: 'Acme Corp', 'vendor@example.com'."
+            },
+            "--amount": {
+              "type": "string",
+              "required": true,
+              "description": "Amount in smallest currency unit as decimal string. For USD: cents. 10000 = $100.00. Must be positive integer string."
+            },
+            "--currency": {
+              "type": "string",
+              "required": true,
+              "description": "ISO 4217 currency code. Supported: USD, EUR, GBP. Example: 'USD'."
+            },
+            "--memo": {
+              "type": "string",
+              "required": false,
+              "description": "Optional description. Example: 'Services rendered Q1 2026'."
+            },
+            "--idempotency-key": {
+              "type": "string",
+              "required": true,
+              "description": "UUID v4 or any unique string. Makes this call safe to retry. Calling with the same key returns the original invoice. Generate fresh per unique invoice. Example: 'f47ac10b-58cc-4372-a567-0e02b2c3d479'."
+            }
+          },
+          "returns": {
+            "invoice_id": "string — stable identifier. Format: 'inv_<8hex>'. Example: 'inv_a1b2c3d4'.",
+            "to": "string",
+            "amount": "string — as provided",
+            "currency": "string",
+            "memo": "string — empty string if not provided",
+            "status": "string — 'draft' on creation",
+            "created_at": "integer — Unix timestamp (seconds)",
+            "idempotency_key": "string — echoed back"
+          },
+          "errors": ["MISSING_FLAG", "STORE_WRITE_FAILED", "NO_ORG_REGISTERED"],
+          "idempotent": true,
+          "example": "ledger invoice create --to 'Vendor Inc' --amount 50000 --currency USD --memo 'API services Jan 2026' --idempotency-key 'f47ac10b-58cc-4372-a567-0e02b2c3d479'"
+        },
+        "list": {
+          "description": "List all invoices. Returns newline-delimited JSON records (JSONL format). Parse each line as a separate JSON object.",
+          "flags": {},
+          "returns": {
+            "format": "JSONL — one invoice JSON object per line",
+            "fields_per_record": {
+              "invoice_id": "string",
+              "to": "string",
+              "amount": "string",
+              "currency": "string",
+              "memo": "string",
+              "status": "string",
+              "created_at": "integer",
+              "idempotency_key": "string"
+            }
+          },
+          "errors": ["NO_ORG_REGISTERED", "STORE_READ_FAILED"],
+          "idempotent": true,
+          "readonly": true,
+          "example": "ledger invoice list"
+        }
+      }
+    }
+  },
+  "error_codes": {
+    "MISSING_FLAG": {
+      "description": "A required flag was not provided.",
+      "fields": {
+        "error_code": "MISSING_FLAG",
+        "flag": "string — the missing flag name, e.g. '--to'",
+        "error": "string — human readable"
+      },
+      "retry": false
+    },
+    "NO_ORG_REGISTERED": {
+      "description": "Run 'ledger register --org-name <name>' before this command.",
+      "retry": false
+    },
+    "STORE_WRITE_FAILED": {
+      "description": "Could not write to data store. Check disk space and permissions.",
+      "retry": true
+    },
+    "STORE_READ_FAILED": {
+      "description": "Could not read from data store.",
+      "retry": true
+    },
+    "UNKNOWN_COMMAND": {
+      "description": "Command not recognized. Run: ledger --describe",
+      "retry": false
+    },
+    "ORG_EXISTS": {
+      "description": "An org is already registered. org_id is returned.",
+      "retry": false
+    }
+  },
+  "agent_ux_scorecard": {
+    "schema_first_contract": 2,
+    "description_as_router": 2,
+    "idempotency": 2,
+    "structured_error_codes": 2,
+    "output_purity": 2,
+    "non_interactive": 2,
+    "deterministic_output": 2,
+    "headless_auth": 2,
+    "programmatic_signup": 2,
+    "self_describing_discovery": 2,
+    "partial_success": 1,
+    "async_long_ops": 1,
+    "rate_limit_visibility": 0,
+    "estimated_total": "48/60"
+  },
+  "data_files": {
+    ".ledger-data": "Org configuration (single JSON line)",
+    ".ledger-invoices": "Invoice records (one JSON line per invoice, JSONL format)"
+  },
+  "mcp_manifest": {
+    "name": "io.ledger/accounting",
+    "description": "Agent-native accounting operations",
+    "transport": "stdio",
+    "install": "uvx ledger-mcp",
+    "capabilities": ["tools"],
+    "env": {}
+  }
+}

@@ -1,0 +1,606 @@
+// ledger_mini - Single-file ledger binary compatible with Zero v0.1.x direct ELF64 backend.
+// Zero v0.1.x ELF64 has no file I/O (std.fs blocks at CGEN004). All persistence is
+// delegated to mcp-bridge.sh: bridge reads files, passes current state as args,
+// binary validates/generates, bridge writes _new_data/_new_invoice_json from response.
+//
+// Interface:
+//   ledger --version
+//   ledger --describe
+//   ledger register --org-name <n> --timestamp <epoch> --entropy <8hex>
+//     (bridge calls only when .ledger-data does not exist)
+//   ledger invoice create --to <n> --amount <a> --currency <c>
+//     --idempotency-key <k> [--memo <m>] --timestamp <epoch> --entropy <8hex>
+//     (bridge calls only when idempotency key not found in .ledger-invoices)
+
+use std.args
+use std.mem
+
+// ── character helpers ────────────────────────────────────────────────────────
+
+fun isIdChar(b: u8) -> Bool {
+    if b >= 65 && b <= 90 { return true }
+    if b >= 97 && b <= 122 { return true }
+    if b >= 48 && b <= 57 { return true }
+    if b == 95 { return true }
+    return false
+}
+
+fun isDigit(b: u8) -> Bool {
+    if b >= 48 && b <= 57 { return true }
+    return false
+}
+
+fun isControlChar(b: u8) -> Bool {
+    if b < 32 { return true }
+    if b == 127 { return true }
+    return false
+}
+
+fun isNonAscii(b: u8) -> Bool {
+    if b > 127 { return true }
+    return false
+}
+
+// isValidAmount: digits, optional leading sign, optional single decimal point.
+fun isValidAmount(sp: Span<u8>) -> Bool {
+    let len = std.mem.len(sp)
+    if len == 0 { return false }
+    let mut i: usize = 0
+    if sp[0] == 43 || sp[0] == 45 { i = 1 }
+    if i >= len { return false }
+    let mut has_digit: bool = false
+    let mut has_dot: bool = false
+    while i < len {
+        let b: u8 = sp[i]
+        if isDigit(b) {
+            has_digit = true
+        } else {
+            if b == 46 {
+                if has_dot { return false }
+                has_dot = true
+            } else {
+                return false
+            }
+        }
+        i = i + 1
+    }
+    return has_digit
+}
+
+// isValidCurrency: exactly 3 uppercase ASCII letters (ISO 4217).
+fun isValidCurrency(sp: Span<u8>) -> Bool {
+    let len = std.mem.len(sp)
+    if len != 3 { return false }
+    let mut ci: usize = 0
+    while ci < 3 {
+        let cb = sp[ci]
+        if cb < 65 || cb > 90 { return false }
+        ci = ci + 1
+    }
+    return true
+}
+
+// isValidEntropy: exactly 8 hex chars [0-9a-f].
+fun isValidEntropy(sp: Span<u8>) -> Bool {
+    let len = std.mem.len(sp)
+    if len != 8 { return false }
+    let mut ei: usize = 0
+    while ei < 8 {
+        let eb = sp[ei]
+        let ok = (eb >= 48 && eb <= 57) || (eb >= 97 && eb <= 102) || (eb >= 65 && eb <= 70)
+        if ok == false { return false }
+        ei = ei + 1
+    }
+    return true
+}
+
+// isValidTimestamp: 1-13 decimal digits (Unix seconds, reasonable range).
+fun isValidTimestamp(sp: Span<u8>) -> Bool {
+    let len = std.mem.len(sp)
+    if len == 0 || len > 13 { return false }
+    let mut ti: usize = 0
+    while ti < len {
+        if isDigit(sp[ti]) == false { return false }
+        ti = ti + 1
+    }
+    return true
+}
+
+// writeJsonEscaped: write sp to world.out with JSON escaping.
+// Assumes ASCII, no control chars (validated by caller). Only " (34) and \ (92) need escaping.
+fun writeJsonEscaped(world: World, sp: Span<u8>) -> Void raises {
+    let len = std.mem.len(sp)
+    let mut i: usize = 0
+    let mut cb: [1]u8 = [0]
+    while i < len {
+        let b = sp[i]
+        if b == 34 {
+            check world.out.write("\\\"")
+        } else {
+            if b == 92 {
+                check world.out.write("\\\\")
+            } else {
+                cb[0] = b
+                check world.out.write(cb)
+            }
+        }
+        i = i + 1
+    }
+}
+
+// writeDoubleJsonEscaped: write sp to world.out with two levels of JSON escaping.
+// Use inside _new_data/_new_invoice_json strings, which are JSON strings embedded
+// as JSON string values. A `"` in user input must survive two JSON decode passes:
+// outer JSON decode (bridge jq extraction) and inner JSON decode (file storage parse).
+// So `"` → \\\" (4 bytes: \\\") → outer decode → \" → inner decode → "
+// And `\` → \\\\ (4 bytes: \\\\) → outer decode → \\ → inner decode → \
+fun writeDoubleJsonEscaped(world: World, sp: Span<u8>) -> Void raises {
+    let len = std.mem.len(sp)
+    let mut i: usize = 0
+    let mut cb: [1]u8 = [0]
+    while i < len {
+        let b = sp[i]
+        if b == 34 {
+            check world.out.write("\\\\\\\"")
+        } else {
+            if b == 92 {
+                check world.out.write("\\\\\\\\")
+            } else {
+                cb[0] = b
+                check world.out.write(cb)
+            }
+        }
+        i = i + 1
+    }
+}
+
+// stripJsonBraces: write the content between first { and last } of sp to world.out.
+// Used to merge existing-org JSON into ORG_EXISTS response without full parsing.
+// If sp has no { or }, writes nothing (safe fallback).
+fun stripJsonBraces(world: World, sp: Span<u8>) -> Void raises {
+    let len = std.mem.len(sp)
+    let mut open: usize = len
+    let mut close: usize = 0
+    let mut si: usize = 0
+    while si < len {
+        if sp[si] == 123 && open == len { open = si }
+        if sp[si] == 125 { close = si }
+        si = si + 1
+    }
+    if open >= len { return }
+    if close <= open { return }
+    // Write bytes between { and } (exclusive of braces)
+    let inner_start = open + 1
+    let inner_end = close
+    if inner_end <= inner_start { return }
+    let mut wi: usize = inner_start
+    let mut wb: [1]u8 = [0]
+    while wi < inner_end {
+        wb[0] = sp[wi]
+        check world.out.write(wb)
+        wi = wi + 1
+    }
+}
+
+// ── main ─────────────────────────────────────────────────────────────────────
+
+pub fun main(world: World) -> Void raises {
+    let argc = std.args.len()
+
+    if argc < 2 {
+        check world.out.write("{\"error_code\":\"UNKNOWN_COMMAND\",\"error\":\"Usage: ledger <command>. Run: ledger --describe\",\"retryable\":false}\n")
+        return
+    }
+
+    let cmd_opt = std.args.get(1)
+    if cmd_opt.has == false {
+        check world.out.write("{\"error_code\":\"UNKNOWN_COMMAND\",\"error\":\"Usage: ledger <command>. Run: ledger --describe\",\"retryable\":false}\n")
+        return
+    }
+    let cmd = cmd_opt.value
+
+    // ── --version ────────────────────────────────────────────────────────────
+
+    if std.mem.eql(cmd, "--version") {
+        check world.out.write("{\"tool\":\"ledger\",\"version\":\"0.1.11\",\"schema_version\":1}\n")
+        return
+    }
+
+    // ── --describe ───────────────────────────────────────────────────────────
+
+    if std.mem.eql(cmd, "--describe") || std.mem.eql(cmd, "--help") {
+        check world.out.write("{\"tool\":\"ledger\",\"version\":\"0.1.11\",\"schema_version\":1,")
+        check world.out.write("\"description\":\"Agent-native double-entry accounting. JSON-only output. Idempotent writes. No interactive prompts.\",")
+        check world.out.write("\"commands\":[")
+        check world.out.write("{\"name\":\"register\",\"description\":\"Provision org. Idempotent: returns ORG_EXISTS if already registered. Call at every agent cold start.\",")
+        check world.out.write("\"flags\":[{\"name\":\"--org-name\",\"type\":\"string\",\"required\":true,\"description\":\"Org name. ASCII only, ≤256 bytes, no control chars.\"}]},")
+        check world.out.write("{\"name\":\"invoice create\",\"description\":\"Create invoice. Idempotent via --idempotency-key: duplicate keys return existing invoice.\",")
+        check world.out.write("\"flags\":[")
+        check world.out.write("{\"name\":\"--to\",\"type\":\"string\",\"required\":true,\"description\":\"Payee name.\"},")
+        check world.out.write("{\"name\":\"--amount\",\"type\":\"string\",\"required\":true,\"description\":\"Decimal amount, e.g. \\\"1000.00\\\".\"},")
+        check world.out.write("{\"name\":\"--currency\",\"type\":\"string\",\"required\":true,\"description\":\"ISO 4217 currency code, 3 uppercase letters, e.g. \\\"USD\\\".\"},")
+        check world.out.write("{\"name\":\"--idempotency-key\",\"type\":\"string\",\"required\":true,\"description\":\"Unique key. Same key returns existing invoice without creating duplicate.\"},")
+        check world.out.write("{\"name\":\"--memo\",\"type\":\"string\",\"required\":false,\"description\":\"Optional memo text.\"}]},")
+        check world.out.write("{\"name\":\"invoice list\",\"description\":\"List all invoices for the registered org. Returns empty array when no invoices exist.\",\"flags\":[]},")
+        check world.out.write("{\"name\":\"invoice count\",\"description\":\"Count invoices for the registered org.\",\"flags\":[]}")
+        check world.out.write("],")
+        check world.out.write("\"error_codes\":[")
+        check world.out.write("{\"code\":\"NO_ORG_REGISTERED\",\"retryable\":true,\"description\":\"Call ledger_register first.\"},")
+        check world.out.write("{\"code\":\"ORG_EXISTS\",\"retryable\":false,\"description\":\"Org already registered. Response includes existing org fields.\"},")
+        check world.out.write("{\"code\":\"MISSING_FLAG\",\"retryable\":true,\"description\":\"Required flag not provided.\"},")
+        check world.out.write("{\"code\":\"INVALID_INPUT\",\"retryable\":true,\"description\":\"Flag value failed validation. See field for which flag.\"},")
+        check world.out.write("{\"code\":\"STORE_READ_FAILED\",\"retryable\":false,\"description\":\"Storage read failure.\"},")
+        check world.out.write("{\"code\":\"STORE_WRITE_FAILED\",\"retryable\":false,\"description\":\"Storage write failure.\"},")
+        check world.out.write("{\"code\":\"RATE_LIMITED\",\"retryable\":true,\"description\":\"Bridge rate limit exceeded. Read retry_after_seconds.\"},")
+        check world.out.write("{\"code\":\"UNKNOWN_COMMAND\",\"retryable\":false,\"description\":\"Unrecognized command or subcommand.\"}")
+        check world.out.write("]}\n")
+        return
+    }
+
+    // ── register ─────────────────────────────────────────────────────────────
+
+    if std.mem.eql(cmd, "register") {
+        let mut org_name_idx: usize = 0
+        let mut entropy_idx: usize = 0
+        let mut timestamp_idx: usize = 0
+        let mut has_org_name: bool = false
+        let mut has_entropy: bool = false
+        let mut has_timestamp: bool = false
+
+        let mut ri: usize = 2
+        while ri < argc {
+            let flag_opt = std.args.get(ri)
+            if flag_opt.has {
+                if std.mem.eql(flag_opt.value, "--org-name") && ri + 1 < argc {
+                    let v = std.args.get(ri + 1)
+                    if v.has { org_name_idx = ri + 1; has_org_name = true }
+                }
+                if std.mem.eql(flag_opt.value, "--entropy") && ri + 1 < argc {
+                    let v = std.args.get(ri + 1)
+                    if v.has { entropy_idx = ri + 1; has_entropy = true }
+                }
+                if std.mem.eql(flag_opt.value, "--timestamp") && ri + 1 < argc {
+                    let v = std.args.get(ri + 1)
+                    if v.has { timestamp_idx = ri + 1; has_timestamp = true }
+                }
+            }
+            ri = ri + 1
+        }
+
+        if has_org_name == false {
+            check world.out.write("{\"error_code\":\"MISSING_FLAG\",\"flag\":\"--org-name\",\"retryable\":true,\"error\":\"Required flag not provided. Example: ledger register --org-name 'Acme Corp'\"}\n")
+            return
+        }
+        if has_entropy == false || has_timestamp == false {
+            check world.out.write("{\"error_code\":\"MISSING_FLAG\",\"flag\":\"--entropy\",\"retryable\":true,\"error\":\"Internal: --entropy and --timestamp required (provided by bridge)\"}\n")
+            return
+        }
+
+        let on_opt = std.args.get(org_name_idx)
+        let en_opt = std.args.get(entropy_idx)
+        let ts_opt = std.args.get(timestamp_idx)
+        if on_opt.has == false || en_opt.has == false || ts_opt.has == false {
+            check world.out.write("{\"error_code\":\"MISSING_FLAG\",\"flag\":\"--org-name\",\"retryable\":true,\"error\":\"Failed to read flag values\"}\n")
+            return
+        }
+
+        let org_name_sp = std.mem.span(on_opt.value)
+        let org_name_len = std.mem.len(org_name_sp)
+        let entropy_sp = std.mem.span(en_opt.value)
+        let timestamp_sp = std.mem.span(ts_opt.value)
+
+        // Validate org_name
+        if org_name_len == 0 {
+            check world.out.write("{\"error_code\":\"MISSING_FLAG\",\"flag\":\"--org-name\",\"retryable\":true,\"error\":\"--org-name must not be empty\"}\n")
+            return
+        }
+        if org_name_len > 256 {
+            check world.out.write("{\"error_code\":\"INVALID_INPUT\",\"field\":\"--org-name\",\"max_length\":256,\"retryable\":true,\"error\":\"--org-name exceeds maximum length of 256 bytes\"}\n")
+            return
+        }
+        let mut oni: usize = 0
+        while oni < org_name_len {
+            if isControlChar(org_name_sp[oni]) {
+                check world.out.write("{\"error_code\":\"INVALID_INPUT\",\"field\":\"--org-name\",\"retryable\":true,\"error\":\"--org-name must not contain control characters (bytes 0x00-0x1F, 0x7F)\"}\n")
+                return
+            }
+            if isNonAscii(org_name_sp[oni]) {
+                check world.out.write("{\"error_code\":\"INVALID_INPUT\",\"field\":\"--org-name\",\"retryable\":true,\"error\":\"--org-name must be ASCII only (bytes 0x20-0x7E)\"}\n")
+                return
+            }
+            oni = oni + 1
+        }
+
+        // Validate entropy (8 hex chars) and timestamp (digits only)
+        if isValidEntropy(entropy_sp) == false {
+            check world.out.write("{\"error_code\":\"INVALID_INPUT\",\"field\":\"--entropy\",\"retryable\":true,\"error\":\"--entropy must be exactly 8 lowercase hex characters\"}\n")
+            return
+        }
+        if isValidTimestamp(timestamp_sp) == false {
+            check world.out.write("{\"error_code\":\"INVALID_INPUT\",\"field\":\"--timestamp\",\"retryable\":true,\"error\":\"--timestamp must be a positive integer (Unix epoch seconds)\"}\n")
+            return
+        }
+
+        // Output org JSON with _new_data field (bridge writes _new_data to .ledger-data).
+        // org_id = "org_" + 8 entropy hex chars (bridge supplies entropy from /dev/urandom).
+        // _new_data = JSON string of what the bridge should write to .ledger-data.
+        // Bridge strips _new_data from the response before returning to agent.
+        check world.out.write("{\"org_id\":\"org_")
+        check world.out.write(en_opt.value)
+        check world.out.write("\",\"org_name\":\"")
+        check writeJsonEscaped(world, org_name_sp)
+        check world.out.write("\",\"created_at\":")
+        check world.out.write(ts_opt.value)
+        check world.out.write(",\"status\":\"ok\",\"_new_data\":\"{\\\"org_id\\\":\\\"org_")
+        check world.out.write(en_opt.value)
+        check world.out.write("\\\",\\\"org_name\\\":\\\"")
+        check writeDoubleJsonEscaped(world, org_name_sp)
+        check world.out.write("\\\",\\\"created_at\\\":")
+        check world.out.write(ts_opt.value)
+        check world.out.write("}\"}\n")
+        return
+    }
+
+    // ── invoice ──────────────────────────────────────────────────────────────
+
+    if std.mem.eql(cmd, "invoice") {
+        if argc < 3 {
+            check world.out.write("{\"error_code\":\"UNKNOWN_COMMAND\",\"error\":\"invoice subcommand required: create|list|count\",\"retryable\":false}\n")
+            return
+        }
+        let sub_opt = std.args.get(2)
+        if sub_opt.has == false {
+            check world.out.write("{\"error_code\":\"UNKNOWN_COMMAND\",\"error\":\"invoice subcommand required: create|list|count\",\"retryable\":false}\n")
+            return
+        }
+        let sub = sub_opt.value
+
+        // invoice list and count are handled by the bridge directly (no binary call).
+        // If called directly (not via bridge), return an informational error.
+        if std.mem.eql(sub, "list") || std.mem.eql(sub, "count") {
+            check world.out.write("{\"error_code\":\"UNKNOWN_COMMAND\",\"error\":\"invoice list/count are handled by mcp-bridge.sh; invoke via MCP or bridge directly\",\"retryable\":false}\n")
+            return
+        }
+
+        if std.mem.eql(sub, "create") {
+            let mut to_idx: usize = 0
+            let mut amount_idx: usize = 0
+            let mut currency_idx: usize = 0
+            let mut idem_idx: usize = 0
+            let mut memo_idx: usize = 0
+            let mut entropy_idx2: usize = 0
+            let mut timestamp_idx2: usize = 0
+            let mut has_to: bool = false
+            let mut has_amount: bool = false
+            let mut has_currency: bool = false
+            let mut has_idem: bool = false
+            let mut has_memo: bool = false
+            let mut has_entropy2: bool = false
+            let mut has_timestamp2: bool = false
+
+            let mut ii: usize = 3
+            while ii < argc {
+                let iflag_opt = std.args.get(ii)
+                if iflag_opt.has {
+                    if std.mem.eql(iflag_opt.value, "--to") && ii + 1 < argc {
+                        let v = std.args.get(ii + 1)
+                        if v.has { to_idx = ii + 1; has_to = true }
+                    }
+                    if std.mem.eql(iflag_opt.value, "--amount") && ii + 1 < argc {
+                        let v = std.args.get(ii + 1)
+                        if v.has { amount_idx = ii + 1; has_amount = true }
+                    }
+                    if std.mem.eql(iflag_opt.value, "--currency") && ii + 1 < argc {
+                        let v = std.args.get(ii + 1)
+                        if v.has { currency_idx = ii + 1; has_currency = true }
+                    }
+                    if std.mem.eql(iflag_opt.value, "--idempotency-key") && ii + 1 < argc {
+                        let v = std.args.get(ii + 1)
+                        if v.has { idem_idx = ii + 1; has_idem = true }
+                    }
+                    if std.mem.eql(iflag_opt.value, "--memo") && ii + 1 < argc {
+                        let v = std.args.get(ii + 1)
+                        if v.has { memo_idx = ii + 1; has_memo = true }
+                    }
+                    if std.mem.eql(iflag_opt.value, "--entropy") && ii + 1 < argc {
+                        let v = std.args.get(ii + 1)
+                        if v.has { entropy_idx2 = ii + 1; has_entropy2 = true }
+                    }
+                    if std.mem.eql(iflag_opt.value, "--timestamp") && ii + 1 < argc {
+                        let v = std.args.get(ii + 1)
+                        if v.has { timestamp_idx2 = ii + 1; has_timestamp2 = true }
+                    }
+                }
+                ii = ii + 1
+            }
+
+            if has_to == false {
+                check world.out.write("{\"error_code\":\"MISSING_FLAG\",\"flag\":\"--to\",\"retryable\":true,\"error\":\"--to is required\"}\n")
+                return
+            }
+            if has_amount == false {
+                check world.out.write("{\"error_code\":\"MISSING_FLAG\",\"flag\":\"--amount\",\"retryable\":true,\"error\":\"--amount is required\"}\n")
+                return
+            }
+            if has_currency == false {
+                check world.out.write("{\"error_code\":\"MISSING_FLAG\",\"flag\":\"--currency\",\"retryable\":true,\"error\":\"--currency is required\"}\n")
+                return
+            }
+            if has_idem == false {
+                check world.out.write("{\"error_code\":\"MISSING_FLAG\",\"flag\":\"--idempotency-key\",\"retryable\":true,\"error\":\"--idempotency-key is required\"}\n")
+                return
+            }
+            if has_entropy2 == false || has_timestamp2 == false {
+                check world.out.write("{\"error_code\":\"MISSING_FLAG\",\"flag\":\"--entropy\",\"retryable\":true,\"error\":\"Internal: --entropy and --timestamp required (provided by bridge)\"}\n")
+                return
+            }
+
+            let to_opt = std.args.get(to_idx)
+            let am_opt = std.args.get(amount_idx)
+            let cu_opt = std.args.get(currency_idx)
+            let id_opt = std.args.get(idem_idx)
+            let en2_opt = std.args.get(entropy_idx2)
+            let ts2_opt = std.args.get(timestamp_idx2)
+
+            if to_opt.has == false || am_opt.has == false || cu_opt.has == false || id_opt.has == false || en2_opt.has == false || ts2_opt.has == false {
+                check world.out.write("{\"error_code\":\"MISSING_FLAG\",\"flag\":\"--to\",\"retryable\":true,\"error\":\"Failed to read required flags\"}\n")
+                return
+            }
+
+            let to_sp = std.mem.span(to_opt.value)
+            let to_len = std.mem.len(to_sp)
+            let am_sp = std.mem.span(am_opt.value)
+            let cu_sp = std.mem.span(cu_opt.value)
+            let id_sp = std.mem.span(id_opt.value)
+            let id_len = std.mem.len(id_sp)
+            let en2_sp = std.mem.span(en2_opt.value)
+            let ts2_sp = std.mem.span(ts2_opt.value)
+
+            // Validate --to
+            if to_len == 0 {
+                check world.out.write("{\"error_code\":\"MISSING_FLAG\",\"flag\":\"--to\",\"retryable\":true,\"error\":\"--to must not be empty\"}\n")
+                return
+            }
+            if to_len > 256 {
+                check world.out.write("{\"error_code\":\"INVALID_INPUT\",\"field\":\"--to\",\"max_length\":256,\"retryable\":true,\"error\":\"--to exceeds 256 bytes\"}\n")
+                return
+            }
+            let mut toi: usize = 0
+            while toi < to_len {
+                if isControlChar(to_sp[toi]) {
+                    check world.out.write("{\"error_code\":\"INVALID_INPUT\",\"field\":\"--to\",\"retryable\":true,\"error\":\"--to must not contain control characters (bytes 0x00-0x1F, 0x7F)\"}\n")
+                    return
+                }
+                if isNonAscii(to_sp[toi]) {
+                    check world.out.write("{\"error_code\":\"INVALID_INPUT\",\"field\":\"--to\",\"retryable\":true,\"error\":\"--to must be ASCII only (bytes 0x20-0x7E)\"}\n")
+                    return
+                }
+                toi = toi + 1
+            }
+
+            // Validate --amount
+            if isValidAmount(am_sp) == false {
+                check world.out.write("{\"error_code\":\"INVALID_INPUT\",\"field\":\"--amount\",\"retryable\":true,\"error\":\"--amount must be a decimal number (e.g. \\\"1000.00\\\")\"}\n")
+                return
+            }
+
+            // Validate --currency (3 uppercase letters)
+            if isValidCurrency(cu_sp) == false {
+                check world.out.write("{\"error_code\":\"INVALID_INPUT\",\"field\":\"--currency\",\"retryable\":true,\"error\":\"--currency must be 3 uppercase ASCII letters (ISO 4217, e.g. \\\"USD\\\")\"}\n")
+                return
+            }
+
+            // Validate --idempotency-key (non-empty, no control chars, ≤128 bytes)
+            if id_len == 0 {
+                check world.out.write("{\"error_code\":\"MISSING_FLAG\",\"flag\":\"--idempotency-key\",\"retryable\":true,\"error\":\"--idempotency-key must not be empty\"}\n")
+                return
+            }
+            if id_len > 128 {
+                check world.out.write("{\"error_code\":\"INVALID_INPUT\",\"field\":\"--idempotency-key\",\"max_length\":128,\"retryable\":true,\"error\":\"--idempotency-key exceeds 128 bytes\"}\n")
+                return
+            }
+            let mut idi: usize = 0
+            while idi < id_len {
+                if isControlChar(id_sp[idi]) {
+                    check world.out.write("{\"error_code\":\"INVALID_INPUT\",\"field\":\"--idempotency-key\",\"retryable\":true,\"error\":\"--idempotency-key must not contain control characters\"}\n")
+                    return
+                }
+                if isNonAscii(id_sp[idi]) {
+                    check world.out.write("{\"error_code\":\"INVALID_INPUT\",\"field\":\"--idempotency-key\",\"retryable\":true,\"error\":\"--idempotency-key must be ASCII only (bytes 0x20-0x7E)\"}\n")
+                    return
+                }
+                idi = idi + 1
+            }
+
+            // Validate --entropy and --timestamp
+            if isValidEntropy(en2_sp) == false {
+                check world.out.write("{\"error_code\":\"INVALID_INPUT\",\"field\":\"--entropy\",\"retryable\":true,\"error\":\"--entropy must be exactly 8 lowercase hex characters\"}\n")
+                return
+            }
+            if isValidTimestamp(ts2_sp) == false {
+                check world.out.write("{\"error_code\":\"INVALID_INPUT\",\"field\":\"--timestamp\",\"retryable\":true,\"error\":\"--timestamp must be a positive integer (Unix epoch seconds)\"}\n")
+                return
+            }
+
+            // Validate optional --memo
+            let mut memo_sp: Span<u8> = std.mem.span("")
+            let mut memo_len: usize = 0
+            let mut has_memo_content: bool = false
+            if has_memo {
+                let mo_opt = std.args.get(memo_idx)
+                if mo_opt.has {
+                    memo_sp = std.mem.span(mo_opt.value)
+                    memo_len = std.mem.len(memo_sp)
+                    if memo_len > 512 {
+                        check world.out.write("{\"error_code\":\"INVALID_INPUT\",\"field\":\"--memo\",\"max_length\":512,\"retryable\":true,\"error\":\"--memo exceeds 512 bytes\"}\n")
+                        return
+                    }
+                    let mut mi: usize = 0
+                    while mi < memo_len {
+                        if isControlChar(memo_sp[mi]) {
+                            check world.out.write("{\"error_code\":\"INVALID_INPUT\",\"field\":\"--memo\",\"retryable\":true,\"error\":\"--memo must not contain control characters\"}\n")
+                            return
+                        }
+                        if isNonAscii(memo_sp[mi]) {
+                            check world.out.write("{\"error_code\":\"INVALID_INPUT\",\"field\":\"--memo\",\"retryable\":true,\"error\":\"--memo must be ASCII only (bytes 0x20-0x7E)\"}\n")
+                            return
+                        }
+                        mi = mi + 1
+                    }
+                    if memo_len > 0 { has_memo_content = true }
+                }
+            }
+
+            // All valid — generate invoice JSON.
+            // invoice_id = "inv_" + 8 entropy hex chars.
+            // _new_invoice_json contains the JSONL line the bridge appends to .ledger-invoices.
+            check world.out.write("{\"invoice_id\":\"inv_")
+            check world.out.write(en2_opt.value)
+            check world.out.write("\",\"to\":\"")
+            check writeJsonEscaped(world, to_sp)
+            check world.out.write("\",\"amount\":\"")
+            check world.out.write(am_opt.value)
+            check world.out.write("\",\"currency\":\"")
+            check world.out.write(cu_opt.value)
+            check world.out.write("\",\"status\":\"draft\",\"created_at\":")
+            check world.out.write(ts2_opt.value)
+            check world.out.write(",\"idempotency_key\":\"")
+            check writeJsonEscaped(world, id_sp)
+            check world.out.write("\"")
+            if has_memo_content {
+                check world.out.write(",\"memo\":\"")
+                check writeJsonEscaped(world, memo_sp)
+                check world.out.write("\"")
+            }
+            check world.out.write(",\"_idempotent\":false")
+
+            // Emit _new_invoice_json: the JSON line the bridge appends to .ledger-invoices.
+            // This is a JSON-escaped string containing the invoice object (without _new_invoice_json itself).
+            check world.out.write(",\"_new_invoice_json\":\"{\\\"invoice_id\\\":\\\"inv_")
+            check world.out.write(en2_opt.value)
+            check world.out.write("\\\",\\\"to\\\":\\\"")
+            check writeDoubleJsonEscaped(world, to_sp)
+            check world.out.write("\\\",\\\"amount\\\":\\\"")
+            check world.out.write(am_opt.value)
+            check world.out.write("\\\",\\\"currency\\\":\\\"")
+            check world.out.write(cu_opt.value)
+            check world.out.write("\\\",\\\"status\\\":\\\"draft\\\",\\\"created_at\\\":")
+            check world.out.write(ts2_opt.value)
+            check world.out.write(",\\\"idempotency_key\\\":\\\"")
+            check writeDoubleJsonEscaped(world, id_sp)
+            check world.out.write("\\\"")
+            if has_memo_content {
+                check world.out.write(",\\\"memo\\\":\\\"")
+                check writeDoubleJsonEscaped(world, memo_sp)
+                check world.out.write("\\\"")
+            }
+            check world.out.write("}\"}\n")
+            return
+        }
+
+        check world.out.write("{\"error_code\":\"UNKNOWN_COMMAND\",\"error\":\"Unknown invoice subcommand. Use: create|list|count\",\"retryable\":false}\n")
+        return
+    }
+
+    check world.out.write("{\"error_code\":\"UNKNOWN_COMMAND\",\"error\":\"Unknown command. Run: ledger --describe\",\"retryable\":false}\n")
+}

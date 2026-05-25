@@ -1,0 +1,40 @@
+use schema
+use commands.register
+use commands.invoice
+
+pub fun main(world: World) -> Void raises {
+    let argc = std.args.len()
+    if argc < 2 {
+        check world.out.write("{\"error_code\":\"UNKNOWN_COMMAND\",\"error\":\"Usage: ledger <command>. Run: ledger --describe\"}\n")
+        raise UnknownCommand
+    }
+
+    let cmd = std.args.get(1)
+    if cmd.has == false {
+        check world.out.write("{\"error_code\":\"UNKNOWN_COMMAND\",\"error\":\"Usage: ledger <command>. Run: ledger --describe\"}\n")
+        raise UnknownCommand
+    }
+
+    if std.mem.eql(std.mem.span(cmd.value), std.mem.span("--describe")) {
+        check schema.write(world)
+        return
+    }
+
+    if std.mem.eql(std.mem.span(cmd.value), std.mem.span("--version")) {
+        check world.out.write("{\"tool\":\"ledger\",\"version\":\"0.1.10\"}\n")
+        return
+    }
+
+    if std.mem.eql(std.mem.span(cmd.value), std.mem.span("register")) {
+        check register.run(world)
+        return
+    }
+
+    if std.mem.eql(std.mem.span(cmd.value), std.mem.span("invoice")) {
+        check invoice.run(world)
+        return
+    }
+
+    check world.out.write("{\"error_code\":\"UNKNOWN_COMMAND\",\"error\":\"Unknown command. Run: ledger --describe\"}\n")
+    raise UnknownCommand
+}

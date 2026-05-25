@@ -1,0 +1,56 @@
+# Zero lang build outputs
+*.o
+*.out
+forge/forge
+ledger/ledger
+forge/forge-analyze
+
+# Compiled binaries (keep .0 source files)
+*.elf
+*.bin
+
+# State files (runtime data — never commit)
+.ledger-data
+.ledger-invoices
+.ledger-data.lock
+.ledger-invoices.lock
+.ledger-data.XXXXXX*
+.heros-keys
+.heros-audit
+.heros-audit-failed
+.forge-nonce*
+
+# Temporary files
+*.tmp
+*.bak
+*.swp
+*~
+.DS_Store
+Thumbs.db
+
+# Editor directories
+.vscode/
+.idea/
+*.iml
+
+# CI secrets
+.env
+.env.*
+secrets/
+
+# Test output
+test-output/
+coverage/
+*.log
+
+# Node/Python (if any tooling scripts use them)
+node_modules/
+__pycache__/
+*.pyc
+.python-version
+
+# Security reports and local gstack artifacts (contain vulnerability details)
+.gstack/
+
+# Claude Code project-local settings (developer-specific permissions, not for sharing)
+.claude/settings.local.json

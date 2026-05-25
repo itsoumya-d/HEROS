@@ -1,0 +1,104 @@
+// Shared types for the Forge schema migration engine.
+// Uses a flat string-pool design to avoid nested-array initialization.
+
+pub const MAX_TABLES: usize = 16
+pub const MAX_COLS: usize = 512
+pub const POOL_SIZE: usize = 16384
+pub const MAX_OPS: usize = 128
+
+// Column type category
+pub enum ColType {
+    serial,
+    integer,
+    bigint,
+    text,
+    decimal,
+    boolean,
+    timestamptz,
+    json,
+    uuid,
+    other,
+}
+
+// Type of schema change detected
+pub enum OpKind {
+    add_table,
+    drop_table,
+    add_col,
+    drop_col,
+    set_not_null,
+    drop_not_null,
+    set_default,
+    drop_default,
+    change_type,
+}
+
+// Five-tier risk classification
+pub enum RiskLevel {
+    safe,
+    notable,
+    medium,
+    high,
+    critical,
+}
+
+// Column flags packed as bits into a u8
+// bit 0 = nullable, bit 1 = has_default, bit 2 = is_primary
+pub const FLAG_NULLABLE:  u8 = 1
+pub const FLAG_DEFAULT:   u8 = 2
+pub const FLAG_PRIMARY:   u8 = 4
+
+// Schema uses a string pool and flat parallel arrays.
+// All names are stored by (offset, length) into pool[].
+pub shape Schema {
+    pool: [16384]u8,
+    pool_len: usize,
+
+    // Table entries: up to 16 tables
+    t_name_off: [16]u16,
+    t_name_len: [16]u16,
+    t_col_start: [16]u16,
+    t_col_count: [16]u16,
+    table_count: usize,
+
+    // Column entries: up to 512 columns total
+    c_table_idx: [512]u8,
+    c_name_off: [512]u16,
+    c_name_len: [512]u16,
+    c_type: [512]u8,
+    c_flags: [512]u8,
+    col_count: usize,
+}
+
+// One detected migration operation
+pub shape MigOp {
+    kind: OpKind,
+    risk: RiskLevel,
+    data_loss: Bool,
+    est_lock_ms: u32,
+    retryable: Bool,
+    // Source and target pool references (into from_schema or to_schema)
+    table_name_off: u16,
+    table_name_len: u16,
+    col_name_off: u16,
+    col_name_len: u16,
+    has_col: Bool,
+    col_nullable: Bool,
+}
+
+// The complete analysis report
+pub shape Report {
+    ops: [128]MigOp,
+    op_count: usize,
+    overall_risk: RiskLevel,
+    has_data_loss: Bool,
+}
+
+// Errors Forge can raise (all maps to stable JSON error codes)
+pub enum ForgeError {
+    file_not_found,
+    invalid_schema,
+    io_error,
+    schema_too_large,
+    unknown_command,
+}

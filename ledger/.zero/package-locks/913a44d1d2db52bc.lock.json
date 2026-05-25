@@ -1,0 +1,7 @@
+{
+  "schemaVersion": 1,
+  "format": "zero-lock-v1",
+  "package": {"name": "ledger", "version": "0.1.0"},
+  "dependencyGraphHash": "913a44d1d2db52bc",
+  "dependencies": []
+}

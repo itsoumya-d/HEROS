@@ -1,0 +1,232 @@
+// Forge - Agent-safe database schema migration engine
+// Entry point: CLI argument dispatch.
+//
+// Every output path emits JSON. No ANSI codes. No interactive prompts.
+// Exit 0 = success. Error details written to stdout as JSON.
+//
+// Agent quickstart:
+//   forge --describe                             # full machine-readable schema
+//   forge analyze --from a.forge --to b.forge --json
+//   forge --version
+
+use std.args
+use std.mem
+use std.fs
+use describe
+use schema
+use diff
+use output
+use types
+
+fun writeVersion(world: World) -> Void raises {
+    check world.out.write("{\"name\":\"forge\",\"version\":\"0.1.0\",\"schema_version\":1}\n")
+}
+
+fun writeHelp(world: World) -> Void raises {
+    check world.out.write("forge - Agent-safe database schema migration engine\n")
+    check world.out.write("\nCommands:\n")
+    check world.out.write("  forge --describe                          Full JSON schema (agent use this)\n")
+    check world.out.write("  forge --version                           Version info as JSON\n")
+    check world.out.write("  forge analyze --from <f> --to <f> --json  Analyze schema migration risk\n")
+    check world.out.write("\nFor agent usage: forge --describe\n")
+}
+
+fun emitReport(world: World, report: ref<Report>, from_schema: ref<Schema>, to_schema: ref<Schema>) -> Void raises {
+    check world.out.write("{\"schema_version\":1,\"risk_tier\":")
+    check writeRiskTier(world, report.overall_risk)
+    check world.out.write(",\"risk_score\":")
+    check writeRiskScore(world, report.overall_risk)
+    check world.out.write(",\"retryable\":")
+    let mut overall_ok = true
+    match report.overall_risk {
+        .critical { overall_ok = false }
+        ._        { overall_ok = true }
+    }
+    check writeBool(world, overall_ok)
+    check world.out.write(",\"has_data_loss\":")
+    check writeBool(world, report.has_data_loss)
+    check world.out.write(",\"operations\":[")
+
+    let mut oi: usize = 0
+    while oi < report.op_count {
+        if oi > 0 {
+            check world.out.write(",")
+        }
+        let op = &report.ops[oi]
+
+        let mut use_to_pool = false
+        match op.kind {
+            .add_table { use_to_pool = true }
+            .add_col   { use_to_pool = true }
+            ._         { use_to_pool = false }
+        }
+
+        check world.out.write("{\"type\":")
+        check writeOpKind(world, op.kind)
+        check world.out.write(",\"table\":")
+        if use_to_pool {
+            check writePoolStr(world, &to_schema.pool, op.table_name_off, op.table_name_len)
+        } else {
+            check writePoolStr(world, &from_schema.pool, op.table_name_off, op.table_name_len)
+        }
+
+        if op.has_col {
+            check world.out.write(",\"column\":")
+            if use_to_pool {
+                check writePoolStr(world, &to_schema.pool, op.col_name_off, op.col_name_len)
+            } else {
+                check writePoolStr(world, &from_schema.pool, op.col_name_off, op.col_name_len)
+            }
+        }
+
+        check world.out.write(",\"risk\":")
+        check writeRiskStr(world, op.risk)
+        check world.out.write(",\"data_loss\":")
+        check writeBool(world, op.data_loss)
+        check world.out.write(",\"estimated_lock_ms\":")
+        check writeLockMs(world, op.est_lock_ms)
+        check world.out.write(",\"retryable\":")
+        check writeBool(world, op.retryable)
+        check world.out.write(",\"agent_guidance\":")
+        check writeGuidance(world, op.kind, op.col_nullable)
+        check world.out.write("}")
+
+        oi = oi + 1
+    }
+
+    check world.out.write("]}\n")
+}
+
+fun runAnalyze(world: World) -> Void raises {
+    let argc = std.args.len()
+
+    let mut from_path: String = ""
+    let mut to_path: String = ""
+    let mut has_from = false
+    let mut has_to = false
+
+    let mut i: usize = 2
+    while i < argc {
+        let arg = std.args.get(i)
+        if arg.has {
+            let mut inc: usize = 1
+            if std.mem.eql(arg.value, "--from") {
+                if i + 1 < argc {
+                    let nxt = std.args.get(i + 1)
+                    if nxt.has {
+                        from_path = nxt.value
+                        has_from = true
+                    }
+                }
+                inc = 2
+            }
+            if std.mem.eql(arg.value, "--to") {
+                if i + 1 < argc {
+                    let nxt = std.args.get(i + 1)
+                    if nxt.has {
+                        to_path = nxt.value
+                        has_to = true
+                    }
+                }
+                inc = 2
+            }
+            i = i + inc
+        } else {
+            i = i + 1
+        }
+    }
+
+    if has_from == false {
+        check writeError(world, "UNKNOWN_COMMAND", "Missing --from flag. Use forge --describe for usage.", false)
+        return
+    }
+    if has_to == false {
+        check writeError(world, "UNKNOWN_COMMAND", "Missing --to flag. Use forge --describe for usage.", false)
+        return
+    }
+
+    let alloc = std.mem.generalAlloc()
+    let sys_fs = std.fs.host()
+
+    let from_result = std.fs.readAll(alloc, sys_fs, from_path, 65536)
+    if from_result.has == false {
+        check writeError(world, "FILE_NOT_FOUND", "Cannot read --from schema file. Verify the path.", false)
+        return
+    }
+    let from_buf = from_result.value
+
+    let to_result = std.fs.readAll(alloc, sys_fs, to_path, 65536)
+    if to_result.has == false {
+        check writeError(world, "FILE_NOT_FOUND", "Cannot read --to schema file. Verify the path.", false)
+        return
+    }
+    let to_buf = to_result.value
+
+    let from_bytes = std.mem.bufBytes(&from_buf)
+    let to_bytes = std.mem.bufBytes(&to_buf)
+
+    let from_schema = alloc.allocShape(Schema)
+    let to_schema = alloc.allocShape(Schema)
+    let report = alloc.allocShape(Report)
+
+    let from_ok = parseSchema(from_bytes, from_schema)
+    if from_ok == false {
+        check writeError(world, "INVALID_SCHEMA", "Cannot parse --from schema file. Check Forge Schema Format syntax.", false)
+        return
+    }
+
+    let to_ok = parseSchema(to_bytes, to_schema)
+    if to_ok == false {
+        check writeError(world, "INVALID_SCHEMA", "Cannot parse --to schema file. Check Forge Schema Format syntax.", false)
+        return
+    }
+
+    diffSchemas(from_schema, to_schema, report)
+
+    check emitReport(world, report, from_schema, to_schema)
+}
+
+pub fun main(world: World) -> Void raises {
+    let argc = std.args.len()
+
+    if argc < 2 {
+        check writeHelp(world)
+        return
+    }
+
+    let cmd_opt = std.args.get(1)
+    if cmd_opt.has == false {
+        check writeHelp(world)
+        return
+    }
+    let cmd = cmd_opt.value
+
+    if std.mem.eql(cmd, "--version") {
+        check writeVersion(world)
+        return
+    }
+
+    if std.mem.eql(cmd, "--describe") {
+        check writeDescribe(world)
+        return
+    }
+
+    if std.mem.eql(cmd, "--help") {
+        let flag2 = std.args.get(2)
+        if flag2.has {
+            if std.mem.eql(flag2.value, "--json") {
+                check writeDescribe(world)
+                return
+            }
+        }
+        check writeHelp(world)
+        return
+    }
+
+    if std.mem.eql(cmd, "analyze") {
+        check runAnalyze(world)
+        return
+    }
+
+    check writeError(world, "UNKNOWN_COMMAND", "Unknown command. Use forge --describe to see valid commands.", false)
+}

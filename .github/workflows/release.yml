@@ -1,0 +1,499 @@
+# Release pipeline for ledger + forge (Zero ELF64 linux-musl-x64)
+# Implements V6 (supply chain signing) and V15 (MCP manifest signing).
+# Triggered on semver tags (v*.*.*). Also runs checks on push to main (no upload).
+#
+# Prerequisites (set in repo Settings → Secrets & Actions → Variables):
+#   ZERO_RELEASE_URL — download URL for the Zero compiler binary
+#   ZERO_COMPILER_SHA256 — expected SHA-256 of the Zero compiler binary
+
+name: Release
+
+on:
+  push:
+    branches: [main]
+  release:
+    types: [published]
+
+permissions:
+  contents: write      # upload release assets
+  id-token: write      # OIDC token for cosign keyless signing
+  packages: read
+
+jobs:
+  build-and-sign:
+    name: Build, sign, and verify
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    env:
+      LEDGER_BIN: ledger-${{ github.ref_name }}-linux-x64.bin
+      FORGE_BIN: forge-${{ github.ref_name }}-linux-x64.bin
+      LEDGER_MANIFEST: ledger-${{ github.ref_name }}.manifest.json
+      FORGE_MANIFEST: forge-${{ github.ref_name }}.manifest.json
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      # ── Install Zero compiler ────────────────────────────────────────────
+      - name: Download Zero compiler
+        run: |
+          curl -fsSL "${{ vars.ZERO_RELEASE_URL }}" -o zero-compiler
+          echo "${{ vars.ZERO_COMPILER_SHA256 }}  zero-compiler" | sha256sum --check
+          chmod +x zero-compiler
+          sudo mv zero-compiler /usr/local/bin/zero
+
+      # ── Install supply chain tooling (pinned by commit SHA) ──────────────
+      # V33 DONE: All three actions pinned to immutable commit SHAs.
+      # SHA resolution: gh api repos/<owner>/<repo>/git/refs/tags/<tag>
+      # Re-verify SHAs when upgrading action versions.
+      - name: Install cosign
+        uses: sigstore/cosign-installer@9614fae9e5c5eddabb09f90a270fcb487c9f7149 # v3.3.0
+        with:
+          cosign-release: v2.2.4
+
+      - name: Install syft
+        uses: anchore/sbom-action/download-syft@5ecf649a417b8ae17dc8383dc32d46c03f2312df # v0.15.1
+        with:
+          syft-version: v1.4.1
+
+      # SUPPLY CHAIN RISK: The scanner itself is an attack vector.
+      # The LiteLLM incident (March 2026) used a compromised trivy scanner to harvest
+      # secrets from CI pipelines. grype runs with access to build artifacts.
+      # V33 DONE: pinned to immutable commit SHA (not mutable tag).
+      # grype MUST NOT run in the same job as cosign key material.
+      - name: Install grype
+        uses: anchore/scan-action/download-grype@3343887d815d7b07465f6fdcd395bd66508d486a # v3.6.4
+        with:
+          grype-version: v0.78.0
+
+      # ── Build ─────────────────────────────────────────────────────────────
+      - name: Build ledger (linux-musl-x64)
+        run: |
+          zero build --target linux-musl-x64 --release ledger/ledger_mini.0
+          mv ledger ledger-linux-x64.bin
+
+      - name: Build forge (linux-musl-x64)
+        run: |
+          zero build --target linux-musl-x64 --release forge/forge_mini.0
+          mv forge forge-linux-x64.bin
+
+      # ── Behavioral eval (blocks on any failure) ───────────────────────────
+      # Run before signing: a broken binary must not be signed and released.
+      # zeval exits 0 on all-pass; emits JSON result. Fail step if status=fail.
+      - name: Eval — ledger behavioral tests
+        run: |
+          chmod +x zero-ecosystem/eval-harness/zeval.sh
+          result=$(zero-ecosystem/eval-harness/zeval.sh \
+            --binary ./ledger-linux-x64.bin \
+            --cases ledger/eval-cases.jsonl)
+          echo "$result"
+          status=$(echo "$result" | jq -r '.status')
+          if [[ "$status" != "ok" ]]; then
+            echo "ledger eval failed: $result"
+            exit 1
+          fi
+
+      - name: Eval — forge behavioral tests
+        run: |
+          result=$(zero-ecosystem/eval-harness/zeval.sh \
+            --binary ./forge-linux-x64.bin \
+            --cases forge/eval-cases.jsonl)
+          echo "$result"
+          status=$(echo "$result" | jq -r '.status')
+          if [[ "$status" != "ok" ]]; then
+            echo "forge eval failed: $result"
+            exit 1
+          fi
+
+      # ── V46: Bridge eval (V39 approval-nonce protocol, RT-109 format guard) ──
+      # Runs eval-bridge.sh: 13 cases covering decision_required nonce injection,
+      # SAFE/NOTABLE/HIGH/CRITICAL tiers, single-use nonces, cross-session isolation,
+      # and RT-109 array-subscript injection prevention (BE-11/12/13).
+      # Requires: jq (pre-installed on ubuntu-latest), bash 4+ (≥4.4 on ubuntu).
+      - name: Eval — forge MCP bridge (V39 approval-nonce protocol)
+        run: |
+          # Stage forge binary where eval-bridge.sh expects it (forge/forge)
+          cp forge-linux-x64.bin forge/forge
+          chmod +x forge/forge forge/eval-bridge.sh forge/mcp-bridge.sh
+          bash forge/eval-bridge.sh
+          echo "forge bridge eval passed"
+
+      # ── Binary size gate (RT-61) ─────────────────────────────────────────
+      # Fail if either binary exceeds 100 KiB (102400 bytes).
+      # Zero is designed for sub-100 KiB binaries. A bloat regression means
+      # an unintended large array, string table, or code duplication was introduced.
+      - name: Binary size gate
+        run: |
+          LIMIT=102400
+          for bin in ledger-linux-x64.bin forge-linux-x64.bin; do
+            size=$(stat -c%s "$bin")
+            echo "$bin: $size bytes"
+            if (( size > LIMIT )); then
+              echo "FAIL: $bin is $size bytes, exceeds 100 KiB limit ($LIMIT bytes)"
+              exit 1
+            fi
+          done
+
+      # ── Reproducibility check ─────────────────────────────────────────────
+      # Build a second time from the same commit and compare SHA-256.
+      # If hashes differ, the build is non-reproducible — abort release.
+      - name: Reproducibility verification (second build)
+        run: |
+          zero build --target linux-musl-x64 --release ledger/ledger_mini.0
+          mv ledger ledger-linux-x64-2.bin
+          zero build --target linux-musl-x64 --release forge/forge_mini.0
+          mv forge forge-linux-x64-2.bin
+          sha256sum ledger-linux-x64.bin ledger-linux-x64-2.bin
+          sha256sum forge-linux-x64.bin forge-linux-x64-2.bin
+          diff <(sha256sum ledger-linux-x64.bin | awk '{print $1}') \
+               <(sha256sum ledger-linux-x64-2.bin | awk '{print $1}')
+          diff <(sha256sum forge-linux-x64.bin | awk '{print $1}') \
+               <(sha256sum forge-linux-x64-2.bin | awk '{print $1}')
+          rm ledger-linux-x64-2.bin forge-linux-x64-2.bin
+
+      # ── Checksums ─────────────────────────────────────────────────────────
+      - name: Generate SHA-256 checksums
+        run: |
+          sha256sum ledger-linux-x64.bin > ledger-linux-x64.bin.sha256
+          sha256sum forge-linux-x64.bin  > forge-linux-x64.bin.sha256
+
+      # ── Sign binaries (keyless cosign via GitHub OIDC) ───────────────────
+      - name: Sign ledger binary
+        run: |
+          cosign sign-blob --yes \
+            --oidc-issuer https://token.actions.githubusercontent.com \
+            --output-signature ledger-linux-x64.bin.sig \
+            ledger-linux-x64.bin
+
+      - name: Sign forge binary
+        run: |
+          cosign sign-blob --yes \
+            --oidc-issuer https://token.actions.githubusercontent.com \
+            --output-signature forge-linux-x64.bin.sig \
+            forge-linux-x64.bin
+
+      # ── SBOM generation ───────────────────────────────────────────────────
+      - name: Generate SBOM (ledger)
+        run: syft ledger-linux-x64.bin -o spdx-json > ledger.sbom.spdx.json
+
+      - name: Generate SBOM (forge)
+        run: syft forge-linux-x64.bin -o spdx-json > forge.sbom.spdx.json
+
+      # ── Vulnerability scan ────────────────────────────────────────────────
+      - name: Vulnerability scan — ledger (blocks on critical)
+        run: grype sbom:ledger.sbom.spdx.json --fail-on critical
+
+      - name: Vulnerability scan — forge (blocks on critical)
+        run: grype sbom:forge.sbom.spdx.json --fail-on critical
+
+      # ── Stamp manifests with repo URL (V36) ─────────────────────────────
+      # Replace OWNER/REPO placeholder in signing.verify_cmd with the actual
+      # GitHub repository path. Runs before manifest signing so the signed
+      # artifact contains the correct verification command for end users.
+      - name: Stamp manifest verify_cmd with repo URL
+        run: |
+          sed -i "s|https://github.com/OWNER/REPO|https://github.com/${{ github.repository }}|g" \
+            ledger/mcp-manifest.json forge/mcp-manifest.json
+          grep "certificate-identity-regexp" ledger/mcp-manifest.json forge/mcp-manifest.json
+
+      # ── Sign MCP manifests (V15) ─────────────────────────────────────────
+      - name: Sign ledger MCP manifest
+        run: |
+          cosign sign-blob --yes \
+            --oidc-issuer https://token.actions.githubusercontent.com \
+            --output-signature ledger/mcp-manifest.json.sig \
+            ledger/mcp-manifest.json
+
+      - name: Sign forge MCP manifest
+        run: |
+          cosign sign-blob --yes \
+            --oidc-issuer https://token.actions.githubusercontent.com \
+            --output-signature forge/mcp-manifest.json.sig \
+            forge/mcp-manifest.json
+
+      # ── Verify own signatures (catch CI misconfiguration) ─────────────────
+      # V10: All four signed artifacts verified before upload.
+      # A signing misconfiguration caught here prevents distribution of
+      # unverifiable artifacts that would fail downstream cosign verify-blob checks.
+      - name: Verify ledger binary signature (self-check)
+        run: |
+          cosign verify-blob \
+            --certificate-identity-regexp "https://github.com/${{ github.repository }}" \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+            --signature ledger-linux-x64.bin.sig \
+            ledger-linux-x64.bin
+
+      - name: Verify forge binary signature (self-check)
+        run: |
+          cosign verify-blob \
+            --certificate-identity-regexp "https://github.com/${{ github.repository }}" \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+            --signature forge-linux-x64.bin.sig \
+            forge-linux-x64.bin
+
+      - name: Verify ledger manifest signature (self-check)
+        run: |
+          cosign verify-blob \
+            --certificate-identity-regexp "https://github.com/${{ github.repository }}" \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+            --signature ledger/mcp-manifest.json.sig \
+            ledger/mcp-manifest.json
+
+      - name: Verify forge manifest signature (self-check)
+        run: |
+          cosign verify-blob \
+            --certificate-identity-regexp "https://github.com/${{ github.repository }}" \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+            --signature forge/mcp-manifest.json.sig \
+            forge/mcp-manifest.json
+
+      # ── Upload release artifacts ─────────────────────────────────────────
+      - name: Upload release artifacts
+        if: github.event_name == 'release'
+        uses: softprops/action-gh-release@de2c0eb89ae2a093876385947365aca7b0e5f844 # v1
+        with:
+          files: |
+            ledger-linux-x64.bin
+            ledger-linux-x64.bin.sha256
+            ledger-linux-x64.bin.sig
+            ledger.sbom.spdx.json
+            ledger/mcp-manifest.json
+            ledger/mcp-manifest.json.sig
+            forge-linux-x64.bin
+            forge-linux-x64.bin.sha256
+            forge-linux-x64.bin.sig
+            forge.sbom.spdx.json
+            forge/mcp-manifest.json
+            forge/mcp-manifest.json.sig
+
+  # ── forge eval-bridge (V39 nonce protocol, RT-109 format guard) ─────────
+  # Runs forge/eval-bridge.sh against the forge binary to verify:
+  # - BE-11/12/13: RT-109 format guard rejects '@', short, and non-hex nonces
+  # - BE-01/02: CRITICAL → nonce, SAFE → no nonce
+  # - BE-04/09: nonce roundtrip and single-use enforcement
+  # Requires jq. Runs independently of build-and-sign (no binary artifact dependency;
+  # bridge eval builds forge inline via the mcp-bridge.sh FORGE_BIN env var).
+  forge-bridge-eval:
+    name: forge MCP bridge eval (V39 + RT-109)
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Install jq
+        run: sudo apt-get install -y jq
+
+      - name: Install Zero compiler
+        run: |
+          curl -fsSL "${{ vars.ZERO_RELEASE_URL }}" -o zero-compiler
+          echo "${{ vars.ZERO_COMPILER_SHA256 }}  zero-compiler" | sha256sum --check
+          chmod +x zero-compiler
+          sudo mv zero-compiler /usr/local/bin/zero
+
+      - name: Build forge (for bridge eval)
+        run: |
+          zero build --target linux-musl-x64 --release forge/forge_mini.0
+          chmod +x forge
+
+      - name: Run forge bridge eval
+        env:
+          FORGE_BIN: ./forge
+        run: |
+          chmod +x forge/mcp-bridge.sh forge/eval-bridge.sh
+          bash forge/eval-bridge.sh
+
+  # ── Ledger bridge auth eval (V44 API key authentication) ─────────────────
+  # Runs ledger/eval-bridge-auth.sh: 9 cases (AE-01..AE-08) covering:
+  # - AE-01: valid rw key → auth passes, audit entry written
+  # - AE-02: malformed key → INVALID_API_KEY
+  # - AE-03: revoked key → API_KEY_REVOKED
+  # - AE-04: ro key + rw op → INSUFFICIENT_SCOPE
+  # - AE-05: ro key + ro op → auth passes
+  # - AE-06: HMAC mismatch (tampered secret) → INVALID_API_KEY
+  # - AE-07: unknown key_id → INVALID_API_KEY
+  # - AE-08: no HEROS_API_KEY (migration mode) → auth skipped
+  # Uses a ledger stub binary; no Zero compiler required.
+  ledger-auth-eval:
+    name: ledger MCP bridge auth eval (V44)
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Install dependencies
+        run: sudo apt-get install -y jq xxd openssl python3
+
+      - name: Run ledger bridge auth eval
+        run: |
+          chmod +x ledger/mcp-bridge.sh ledger/eval-bridge-auth.sh
+          bash ledger/eval-bridge-auth.sh
+
+  # ── Ledger V44 key-gen + auth eval (BA series) ───────────────────────────
+  # Runs ledger/eval-auth.sh: 10 cases (BA-01..BA-10) covering:
+  # - BA-01: key-gen produces valid rw key JSON
+  # - BA-02: generated rw key validates (validate_api_key returns org_id)
+  # - BA-03: rw key satisfies ro scope requirement
+  # - BA-04: malformed key → INVALID_API_KEY (rc=1)
+  # - BA-05: ro key + rw scope → INSUFFICIENT_SCOPE (rc=3)
+  # - BA-06: wrong secret → INVALID_API_KEY (rc=1)
+  # - BA-07: unknown key_id → INVALID_API_KEY (rc=1)
+  # - BA-08: revoked key → API_KEY_REVOKED (rc=2)
+  # - BA-09: empty HEROS_HMAC_SEED → INVALID_API_KEY (RT-132)
+  # - BA-10: key-gen with empty HEROS_HMAC_SEED → INVALID_INPUT
+  ledger-v44-auth-eval:
+    name: ledger V44 key-gen + auth eval (BA series)
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Install dependencies
+        run: sudo apt-get install -y jq xxd openssl python3
+
+      - name: Run ledger V44 auth eval
+        run: |
+          chmod +x ledger/mcp-bridge.sh ledger/key-gen.sh ledger/eval-auth.sh
+          bash ledger/eval-auth.sh
+
+  # ── Forge V44 auth eval (FA series) ──────────────────────────────────────
+  # Runs forge/eval-auth.sh: 10 cases (FA-01..FA-10) covering:
+  # - FA-01: ledger/key-gen.sh creates ro key readable by forge bridge
+  # - FA-02: ro key validates against forge (ro scope), correct org_id returned
+  # - FA-03: rw key satisfies forge ro scope requirement
+  # - FA-04: wrong secret → INVALID_API_KEY (rc=1)
+  # - FA-05: unknown key_id → INVALID_API_KEY (rc=1)
+  # - FA-06: revoked key → API_KEY_REVOKED (rc=2)
+  # - FA-07: empty HEROS_HMAC_SEED → INVALID_API_KEY (RT-132 guard)
+  # - FA-08: _audit writes to .heros-audit
+  # - FA-09: duplicate key_id — first entry wins (RT-134)
+  # - FA-10: malformed key format → INVALID_API_KEY (rc=1)
+  forge-auth-eval:
+    name: forge V44 auth eval (FA series)
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Install dependencies
+        run: sudo apt-get install -y jq xxd openssl python3
+
+      - name: Run forge auth eval
+        run: |
+          chmod +x forge/mcp-bridge.sh ledger/key-gen.sh forge/eval-auth.sh
+          bash forge/eval-auth.sh
+
+  # ── jsonschema eval (V51: compile + 30-case eval) ───────────────────────
+  # Builds jsonschema_mini.0 and runs all 30 eval cases via eval-runner.sh.
+  # Covers EC-01..EC-30: type, required, properties, enum, const, additionalProperties,
+  # nested depth-2 (type/min/max/minLength/maxLength), and regression tests.
+  jsonschema-eval:
+    name: jsonschema v0.1.8 eval (30 cases)
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Install dependencies
+        run: sudo apt-get install -y jq
+
+      - name: Install Zero compiler
+        run: |
+          curl -fsSL "${{ vars.ZERO_RELEASE_URL }}" -o zero-compiler
+          echo "${{ vars.ZERO_COMPILER_SHA256 }}  zero-compiler" | sha256sum --check
+          chmod +x zero-compiler
+          sudo mv zero-compiler /usr/local/bin/zero
+
+      - name: Build jsonschema
+        run: |
+          zero build --target linux-musl-x64 --release zero-ecosystem/json-schema/jsonschema_mini.0
+          chmod +x jsonschema
+          mv jsonschema zero-ecosystem/json-schema/jsonschema
+
+      - name: Run eval cases
+        run: |
+          chmod +x zero-ecosystem/json-schema/eval-runner.sh
+          JSONSCHEMA_BIN=zero-ecosystem/json-schema/jsonschema \
+            bash zero-ecosystem/json-schema/eval-runner.sh
+
+  # ── Shell script lint (mcp-bridge.sh) ────────────────────────────────────
+  shell-lint:
+    name: Lint MCP bridge scripts
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Install shellcheck
+        run: sudo apt-get install -y shellcheck
+
+      - name: Lint ledger/mcp-bridge.sh
+        run: shellcheck -S warning ledger/mcp-bridge.sh
+
+      - name: Lint forge/mcp-bridge.sh
+        run: shellcheck -S warning forge/mcp-bridge.sh
+
+      - name: Lint ledger/eval-bridge-auth.sh
+        run: shellcheck -S warning ledger/eval-bridge-auth.sh
+
+      - name: Lint ledger/key-gen.sh
+        run: shellcheck -S warning ledger/key-gen.sh
+
+      - name: Lint ledger/eval-auth.sh
+        run: shellcheck -S warning ledger/eval-auth.sh
+
+      - name: Lint forge/eval-auth.sh
+        run: shellcheck -S warning forge/eval-auth.sh
+
+      - name: Lint zero-ecosystem/json-schema/eval-runner.sh
+        run: shellcheck -S warning zero-ecosystem/json-schema/eval-runner.sh
+
+  # ── MCP description lint (V15 content policy) ──────────────────────────
+  mcp-lint:
+    name: MCP manifest content policy lint
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Check tool description lengths (≤ 512 chars)
+        run: |
+          python3 - <<'EOF'
+          import json, sys
+          for path in ["ledger/mcp-manifest.json", "forge/mcp-manifest.json"]:
+              with open(path) as f:
+                  manifest = json.load(f)
+              tools = manifest.get("tools", [])
+              failed = False
+              for tool in tools:
+                  desc = tool.get("description", "")
+                  if len(desc) > 512:
+                      print(f"FAIL {path}: tool '{tool.get('name')}' description is {len(desc)} chars (max 512)")
+                      failed = True
+              if failed:
+                  sys.exit(1)
+              print(f"OK {path}: all descriptions ≤ 512 chars")
+          EOF
+
+      - name: Check for imperative verbs targeting other tools (ContextCrush)
+        run: |
+          python3 - <<'EOF'
+          import json, sys, re
+          # Heuristic: descriptions should not contain imperative verbs directing the agent
+          # to call, use, invoke, or ignore other tools (ContextCrush / V15).
+          SUSPICIOUS = re.compile(
+              r'\b(ignore|override|instead use|call|invoke|always use|prefer|use this instead)\b',
+              re.IGNORECASE
+          )
+          failed = False
+          for path in ["ledger/mcp-manifest.json", "forge/mcp-manifest.json"]:
+              with open(path) as f:
+                  manifest = json.load(f)
+              tools = manifest.get("tools", [])
+              for tool in tools:
+                  desc = tool.get("description", "")
+                  m = SUSPICIOUS.search(desc)
+                  if m:
+                      print(f"WARN {path}: tool '{tool.get('name')}' description contains suspicious phrase: '{m.group()}'")
+                      # Warn only — don't block. Some verbs are legitimate.
+          print("MCP lint complete")
+          EOF

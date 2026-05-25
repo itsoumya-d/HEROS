@@ -1,0 +1,678 @@
+// zlog_mini - Structured JSONL append logger for agent-native workflows.
+// Single-file Zero v0.1.x implementation (no std.fs.openAppend — O(N) rewrite workaround).
+// Max log file size: 256 bytes (v0.1 constraint; v0.2 will lift with native append).
+
+use std.args
+use std.mem
+use std.fs
+use std.time
+
+// --- Integer helpers ---
+
+fun decDigit(d: u8) -> String {
+    if d == 0 { return "0" }
+    if d == 1 { return "1" }
+    if d == 2 { return "2" }
+    if d == 3 { return "3" }
+    if d == 4 { return "4" }
+    if d == 5 { return "5" }
+    if d == 6 { return "6" }
+    if d == 7 { return "7" }
+    if d == 8 { return "8" }
+    if d == 9 { return "9" }
+    return "0"
+}
+
+// Writes a non-negative i64 in decimal to a file.
+fun writeI64ToFile(file: mutref<owned<File>>, n: i64) -> Bool {
+    if n == 0 {
+        return std.fs.writeAll(file, std.mem.span("0"))
+    }
+    let mut digits: [20]u8 = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    let mut count: usize = 0
+    let mut val = n
+    while val > 0 {
+        digits[19 - count] = (val % 10) as u8
+        val = val / 10
+        count = count + 1
+    }
+    let mut start: usize = 20 - count
+    while start < 20 {
+        if std.fs.writeAll(file, std.mem.span(decDigit(digits[start]))) == false { return false }
+        start = start + 1
+    }
+    return true
+}
+
+// --- Char lookup: returns single-char String for bytes 10 (\n) and 32-126 (printable ASCII).
+// Used for byte-by-byte file writes where std.mem.span(String) is required.
+fun charStr(b: u8) -> String {
+    if b == 10 { return "\n" }
+    if b == 32 { return " " }
+    if b == 33 { return "!" }
+    if b == 34 { return "\"" }
+    if b == 35 { return "#" }
+    if b == 36 { return "$" }
+    if b == 37 { return "%" }
+    if b == 38 { return "&" }
+    if b == 39 { return "'" }
+    if b == 40 { return "(" }
+    if b == 41 { return ")" }
+    if b == 42 { return "*" }
+    if b == 43 { return "+" }
+    if b == 44 { return "," }
+    if b == 45 { return "-" }
+    if b == 46 { return "." }
+    if b == 47 { return "/" }
+    if b == 48 { return "0" }
+    if b == 49 { return "1" }
+    if b == 50 { return "2" }
+    if b == 51 { return "3" }
+    if b == 52 { return "4" }
+    if b == 53 { return "5" }
+    if b == 54 { return "6" }
+    if b == 55 { return "7" }
+    if b == 56 { return "8" }
+    if b == 57 { return "9" }
+    if b == 58 { return ":" }
+    if b == 59 { return ";" }
+    if b == 60 { return "<" }
+    if b == 61 { return "=" }
+    if b == 62 { return ">" }
+    if b == 63 { return "?" }
+    if b == 64 { return "@" }
+    if b == 65 { return "A" }
+    if b == 66 { return "B" }
+    if b == 67 { return "C" }
+    if b == 68 { return "D" }
+    if b == 69 { return "E" }
+    if b == 70 { return "F" }
+    if b == 71 { return "G" }
+    if b == 72 { return "H" }
+    if b == 73 { return "I" }
+    if b == 74 { return "J" }
+    if b == 75 { return "K" }
+    if b == 76 { return "L" }
+    if b == 77 { return "M" }
+    if b == 78 { return "N" }
+    if b == 79 { return "O" }
+    if b == 80 { return "P" }
+    if b == 81 { return "Q" }
+    if b == 82 { return "R" }
+    if b == 83 { return "S" }
+    if b == 84 { return "T" }
+    if b == 85 { return "U" }
+    if b == 86 { return "V" }
+    if b == 87 { return "W" }
+    if b == 88 { return "X" }
+    if b == 89 { return "Y" }
+    if b == 90 { return "Z" }
+    if b == 91 { return "[" }
+    if b == 92 { return "\\" }
+    if b == 93 { return "]" }
+    if b == 94 { return "^" }
+    if b == 95 { return "_" }
+    if b == 96 { return "`" }
+    if b == 97 { return "a" }
+    if b == 98 { return "b" }
+    if b == 99 { return "c" }
+    if b == 100 { return "d" }
+    if b == 101 { return "e" }
+    if b == 102 { return "f" }
+    if b == 103 { return "g" }
+    if b == 104 { return "h" }
+    if b == 105 { return "i" }
+    if b == 106 { return "j" }
+    if b == 107 { return "k" }
+    if b == 108 { return "l" }
+    if b == 109 { return "m" }
+    if b == 110 { return "n" }
+    if b == 111 { return "o" }
+    if b == 112 { return "p" }
+    if b == 113 { return "q" }
+    if b == 114 { return "r" }
+    if b == 115 { return "s" }
+    if b == 116 { return "t" }
+    if b == 117 { return "u" }
+    if b == 118 { return "v" }
+    if b == 119 { return "w" }
+    if b == 120 { return "x" }
+    if b == 121 { return "y" }
+    if b == 122 { return "z" }
+    if b == 123 { return "{" }
+    if b == 124 { return "|" }
+    if b == 125 { return "}" }
+    if b == 126 { return "~" }
+    return " "
+}
+
+// --- Validation helpers ---
+
+// Returns true if span contains control chars (< 32), non-ASCII (>= 128),
+// double-quote (34), or backslash (92).
+fun hasUnsafeChar(sp: Span<u8>, slen: usize) -> Bool {
+    let mut i: usize = 0
+    while i < slen {
+        let b = sp[i]
+        if b < 32 { return true }
+        if b == 34 { return true }
+        if b == 92 { return true }
+        if b >= 128 { return true }
+        i = i + 1
+    }
+    return false
+}
+
+// Returns true if path is safe: relative (no leading /), no .. traversal, <= 128 bytes.
+fun isPathSafe(sp: Span<u8>, slen: usize) -> Bool {
+    if slen == 0 { return false }
+    if slen > 128 { return false }
+    if sp[0] == 47 { return false }
+    let mut i: usize = 0
+    while i < slen {
+        if sp[i] == 46 {
+            if i + 1 < slen {
+                if sp[i + 1] == 46 { return false }
+            }
+        }
+        i = i + 1
+    }
+    return true
+}
+
+// Returns true if byte is valid in an extra key name (after stripping --).
+fun isKeyChar(b: u8) -> Bool {
+    if b >= 65 && b <= 90 { return true }
+    if b >= 97 && b <= 122 { return true }
+    if b >= 48 && b <= 57 { return true }
+    if b == 95 { return true }
+    if b == 45 { return true }
+    return false
+}
+
+// --- Entry point ---
+
+pub fun main(world: World) -> Void raises {
+    let argc = std.args.len()
+
+    if argc < 2 {
+        check world.out.write("{\"error_code\":\"UNKNOWN_COMMAND\",\"retryable\":false,\"error\":\"Usage: zlog <info|warn|error|debug|tail|--version|--describe>\"}\n")
+        return
+    }
+
+    let cmd_opt = std.args.get(1)
+    if cmd_opt.has == false {
+        check world.out.write("{\"error_code\":\"UNKNOWN_COMMAND\",\"retryable\":false,\"error\":\"Usage: zlog <info|warn|error|debug|tail|--version|--describe>\"}\n")
+        return
+    }
+    let cmd = cmd_opt.value
+
+    if std.mem.eql(cmd, "--version") {
+        check world.out.write("{\"name\":\"zlog\",\"version\":\"0.1.0\",\"schema_version\":1}\n")
+        return
+    }
+
+    if std.mem.eql(cmd, "--describe") {
+        check world.out.write("{\n")
+        check world.out.write("  \"name\": \"zlog\",\n")
+        check world.out.write("  \"version\": \"0.1.0\",\n")
+        check world.out.write("  \"schema_version\": 1,\n")
+        check world.out.write("  \"description\": \"Structured JSONL append logger for agent-native workflows. Appends one JSON line per call. Machine-readable on every code path. Never prompts.\",\n")
+        check world.out.write("  \"commands\": [\n")
+        check world.out.write("    {\"name\": \"info\",  \"description\": \"Append an info-level log entry and return status JSON.\"},\n")
+        check world.out.write("    {\"name\": \"warn\",  \"description\": \"Append a warn-level log entry and return status JSON.\"},\n")
+        check world.out.write("    {\"name\": \"error\", \"description\": \"Append an error-level log entry and return status JSON.\"},\n")
+        check world.out.write("    {\"name\": \"debug\", \"description\": \"Append a debug-level log entry and return status JSON.\"},\n")
+        check world.out.write("    {\"name\": \"tail\",  \"description\": \"Emit last N log lines to stdout as JSONL.\"}\n")
+        check world.out.write("  ],\n")
+        check world.out.write("  \"flags\": [\n")
+        check world.out.write("    {\"name\": \"--msg\",      \"type\": \"string\",  \"required\": true,  \"for\": \"info|warn|error|debug\", \"trust\": \"UNTRUSTED\", \"constraints\": \"ASCII printable only; no control chars, no double-quotes, no backslashes; max 128 bytes\"},\n")
+        check world.out.write("    {\"name\": \"--log-file\", \"type\": \"string\",  \"required\": false, \"default\": \".zlog-default\", \"description\": \"Relative path only; no leading /; no .. traversal; max 128 bytes\"},\n")
+        check world.out.write("    {\"name\": \"--n\",        \"type\": \"integer\", \"required\": false, \"default\": \"20\", \"for\": \"tail\", \"description\": \"Number of trailing entries to emit; max 99999\"},\n")
+        check world.out.write("    {\"name\": \"--<key>\",    \"type\": \"string\",  \"required\": false, \"for\": \"info|warn|error|debug\", \"trust\": \"UNTRUSTED\", \"description\": \"Any extra --key value pair appended as a JSON field. Key: alphanumeric+underscore+hyphen after --, max 64 bytes. Value: ASCII printable, max 64 bytes. Max 16 pairs total.\"}\n")
+        check world.out.write("  ],\n")
+        check world.out.write("  \"write_response_schema\": {\n")
+        check world.out.write("    \"status\": \"ok\",\n")
+        check world.out.write("    \"ts\": \"integer Unix seconds (wall clock at write time)\",\n")
+        check world.out.write("    \"level\": \"info|warn|error|debug\",\n")
+        check world.out.write("    \"log_file\": \"string path of log file written\"\n")
+        check world.out.write("  },\n")
+        check world.out.write("  \"error_codes\": [\n")
+        check world.out.write("    {\"code\": \"UNKNOWN_COMMAND\",      \"retryable\": false, \"description\": \"Unrecognized command. Run zlog --describe.\"},\n")
+        check world.out.write("    {\"code\": \"MISSING_FLAG\",         \"retryable\": false, \"description\": \"Required flag absent. Check --describe for required flags.\"},\n")
+        check world.out.write("    {\"code\": \"INVALID_INPUT\",        \"retryable\": false, \"description\": \"Flag value failed validation. See error field for details. Do not retry with same value.\"},\n")
+        check world.out.write("    {\"code\": \"STORE_LIMIT_EXCEEDED\", \"retryable\": false, \"description\": \"Log file at 256-byte capacity. Clear the log file or use --log-file to write to a fresh path.\"},\n")
+        check world.out.write("    {\"code\": \"IO_ERROR\",             \"retryable\": true,  \"description\": \"File system error. Retry with exponential backoff.\"}\n")
+        check world.out.write("  ],\n")
+        check world.out.write("  \"log_entry_format\": \"{\\\"ts\\\":N,\\\"level\\\":\\\"L\\\",\\\"msg\\\":\\\"M\\\"[,\\\"key\\\":\\\"value\\\",...]}\",\n")
+        check world.out.write("  \"constraints\": {\n")
+        check world.out.write("    \"max_log_bytes\": 256,\n")
+        check world.out.write("    \"max_msg_bytes\": 128,\n")
+        check world.out.write("    \"max_value_bytes\": 64,\n")
+        check world.out.write("    \"max_kv_pairs\": 16,\n")
+        check world.out.write("    \"max_key_bytes\": 64,\n")
+        check world.out.write("    \"write_complexity\": \"O(N) on log file size — Zero v0.1.x has no native append; v0.2 will fix with std.fs.openAppend\"\n")
+        check world.out.write("  }\n")
+        check world.out.write("}\n")
+        return
+    }
+
+    let is_info      = std.mem.eql(cmd, "info")
+    let is_warn      = std.mem.eql(cmd, "warn")
+    let is_error_cmd = std.mem.eql(cmd, "error")
+    let is_debug     = std.mem.eql(cmd, "debug")
+    let is_tail      = std.mem.eql(cmd, "tail")
+
+    if is_info == false && is_warn == false && is_error_cmd == false && is_debug == false && is_tail == false {
+        check world.out.write("{\"error_code\":\"UNKNOWN_COMMAND\",\"retryable\":false,\"error\":\"Unknown command. Run zlog --describe for usage.\"}\n")
+        return
+    }
+
+    // --- Parse flags ---
+    let mut msg_idx: usize     = 0
+    let mut has_msg            = false
+    let mut log_file_idx: usize = 0
+    let mut has_log_file       = false
+    let mut tail_n_idx: usize  = 0
+    let mut has_tail_n         = false
+
+    // Extra key-value pairs: store arg indices (up to 16 pairs)
+    let mut ek_idx: [16]usize = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    let mut ev_idx: [16]usize = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    let mut ekv_count: usize  = 0
+
+    let mut ai: usize = 2
+    while ai < argc {
+        let flag_opt = std.args.get(ai)
+        if flag_opt.has {
+            let flag = flag_opt.value
+            if std.mem.eql(flag, "--msg") {
+                if ai + 1 < argc {
+                    let nxt = std.args.get(ai + 1)
+                    if nxt.has { msg_idx = ai + 1; has_msg = true; ai = ai + 1 }
+                }
+            } else {
+                if std.mem.eql(flag, "--log-file") {
+                    if ai + 1 < argc {
+                        let nxt = std.args.get(ai + 1)
+                        if nxt.has { log_file_idx = ai + 1; has_log_file = true; ai = ai + 1 }
+                    }
+                } else {
+                    if std.mem.eql(flag, "--n") {
+                        if ai + 1 < argc {
+                            let nxt = std.args.get(ai + 1)
+                            if nxt.has { tail_n_idx = ai + 1; has_tail_n = true; ai = ai + 1 }
+                        }
+                    } else {
+                        // Any other --X flag becomes an extra key-value pair
+                        let fl_sp  = std.mem.span(flag)
+                        let fl_len = std.mem.len(fl_sp)
+                        if fl_len >= 3 && fl_sp[0] == 45 && fl_sp[1] == 45 {
+                            if ai + 1 < argc {
+                                let nxt = std.args.get(ai + 1)
+                                if nxt.has {
+                                    if ekv_count < 16 {
+                                        ek_idx[ekv_count] = ai
+                                        ev_idx[ekv_count] = ai + 1
+                                        ekv_count = ekv_count + 1
+                                        ai = ai + 1
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        ai = ai + 1
+    }
+
+    // --- Determine log file path ---
+    let log_file_path: String
+    if has_log_file {
+        let lf_opt = std.args.get(log_file_idx)
+        if lf_opt.has {
+            let lf_sp  = std.mem.span(lf_opt.value)
+            let lf_len = std.mem.len(lf_sp)
+            if isPathSafe(lf_sp, lf_len) == false {
+                check world.out.write("{\"error_code\":\"INVALID_INPUT\",\"retryable\":false,\"error\":\"--log-file must be a relative path with no .. traversal and no leading /\"}\n")
+                return
+            }
+            log_file_path = lf_opt.value
+        } else {
+            log_file_path = ".zlog-default"
+        }
+    } else {
+        log_file_path = ".zlog-default"
+    }
+
+    // ================================================================
+    // TAIL command
+    // ================================================================
+    if is_tail {
+        let mut tail_n: usize = 20
+        if has_tail_n {
+            let tn_opt = std.args.get(tail_n_idx)
+            if tn_opt.has {
+                let tn_sp  = std.mem.span(tn_opt.value)
+                let tn_len = std.mem.len(tn_sp)
+                let mut tn_val: usize = 0
+                let mut tn_ok  = true
+                let mut tni: usize = 0
+                if tn_len == 0 { tn_ok = false }
+                if tn_len > 5 { tn_ok = false }
+                while tni < tn_len {
+                    let tb = tn_sp[tni]
+                    if tb < 48 || tb > 57 { tn_ok = false }
+                    if tn_ok { tn_val = tn_val * 10 + (tb as usize - 48) }
+                    tni = tni + 1
+                }
+                if tn_ok && tn_val > 0 { tail_n = tn_val }
+            }
+        }
+
+        let fsh = std.fs.host()
+        let mut log_buf: [256]u8 = [
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+        ]
+        let mut log_len: usize = 0
+        let open_opt = std.fs.open(fsh, log_file_path)
+        if open_opt.has {
+            let mut log_file_r: owned<File> = open_opt.value
+            log_len = check std.fs.readOrRaise(&mut log_file_r, log_buf)
+            std.fs.close(&mut log_file_r)
+        }
+
+        if log_len == 0 {
+            return
+        }
+
+        // Count total newlines to find how many lines we have
+        let mut nl_count: usize = 0
+        let mut li: usize = 0
+        while li < log_len {
+            if log_buf[li] == 10 { nl_count = nl_count + 1 }
+            li = li + 1
+        }
+
+        // Find byte offset for last tail_n lines
+        let mut emit_from: usize = 0
+        if nl_count > tail_n {
+            let skip_nl = nl_count - tail_n
+            let mut nl_seen: usize = 0
+            let mut si: usize = 0
+            let mut found = false
+            while si < log_len && found == false {
+                if log_buf[si] == 10 {
+                    nl_seen = nl_seen + 1
+                    if nl_seen == skip_nl {
+                        emit_from = si + 1
+                        found = true
+                    }
+                }
+                si = si + 1
+            }
+        }
+
+        // Emit bytes emit_from..log_len to stdout
+        let mut ei: usize = emit_from
+        let mut fn_cb: [1]u8 = [0]
+        while ei < log_len {
+            fn_cb[0] = log_buf[ei]
+            check world.out.write(fn_cb)
+            ei = ei + 1
+        }
+        return
+    }
+
+    // ================================================================
+    // WRITE command (info / warn / error / debug)
+    // ================================================================
+
+    if has_msg == false {
+        check world.out.write("{\"error_code\":\"MISSING_FLAG\",\"retryable\":false,\"error\":\"--msg is required for log level commands\"}\n")
+        return
+    }
+
+    let msg_arg = std.args.get(msg_idx)
+    if msg_arg.has == false {
+        check world.out.write("{\"error_code\":\"MISSING_FLAG\",\"retryable\":false,\"error\":\"--msg is required for log level commands\"}\n")
+        return
+    }
+    let msg_sp  = std.mem.span(msg_arg.value)
+    let msg_len = std.mem.len(msg_sp)
+
+    if msg_len > 128 {
+        check world.out.write("{\"error_code\":\"INVALID_INPUT\",\"retryable\":false,\"error\":\"--msg exceeds 128 bytes\"}\n")
+        return
+    }
+    if hasUnsafeChar(msg_sp, msg_len) {
+        check world.out.write("{\"error_code\":\"INVALID_INPUT\",\"retryable\":false,\"error\":\"--msg contains disallowed characters (control chars, non-ASCII, double-quote, backslash)\"}\n")
+        return
+    }
+
+    // Validate extra kv pairs
+    let mut evi: usize = 0
+    while evi < ekv_count {
+        let k_arg = std.args.get(ek_idx[evi])
+        if k_arg.has {
+            let k_sp  = std.mem.span(k_arg.value)
+            let k_len = std.mem.len(k_sp)
+            if k_len < 3 {
+                check world.out.write("{\"error_code\":\"INVALID_INPUT\",\"retryable\":false,\"error\":\"Extra flag name must be at least 1 char after --\"}\n")
+                return
+            }
+            if k_len - 2 > 64 {
+                check world.out.write("{\"error_code\":\"INVALID_INPUT\",\"retryable\":false,\"error\":\"Extra flag name exceeds 64 chars\"}\n")
+                return
+            }
+            let mut ki: usize = 2
+            while ki < k_len {
+                if isKeyChar(k_sp[ki]) == false {
+                    check world.out.write("{\"error_code\":\"INVALID_INPUT\",\"retryable\":false,\"error\":\"Extra flag name contains invalid character (use alphanumeric, underscore, hyphen)\"}\n")
+                    return
+                }
+                ki = ki + 1
+            }
+        }
+        let v_arg = std.args.get(ev_idx[evi])
+        if v_arg.has {
+            let v_sp  = std.mem.span(v_arg.value)
+            let v_len = std.mem.len(v_sp)
+            if v_len > 64 {
+                check world.out.write("{\"error_code\":\"INVALID_INPUT\",\"retryable\":false,\"error\":\"Extra value exceeds 64 bytes\"}\n")
+                return
+            }
+            if hasUnsafeChar(v_sp, v_len) {
+                check world.out.write("{\"error_code\":\"INVALID_INPUT\",\"retryable\":false,\"error\":\"Extra value contains disallowed characters\"}\n")
+                return
+            }
+        }
+        evi = evi + 1
+    }
+
+    let ts  = std.time.wallSeconds()
+    let fsh = std.fs.host()
+
+    // Read existing log (up to 256 bytes)
+    let mut log_buf: [256]u8 = [
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+    ]
+    let mut log_len: usize = 0
+    let open_opt = std.fs.open(fsh, log_file_path)
+    if open_opt.has {
+        let mut log_file_r: owned<File> = open_opt.value
+        log_len = check std.fs.readOrRaise(&mut log_file_r, log_buf)
+        std.fs.close(&mut log_file_r)
+    }
+
+    // Reject if existing content leaves no room for a minimal new entry.
+    // A minimal entry is ~50 bytes: {"ts":1234567890,"level":"info","msg":"x"}\n
+    if log_len > 200 {
+        check world.out.write("{\"error_code\":\"STORE_LIMIT_EXCEEDED\",\"retryable\":false,\"error\":\"Log file at capacity (256 byte limit). Clear .zlog-default or use --log-file to write to a fresh path.\"}\n")
+        return
+    }
+
+    // Create new file (overwrites existing — O(N) append workaround for Zero v0.1.x)
+    let new_file_opt = std.fs.create(fsh, log_file_path)
+    if new_file_opt.has == false {
+        check world.out.write("{\"error_code\":\"IO_ERROR\",\"retryable\":true,\"error\":\"Cannot create log file\"}\n")
+        return
+    }
+    let mut log_file_w: owned<File> = new_file_opt.value
+
+    // Copy existing content back, byte by byte
+    let mut ci: usize = 0
+    let mut write_ok = true
+    while ci < log_len {
+        if write_ok {
+            if std.fs.writeAll(&mut log_file_w, std.mem.span(charStr(log_buf[ci]))) == false { write_ok = false }
+        }
+        ci = ci + 1
+    }
+
+    // Append new JSON log entry: {"ts":N,"level":"L","msg":"M"[,"key":"val"...]}\n
+    if write_ok { if std.fs.writeAll(&mut log_file_w, std.mem.span("{\"ts\":")) == false { write_ok = false } }
+    if write_ok { if writeI64ToFile(&mut log_file_w, ts) == false { write_ok = false } }
+    if write_ok { if std.fs.writeAll(&mut log_file_w, std.mem.span(",\"level\":\"")) == false { write_ok = false } }
+    if write_ok {
+        if is_info      { if std.fs.writeAll(&mut log_file_w, std.mem.span("info"))  == false { write_ok = false } }
+        if is_warn      { if std.fs.writeAll(&mut log_file_w, std.mem.span("warn"))  == false { write_ok = false } }
+        if is_error_cmd { if std.fs.writeAll(&mut log_file_w, std.mem.span("error")) == false { write_ok = false } }
+        if is_debug     { if std.fs.writeAll(&mut log_file_w, std.mem.span("debug")) == false { write_ok = false } }
+    }
+    if write_ok { if std.fs.writeAll(&mut log_file_w, std.mem.span("\",\"msg\":\"")) == false { write_ok = false } }
+
+    // Write msg byte by byte (validated: no unsafe chars)
+    let mut mi: usize = 0
+    while mi < msg_len {
+        if write_ok {
+            if std.fs.writeAll(&mut log_file_w, std.mem.span(charStr(msg_sp[mi]))) == false { write_ok = false }
+        }
+        mi = mi + 1
+    }
+
+    if write_ok { if std.fs.writeAll(&mut log_file_w, std.mem.span("\"")) == false { write_ok = false } }
+
+    // Write extra key-value pairs
+    let mut eki: usize = 0
+    while eki < ekv_count {
+        if write_ok { if std.fs.writeAll(&mut log_file_w, std.mem.span(",\"")) == false { write_ok = false } }
+
+        // Write key name (strip leading --)
+        let k_arg2 = std.args.get(ek_idx[eki])
+        if k_arg2.has {
+            let k_sp2  = std.mem.span(k_arg2.value)
+            let k_len2 = std.mem.len(k_sp2)
+            let mut kj: usize = 2
+            while kj < k_len2 {
+                if write_ok {
+                    if std.fs.writeAll(&mut log_file_w, std.mem.span(charStr(k_sp2[kj]))) == false { write_ok = false }
+                }
+                kj = kj + 1
+            }
+        }
+
+        if write_ok { if std.fs.writeAll(&mut log_file_w, std.mem.span("\":\"")) == false { write_ok = false } }
+
+        // Write value byte by byte (validated: no unsafe chars)
+        let v_arg2 = std.args.get(ev_idx[eki])
+        if v_arg2.has {
+            let v_sp2  = std.mem.span(v_arg2.value)
+            let v_len2 = std.mem.len(v_sp2)
+            let mut vj: usize = 0
+            while vj < v_len2 {
+                if write_ok {
+                    if std.fs.writeAll(&mut log_file_w, std.mem.span(charStr(v_sp2[vj]))) == false { write_ok = false }
+                }
+                vj = vj + 1
+            }
+        }
+
+        if write_ok { if std.fs.writeAll(&mut log_file_w, std.mem.span("\"")) == false { write_ok = false } }
+        eki = eki + 1
+    }
+
+    if write_ok { if std.fs.writeAll(&mut log_file_w, std.mem.span("}\n")) == false { write_ok = false } }
+
+    std.fs.close(&mut log_file_w)
+
+    if write_ok == false {
+        check world.out.write("{\"error_code\":\"IO_ERROR\",\"retryable\":true,\"error\":\"Write failed mid-entry; log may be corrupt. Rotate the log.\"}\n")
+        return
+    }
+
+    // Emit success status JSON to stdout
+    check world.out.write("{\"status\":\"ok\",\"ts\":")
+
+    // Write timestamp decimal to stdout using [1]u8 pattern
+    let mut ts_digits: [20]u8 = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    let mut ts_count: usize = 0
+    let mut ts_val = ts
+    if ts_val == 0 {
+        check world.out.write("0")
+    } else {
+        while ts_val > 0 {
+            ts_digits[19 - ts_count] = (ts_val % 10) as u8 + 48
+            ts_val = ts_val / 10
+            ts_count = ts_count + 1
+        }
+        let mut ts_start: usize = 20 - ts_count
+        let mut ts_cb: [1]u8 = [0]
+        while ts_start < 20 {
+            ts_cb[0] = ts_digits[ts_start]
+            check world.out.write(ts_cb)
+            ts_start = ts_start + 1
+        }
+    }
+
+    check world.out.write(",\"level\":\"")
+    if is_info      { check world.out.write("info")  }
+    if is_warn      { check world.out.write("warn")  }
+    if is_error_cmd { check world.out.write("error") }
+    if is_debug     { check world.out.write("debug") }
+    check world.out.write("\",\"log_file\":\"")
+
+    // Write log_file_path to stdout byte by byte (already validated: safe ASCII)
+    let lf_sp  = std.mem.span(log_file_path)
+    let lf_len = std.mem.len(lf_sp)
+    let mut lf_cb: [1]u8 = [0]
+    let mut lfi: usize = 0
+    while lfi < lf_len {
+        lf_cb[0] = lf_sp[lfi]
+        check world.out.write(lf_cb)
+        lfi = lfi + 1
+    }
+
+    check world.out.write("\"}\n")
+}

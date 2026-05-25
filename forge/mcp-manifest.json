@@ -1,0 +1,156 @@
+{
+  "schema_version": "1",
+  "mcp_protocol_version": "2025-11-25",
+  "name": "forge",
+  "display_name": "Forge Schema Migration Engine",
+  "description": "Agent-safe database schema migration analyzer. Detects risk, data loss, and lock time for PostgreSQL migrations before they execute. Zero false negatives on data-loss operations.",
+  "version": "0.1.4",
+  "transport": "stdio",
+  "invocation": {
+    "command": "forge/mcp-bridge.sh",
+    "args": [],
+    "requires": ["jq >= 1.6", "forge binary in PATH or forge/ directory"],
+    "bridge_note": "Zero v0.1.x lacks world.in (stdin reading). mcp-bridge.sh manages the JSON-RPC session; forge binary handles schema analysis. When Zero adds stdin support (V34), this bridge will be replaced by a native Zero MCP server."
+  },
+  "capabilities": {
+    "tools": true,
+    "prompts": false,
+    "resources": false
+  },
+  "signing": {
+    "manifest_sha256": "UNSIGNED in source — cosign sign-blob runs in CI (release.yml) at publish time",
+    "sig_file": "forge/mcp-manifest.json.sig (produced by CI, uploaded as release artifact)",
+    "verify_cmd": "cosign verify-blob --certificate-identity-regexp https://github.com/soumyadebnath/heros --certificate-oidc-issuer https://token.actions.githubusercontent.com --signature forge/mcp-manifest.json.sig forge/mcp-manifest.json",
+    "signed_at": null,
+    "cosign_bundle_url": null
+  },
+  "tools": [
+    {
+      "name": "forge_analyze",
+      "title": "Analyze Schema Migration",
+      "description": "Analyze migration risk between two database schemas. Returns structured JSON with risk tier (SAFE/NOTABLE/MEDIUM/HIGH/CRITICAL), per-operation risk scores, data loss flags, estimated lock times, and agent guidance. Always run this before executing a migration. Not a migration executor — read-only analysis only, makes no schema changes. Not for non-PostgreSQL schemas or input not in TABLE/COLUMN format.",
+      "annotations": {
+        "readOnly": true,
+        "destructive": false,
+        "idempotent": true,
+        "cost_usd": 0.0,
+        "decision_required": false,
+        "untrusted_fields": ["from_schema", "to_schema"],
+        "side_effects": []
+      },
+      "input_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "from_schema": {
+            "type": "string",
+            "description": "Current (before) schema in Forge Schema Format. Lines: TABLE <name> or COLUMN <name> <type> [NOT_NULL] [NULLABLE] [PRIMARY_KEY] [DEFAULT]. Separate lines with newlines.",
+            "maxLength": 65536
+          },
+          "to_schema": {
+            "type": "string",
+            "description": "Desired (after) schema in Forge Schema Format. Same format as from_schema.",
+            "maxLength": 65536
+          },
+          "request_id": {
+            "type": "string",
+            "description": "Optional idempotency key. ASCII printable only (no quotes or backslashes). If provided, echoed in response for log deduplication.",
+            "maxLength": 512
+          },
+          "human_acknowledgment_token": {
+            "type": "string",
+            "description": "Nonce from a prior approval_nonce response. Pass after obtaining human sign-off on a decision_required migration. Expires 5 min after issue. Single-use.",
+            "maxLength": 64
+          }
+        },
+        "required": ["from_schema", "to_schema"]
+      },
+      "output_schema": {
+        "type": "object",
+        "properties": {
+          "schema_version": {"type": "integer", "description": "Always 1"},
+          "risk_tier": {"type": "string", "enum": ["SAFE", "NOTABLE", "MEDIUM", "HIGH", "CRITICAL"]},
+          "risk_score": {"type": "number", "description": "0.0 (SAFE) to 1.0 (CRITICAL)"},
+          "retryable": {"type": "boolean"},
+          "has_data_loss": {"type": "boolean"},
+          "decision_required": {
+            "type": "boolean",
+            "description": "If true, agent MUST NOT auto-proceed. Surface to human principal before executing migration."
+          },
+          "request_id": {"type": "string", "description": "Echoed from input if provided"},
+          "approval_nonce": {"type": "string", "description": "Present when decision_required: true and no token was provided. Pass as human_acknowledgment_token after human sign-off. Expires in 5 minutes."},
+          "approval_prompt": {"type": "string", "description": "Human-readable instruction to surface to the principal when decision_required: true."},
+          "proceed_ok": {"type": "boolean", "description": "True when a valid human_acknowledgment_token was verified. Agent may proceed with the migration."},
+          "operations": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "type": {"type": "string"},
+                "risk": {"type": "string"},
+                "data_loss": {"type": "boolean"},
+                "estimated_lock_ms": {"type": "integer"},
+                "retryable": {"type": "boolean"},
+                "agent_guidance": {"type": "string"}
+              }
+            }
+          },
+          "_rate_limit": {
+            "type": "object",
+            "description": "Present on all successful responses. Monitor remaining to avoid RATE_LIMITED.",
+            "properties": {
+              "remaining": {"type": "integer"},
+              "reset_at": {"type": "integer", "description": "Unix timestamp when window resets"},
+              "limit": {"type": "integer"},
+              "window": {"type": "string", "enum": ["per_hour"]}
+            }
+          },
+          "error_code": {"type": "string", "description": "Present only on error responses"},
+          "error": {"type": "string", "description": "Human-readable error message"}
+        }
+      },
+      "error_codes": {
+        "MISSING_FLAG": {"retryable": true, "fix": "Provide from_schema and to_schema fields"},
+        "INVALID_INPUT": {"retryable": true, "fix": "Check schema content: no pipe characters (|), valid TABLE/COLUMN format, max 64 KiB per schema"},
+        "INVALID_SCHEMA": {"retryable": true, "fix": "Schema parsing failed. Verify TABLE/COLUMN line format in docs."},
+        "EXEC_FAILED": {"retryable": true, "fix": "forge binary produced no output. Verify binary is present and executable."},
+        "UNKNOWN_TOOL": {"retryable": false, "fix": "Tool name not recognized. Use forge_analyze."},
+        "RATE_LIMITED": {"retryable": true, "fix": "Wait retry_after_seconds from error body. Monitor _rate_limit.remaining in prior responses."},
+        "INVALID_ACKNOWLEDGMENT_TOKEN": {"retryable": true, "fix": "Re-run forge_analyze (no token) to obtain a fresh approval_nonce. Tokens expire after 5 minutes and are single-use."}
+      },
+      "rate_limits": {
+        "per_ip": "200/hour",
+        "per_org": "500/hour",
+        "burst": 10,
+        "note": "forge_analyze is stateless (no registered org). Both per-IP and per-org limits apply. IP limit is primary for unauthenticated callers."
+      }
+    }
+  ],
+  "rate_limit_spec": {
+    "spec_doc": "docs/rate-limit-spec.md",
+    "algorithm": "token_bucket",
+    "state": "in-memory bridge process (resets on bridge restart)",
+    "error_code": "RATE_LIMITED",
+    "error_fields": ["retry_after_seconds", "limit_type", "limit_tool"],
+    "proactive_field": "_rate_limit (present in all success responses)"
+  },
+  "discovery": {
+    "dns_txt": "_mcp.forge.run TXT v=mcp1; url=https://mcp.forge.run; proto=mcp",
+    "well_known": "https://forge.run/.well-known/mcp-server"
+  },
+  "security": {
+    "untrusted_input_fields": ["from_schema", "to_schema"],
+    "content_policy": "Tool descriptions audited against mcp-security-spec.md §4.3. No instruction-format language. ≤ 512 chars.",
+    "description_char_count": 347
+  },
+  "agent_quickstart": [
+    "1. Run `forge --describe` to get the full schema of commands and formats.",
+    "2. Run `forge forge_analyze --from <schema> --to <schema>` before any migration.",
+    "3. If decision_required is true, surface the analysis and approval_nonce to a human principal.",
+    "4. After human approves, call forge_analyze again with human_acknowledgment_token: <nonce>.",
+    "5. Proceed only when the response includes proceed_ok: true.",
+    "6. If has_data_loss is true, treat as decision_required regardless of risk_tier.",
+    "7. Check each operation's agent_guidance for specific retry and safe-execution advice."
+  ]
+}

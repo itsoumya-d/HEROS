@@ -1,0 +1,264 @@
+// Parser for Forge Schema Format.
+//
+// Format:
+//   TABLE <name>
+//   COLUMN <name> <type> [NOT_NULL] [NULLABLE] [PRIMARY_KEY] [DEFAULT]
+//
+// All names are stored in Schema.pool by offset+length.
+// No heap allocation required.
+
+use std.mem
+use std.parse
+use types
+
+// Append bytes to the string pool. Returns the starting offset.
+// Returns 65535 (sentinel) if the pool is full.
+fun poolAppend(schema: mutref<Schema>, src: Span<u8>) -> u16 {
+    let src_len = std.mem.len(src)
+    if schema.pool_len + src_len > 16384 {
+        return 65535
+    }
+    let off: u16 = schema.pool_len as u16
+    let mut i: usize = 0
+    while i < src_len {
+        schema.pool[schema.pool_len + i] = src[i]
+        i = i + 1
+    }
+    schema.pool_len = schema.pool_len + src_len
+    return off
+}
+
+// Skip ASCII whitespace (space=32, tab=9) in content starting at pos.
+fun skipWS(content: Span<u8>, pos: usize) -> usize {
+    let len = std.mem.len(content)
+    let mut p = pos
+    while p < len && (content[p] == 32 || content[p] == 9) {
+        p = p + 1
+    }
+    return p
+}
+
+// Scan an identifier token (letters, digits, underscore).
+// Returns the byte length of the token starting at pos.
+fun scanToken(content: Span<u8>, pos: usize) -> usize {
+    let len = std.mem.len(content)
+    let mut p = pos
+    while p < len {
+        let b = content[p]
+        let is_id = (b >= 65 && b <= 90) || (b >= 97 && b <= 122) || (b >= 48 && b <= 57) || b == 95
+        if is_id == false {
+            break
+        }
+        p = p + 1
+    }
+    return p - pos
+}
+
+// Compare a span to an ASCII string literal, case-insensitively.
+fun spanEqCI(a: Span<u8>, keyword: Span<u8>) -> Bool {
+    let a_len = std.mem.len(a)
+    let k_len = std.mem.len(keyword)
+    if a_len != k_len {
+        return false
+    }
+    let mut i: usize = 0
+    while i < a_len {
+        let ac = a[i]
+        let kc = keyword[i]
+        let mut al: u8 = ac
+        if ac >= 65 && ac <= 90 { al = ac + 32 }
+        let mut kl: u8 = kc
+        if kc >= 65 && kc <= 90 { kl = kc + 32 }
+        if al != kl {
+            return false
+        }
+        i = i + 1
+    }
+    return true
+}
+
+// Classify a column type from its token span. Returns u8 ordinal (matches ColType).
+// 0=serial,1=integer,2=bigint,3=text,4=decimal,5=boolean,6=timestamptz,7=json,8=uuid,9=other
+fun classifyType(tok: Span<u8>) -> u8 {
+    if spanEqCI(tok, std.mem.span("serial")) || spanEqCI(tok, std.mem.span("serial4")) {
+        return 0
+    }
+    if spanEqCI(tok, std.mem.span("integer")) || spanEqCI(tok, std.mem.span("int")) || spanEqCI(tok, std.mem.span("int4")) || spanEqCI(tok, std.mem.span("int2")) {
+        return 1
+    }
+    if spanEqCI(tok, std.mem.span("bigint")) || spanEqCI(tok, std.mem.span("int8")) || spanEqCI(tok, std.mem.span("bigserial")) {
+        return 2
+    }
+    if spanEqCI(tok, std.mem.span("text")) || spanEqCI(tok, std.mem.span("varchar")) || spanEqCI(tok, std.mem.span("character")) || spanEqCI(tok, std.mem.span("char")) {
+        return 3
+    }
+    if spanEqCI(tok, std.mem.span("decimal")) || spanEqCI(tok, std.mem.span("numeric")) || spanEqCI(tok, std.mem.span("float")) || spanEqCI(tok, std.mem.span("double")) {
+        return 4
+    }
+    if spanEqCI(tok, std.mem.span("boolean")) || spanEqCI(tok, std.mem.span("bool")) {
+        return 5
+    }
+    if spanEqCI(tok, std.mem.span("timestamptz")) || spanEqCI(tok, std.mem.span("timestamp")) || spanEqCI(tok, std.mem.span("date")) || spanEqCI(tok, std.mem.span("time")) {
+        return 6
+    }
+    if spanEqCI(tok, std.mem.span("json")) || spanEqCI(tok, std.mem.span("jsonb")) {
+        return 7
+    }
+    if spanEqCI(tok, std.mem.span("uuid")) {
+        return 8
+    }
+    return 9
+}
+
+
+// Parse one line of the Forge Schema Format into schema.
+// current_table is the index of the TABLE being populated (-1 if none).
+// Returns the updated current_table, or -99 (0 - 99) on parse error.
+fun parseLine(
+    line: Span<u8>,
+    schema: mutref<Schema>,
+    current_table: i32
+) -> i32 {
+    let line_len = std.mem.len(line)
+    if line_len == 0 {
+        return current_table
+    }
+    let p0 = skipWS(line, 0)
+    if p0 >= line_len || line[p0] == 35 {
+        return current_table
+    }
+
+    let tok_len = scanToken(line, p0)
+    if tok_len == 0 {
+        return current_table
+    }
+    let tok = line[p0..p0 + tok_len]
+
+    if spanEqCI(tok, std.mem.span("table")) {
+        if schema.table_count >= 16 {
+            return 0 - 99
+        }
+        let p1 = skipWS(line, p0 + tok_len)
+        let name_len = scanToken(line, p1)
+        if name_len == 0 {
+            return 0 - 99
+        }
+        let name_span = line[p1..p1 + name_len]
+        let off = poolAppend(schema, name_span)
+        if off == 65535 {
+            return 0 - 99
+        }
+
+        let ti = schema.table_count
+        schema.t_name_off[ti] = off
+        schema.t_name_len[ti] = name_len as u16
+        schema.t_col_start[ti] = schema.col_count as u16
+        schema.t_col_count[ti] = 0
+        schema.table_count = ti + 1
+        return ti as i32
+    }
+    if spanEqCI(tok, std.mem.span("column")) {
+        if current_table < 0 || schema.col_count >= 512 {
+            return 0 - 99
+        }
+        let ti = current_table as usize
+        let ci = schema.col_count
+
+        let p1 = skipWS(line, p0 + tok_len)
+        let col_name_len = scanToken(line, p1)
+        if col_name_len == 0 {
+            return 0 - 99
+        }
+        let col_name_span = line[p1..p1 + col_name_len]
+        let col_off = poolAppend(schema, col_name_span)
+        if col_off == 65535 {
+            return 0 - 99
+        }
+
+        let p2 = skipWS(line, p1 + col_name_len)
+        let type_len = scanToken(line, p2)
+        let mut col_type: u8 = 9
+        if type_len > 0 {
+            col_type = classifyType(line[p2..p2 + type_len])
+        }
+
+        let mut flags: u8 = 1
+
+        let mut fp = skipWS(line, p2 + type_len)
+        while fp < line_len {
+            let fl = scanToken(line, fp)
+            if fl == 0 {
+                break
+            }
+            let ftok = line[fp..fp + fl]
+            if spanEqCI(ftok, std.mem.span("not_null")) || spanEqCI(ftok, std.mem.span("notnull")) {
+                flags = flags.bitand(254)
+            }
+            if spanEqCI(ftok, std.mem.span("nullable")) || spanEqCI(ftok, std.mem.span("null")) {
+                let chk_n = flags.bitand(1)
+                if chk_n == 0 {
+                    flags = flags + 1
+                }
+            }
+            if spanEqCI(ftok, std.mem.span("primary_key")) || spanEqCI(ftok, std.mem.span("pk")) {
+                let chk_p = flags.bitand(4)
+                if chk_p == 0 {
+                    flags = flags + 4
+                }
+                flags = flags.bitand(254)
+            }
+            if spanEqCI(ftok, std.mem.span("default")) {
+                let chk_d = flags.bitand(2)
+                if chk_d == 0 {
+                    flags = flags + 2
+                }
+            }
+            fp = skipWS(line, fp + fl)
+        }
+
+        schema.c_table_idx[ci] = ti as u8
+        schema.c_name_off[ci] = col_off
+        schema.c_name_len[ci] = col_name_len as u16
+        schema.c_type[ci] = col_type
+        schema.c_flags[ci] = flags
+        schema.t_col_count[ti] = schema.t_col_count[ti] + 1
+        schema.col_count = ci + 1
+        return current_table
+    }
+
+    return current_table
+}
+
+// Parse the full content of a Forge Schema Format file into schema.
+// Returns true on success, false on parse error.
+pub fun parseSchema(content: Span<u8>, schema: mutref<Schema>) -> Bool {
+    schema.table_count = 0
+    schema.col_count = 0
+    schema.pool_len = 0
+
+    let total = std.mem.len(content)
+    let mut line_start: usize = 0
+    let mut current_table: i32 = 0 - 1
+    let mut i: usize = 0
+
+    while i <= total {
+        let at_end = i == total
+        let mut at_nl = false
+        if at_end == false { at_nl = content[i] == 10 }
+
+        if at_end || at_nl {
+            let mut line_end: usize = i
+            if i > line_start && content[i - 1] == 13 { line_end = i - 1 }
+            if line_end > line_start {
+                let line = content[line_start..line_end]
+                current_table = parseLine(line, schema, current_table)
+                if current_table < 0 - 1 {
+                    return false
+                }
+            }
+            line_start = i + 1
+        }
+        i = i + 1
+    }
+    return true
+}

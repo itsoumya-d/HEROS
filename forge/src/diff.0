@@ -1,0 +1,260 @@
+// Schema diff engine for Forge.
+// Compares two Schema values using pool-based string lookups.
+
+use std.mem
+use types
+use schema
+
+// Compare two pool substrings for equality (case-insensitive for robustness).
+fun poolEq(
+    pool_a: ref<[16384]u8>, off_a: u16, len_a: u16,
+    pool_b: ref<[16384]u8>, off_b: u16, len_b: u16
+) -> Bool {
+    if len_a != len_b {
+        return false
+    }
+    let len_a_sz: usize = len_a as usize
+    let off_a_sz: usize = off_a as usize
+    let off_b_sz: usize = off_b as usize
+    let mut i: usize = 0
+    while i < len_a_sz {
+        let a = pool_a[off_a_sz + i]
+        let b = pool_b[off_b_sz + i]
+        let mut al: u8 = a
+        if a >= 65 && a <= 90 { al = a + 32 }
+        let mut bl: u8 = b
+        if b >= 65 && b <= 90 { bl = b + 32 }
+        if al != bl {
+            return false
+        }
+        i = i + 1
+    }
+    return true
+}
+
+// Find a table in schema by name. Returns the table index, or MAX_TABLES if not found.
+fun findTable(
+    s: ref<Schema>,
+    name_pool: ref<[16384]u8>, name_off: u16, name_len: u16
+) -> usize {
+    let mut i: usize = 0
+    while i < s.table_count {
+        if poolEq(&s.pool, s.t_name_off[i], s.t_name_len[i], name_pool, name_off, name_len) {
+            return i
+        }
+        i = i + 1
+    }
+    return 16
+}
+
+// Find a column in schema table ti by name. Returns the column index or 512 if not found.
+fun findCol(
+    s: ref<Schema>, ti: usize,
+    name_pool: ref<[16384]u8>, name_off: u16, name_len: u16
+) -> usize {
+    let col_start = s.t_col_start[ti] as usize
+    let col_count = s.t_col_count[ti] as usize
+    let mut ci: usize = col_start
+    while ci < col_start + col_count {
+        if poolEq(&s.pool, s.c_name_off[ci], s.c_name_len[ci], name_pool, name_off, name_len) {
+            return ci
+        }
+        ci = ci + 1
+    }
+    return 512
+}
+
+// Compute the worst of two risk levels.
+fun worstRisk(a: RiskLevel, b: RiskLevel) -> RiskLevel {
+    let mut av: u8 = 0
+    match a {
+        .safe     { av = 0 }
+        .notable  { av = 1 }
+        .medium   { av = 2 }
+        .high     { av = 3 }
+        .critical { av = 4 }
+    }
+    let mut bv: u8 = 0
+    match b {
+        .safe     { bv = 0 }
+        .notable  { bv = 1 }
+        .medium   { bv = 2 }
+        .high     { bv = 3 }
+        .critical { bv = 4 }
+    }
+    if av >= bv {
+        return a
+    }
+    return b
+}
+
+// Determine risk for adding a column based on its flags.
+fun riskAddCol(flags: u8) -> RiskLevel {
+    let chk_n = flags.bitand(1)
+    let nullable = chk_n != 0
+    let chk_d = flags.bitand(2)
+    let has_default = chk_d != 0
+    if nullable {
+        return RiskLevel.safe
+    }
+    if has_default {
+        return RiskLevel.medium
+    }
+    return RiskLevel.high
+}
+
+// Append an op to the report using individual field values.
+fun appendOp(report: mutref<Report>, kind: OpKind, risk: RiskLevel, data_loss: Bool, est_lock_ms: u32, retryable: Bool, t_name_off: u16, t_name_len: u16, c_name_off: u16, c_name_len: u16, has_col: Bool, col_nullable: Bool) -> Void {
+    if report.op_count < 128 {
+        let oi = report.op_count
+        let op = MigOp {
+            kind: kind,
+            risk: risk,
+            data_loss: data_loss,
+            est_lock_ms: est_lock_ms,
+            retryable: retryable,
+            table_name_off: t_name_off,
+            table_name_len: t_name_len,
+            col_name_off: c_name_off,
+            col_name_len: c_name_len,
+            has_col: has_col,
+            col_nullable: col_nullable
+        }
+        report.ops[oi] = op
+        report.op_count = report.op_count + 1
+    }
+}
+
+// Compute the diff between two schemas, producing a Report.
+// MigOp name offsets reference from_.pool (for from-side names) or
+// to.pool (for to-side names). The caller must keep both schemas alive.
+// For this implementation, we store names from the from_ pool for consistency.
+pub fun diffSchemas(from_: ref<Schema>, to: ref<Schema>, report: mutref<Report>) -> Void {
+    report.op_count = 0
+    report.overall_risk = RiskLevel.safe
+    report.has_data_loss = false
+
+    // Pass 1: tables in from_ not in to → DROP TABLE (critical, data loss)
+    let mut fi: usize = 0
+    while fi < from_.table_count {
+        let t_off = from_.t_name_off[fi]
+        let t_len = from_.t_name_len[fi]
+        let to_ti = findTable(to, &from_.pool, t_off, t_len)
+        if to_ti >= 16 {
+            appendOp(report, OpKind.drop_table, RiskLevel.critical, true, 0, false, t_off, t_len, 0, 0, false, false)
+            report.overall_risk = worstRisk(report.overall_risk, RiskLevel.critical)
+            report.has_data_loss = true
+        }
+        fi = fi + 1
+    }
+
+    // Pass 2: tables in to not in from_ → ADD TABLE (safe)
+    let mut ti2: usize = 0
+    while ti2 < to.table_count {
+        let t_off = to.t_name_off[ti2]
+        let t_len = to.t_name_len[ti2]
+        let from_ti = findTable(from_, &to.pool, t_off, t_len)
+        if from_ti >= 16 {
+            appendOp(report, OpKind.add_table, RiskLevel.safe, false, 0, true, t_off, t_len, 0, 0, false, false)
+            report.overall_risk = worstRisk(report.overall_risk, RiskLevel.safe)
+        }
+        ti2 = ti2 + 1
+    }
+
+    // Pass 3: for tables in both, compare columns
+    let mut fi3: usize = 0
+    while fi3 < from_.table_count {
+        let ft_off = from_.t_name_off[fi3]
+        let ft_len = from_.t_name_len[fi3]
+        let to_ti = findTable(to, &from_.pool, ft_off, ft_len)
+        if to_ti < 16 {
+            let fc_start = from_.t_col_start[fi3] as usize
+            let fc_count = from_.t_col_count[fi3] as usize
+
+            // Cols in from_ table not in to table → DROP COLUMN
+            let mut fci: usize = fc_start
+            while fci < fc_start + fc_count {
+                let c_off = from_.c_name_off[fci]
+                let c_len = from_.c_name_len[fci]
+                let to_ci = findCol(to, to_ti, &from_.pool, c_off, c_len)
+                if to_ci >= 512 {
+                    appendOp(report, OpKind.drop_col, RiskLevel.critical, true, 0, false, ft_off, ft_len, c_off, c_len, true, false)
+                    report.overall_risk = worstRisk(report.overall_risk, RiskLevel.critical)
+                    report.has_data_loss = true
+                }
+                fci = fci + 1
+            }
+
+            // Cols in to table not in from_ table → ADD COLUMN
+            let tc_start = to.t_col_start[to_ti] as usize
+            let tc_count = to.t_col_count[to_ti] as usize
+            let mut tci: usize = tc_start
+            while tci < tc_start + tc_count {
+                let c_off = to.c_name_off[tci]
+                let c_len = to.c_name_len[tci]
+                let from_ci = findCol(from_, fi3, &to.pool, c_off, c_len)
+                if from_ci >= 512 {
+                    let flags = to.c_flags[tci]
+                    let risk = riskAddCol(flags)
+                    let chk_nc = flags.bitand(1)
+                    let nullable = chk_nc != 0
+                    appendOp(report, OpKind.add_col, risk, false, 0, true, ft_off, ft_len, c_off, c_len, true, nullable)
+                    report.overall_risk = worstRisk(report.overall_risk, risk)
+                }
+                tci = tci + 1
+            }
+
+            // Cols in both: check attribute changes
+            let mut fci2: usize = fc_start
+            while fci2 < fc_start + fc_count {
+                let c_off = from_.c_name_off[fci2]
+                let c_len = from_.c_name_len[fci2]
+                let to_ci = findCol(to, to_ti, &from_.pool, c_off, c_len)
+                if to_ci < 512 {
+                    let from_flags = from_.c_flags[fci2]
+                    let to_flags = to.c_flags[to_ci]
+                    let from_chk_n = from_flags.bitand(1)
+                    let from_nullable = from_chk_n != 0
+                    let to_chk_n = to_flags.bitand(1)
+                    let to_nullable = to_chk_n != 0
+                    let from_chk_d = from_flags.bitand(2)
+                    let from_def = from_chk_d != 0
+                    let to_chk_d = to_flags.bitand(2)
+                    let to_def = to_chk_d != 0
+
+                    // NULL → NOT NULL
+                    if from_nullable && to_nullable == false {
+                        appendOp(report, OpKind.set_not_null, RiskLevel.high, false, 30000, false, ft_off, ft_len, c_off, c_len, true, false)
+                        report.overall_risk = worstRisk(report.overall_risk, RiskLevel.high)
+                    }
+
+                    // NOT NULL → NULL
+                    if from_nullable == false && to_nullable {
+                        appendOp(report, OpKind.drop_not_null, RiskLevel.notable, false, 0, true, ft_off, ft_len, c_off, c_len, true, true)
+                        report.overall_risk = worstRisk(report.overall_risk, RiskLevel.notable)
+                    }
+
+                    // Type change
+                    if from_.c_type[fci2] != to.c_type[to_ci] {
+                        appendOp(report, OpKind.change_type, RiskLevel.high, false, 0, false, ft_off, ft_len, c_off, c_len, true, to_nullable)
+                        report.overall_risk = worstRisk(report.overall_risk, RiskLevel.high)
+                    }
+
+                    // Gained a default
+                    if from_def == false && to_def {
+                        appendOp(report, OpKind.set_default, RiskLevel.safe, false, 0, true, ft_off, ft_len, c_off, c_len, true, to_nullable)
+                        report.overall_risk = worstRisk(report.overall_risk, RiskLevel.safe)
+                    }
+
+                    // Lost a default
+                    if from_def && to_def == false {
+                        appendOp(report, OpKind.drop_default, RiskLevel.safe, false, 0, true, ft_off, ft_len, c_off, c_len, true, to_nullable)
+                        report.overall_risk = worstRisk(report.overall_risk, RiskLevel.safe)
+                    }
+                }
+                fci2 = fci2 + 1
+            }
+        }
+        fi3 = fi3 + 1
+    }
+}

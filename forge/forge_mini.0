@@ -1,0 +1,1121 @@
+// forge_mini - Single-file forge binary compatible with Zero v0.1.1 direct ELF64 backend.
+// Provides --version, --describe, and a simplified --analyze via inline content args.
+// Full multi-file forge (schema.0, diff.0, etc.) requires Zero v0.2+ full backend.
+
+use std.args
+use std.mem
+
+// Primitive-only helpers (no World, String, Span, or ref params).
+
+fun toLower(b: u8) -> u8 {
+    if b >= 65 && b <= 90 {
+        return b + 32
+    }
+    return b
+}
+
+fun isIdChar(b: u8) -> Bool {
+    if b >= 65 && b <= 90 { return true }
+    if b >= 97 && b <= 122 { return true }
+    if b >= 48 && b <= 57 { return true }
+    if b == 95 { return true }
+    return false
+}
+
+fun isWS(b: u8) -> Bool {
+    if b == 32 { return true }
+    if b == 9 { return true }
+    return false
+}
+
+
+pub fun main(world: World) -> Void raises {
+    let argc = std.args.len()
+
+    if argc < 2 {
+        check world.out.write("forge - Agent-safe database schema migration engine\n")
+        check world.out.write("Use: forge --describe  (for agents)\n")
+        return
+    }
+
+    let cmd_opt = std.args.get(1)
+    if cmd_opt.has == false {
+        check world.out.write("{\"error\":{\"code\":\"UNKNOWN_COMMAND\",\"message\":\"No command.\",\"retryable\":false}}\n")
+        return
+    }
+    let cmd = cmd_opt.value
+
+    if std.mem.eql(cmd, "--version") {
+        check world.out.write("{\"name\":\"forge\",\"version\":\"0.1.4\",\"schema_version\":1}\n")
+        return
+    }
+
+    if std.mem.eql(cmd, "--describe") || std.mem.eql(cmd, "--help") {
+        check world.out.write("{\n")
+        check world.out.write("  \"name\": \"forge\",\n")
+        check world.out.write("  \"version\": \"0.1.4\",\n")
+        check world.out.write("  \"schema_version\": 1,\n")
+        check world.out.write("  \"description\": \"Agent-safe database schema migration engine. Analyzes DDL schema changes and returns structured JSON risk reports. Built for agent-first usage: no interactive prompts, no ANSI codes, stable error codes.\",\n")
+        check world.out.write("  \"invocation\": \"forge <command> [flags] --json\",\n")
+        check world.out.write("  \"commands\": [\n")
+        check world.out.write("    {\n")
+        check world.out.write("      \"name\": \"analyze\",\n")
+        check world.out.write("      \"description\": \"Analyze the risk of migrating from one schema to another. Returns a structured risk report with per-operation risk scores and agent guidance. Call this before executing any schema change. Does NOT modify any database - read-only analysis.\",\n")
+        check world.out.write("      \"when_to_use\": \"Before running any database migration. Input is two .forge schema files describing the current and desired state.\",\n")
+        check world.out.write("      \"when_not_to_use\": \"Do not use to execute migrations - use execute command for that (not yet implemented in v0.1.x).\",\n")
+        check world.out.write("      \"flags\": [\n")
+        check world.out.write("        {\"name\": \"--from\", \"type\": \"string\", \"required\": true, \"description\": \"Source (before) schema as a string; use | as line separator. Example: TABLE users|COLUMN id serial NOT_NULL|COLUMN email text NOT_NULL\"},\n")
+        check world.out.write("        {\"name\": \"--to\", \"type\": \"string\", \"required\": true, \"description\": \"Target (after) schema as a string; use | as line separator.\"},\n")
+        check world.out.write("        {\"name\": \"--request-id\", \"type\": \"string\", \"required\": false, \"description\": \"Optional idempotency key. Echoed as request_id in the response. Use to deduplicate retried calls in distributed logs.\"},\n")
+        check world.out.write("        {\"name\": \"--json\", \"type\": \"boolean\", \"required\": false, \"default\": true, \"description\": \"Emit output as JSON. Always set this flag when calling from an agent.\"}\n")
+        check world.out.write("      ],\n")
+        check world.out.write("      \"output_schema\": {\n")
+        check world.out.write("        \"schema_version\": \"integer - always 1\",\n")
+        check world.out.write("        \"request_id\": \"string - echoed from --request-id flag; field absent if flag not provided\",\n")
+        check world.out.write("        \"risk_tier\": \"string - SAFE, NOTABLE, MEDIUM, HIGH, or CRITICAL\",\n")
+        check world.out.write("        \"risk_score\": \"float - 0.0 (SAFE) to 1.0 (CRITICAL)\",\n")
+        check world.out.write("        \"retryable\": \"boolean\",\n")
+        check world.out.write("        \"has_data_loss\": \"boolean\",\n")
+        check world.out.write("        \"decision_required\": \"boolean - true when has_data_loss is true OR risk_tier is HIGH (set_not_null, add_primary_key, add_unique, add_foreign_key). Agents MUST NOT auto-proceed when this is true. Seek explicit human approval.\",\n")
+        check world.out.write("        \"operations\": \"array of MigOp objects\",\n")
+        check world.out.write("        \"_forge_version\": \"string - version of forge that produced this response; compare against cached --describe version to decide whether to re-read upgrade_notes. Example: 0.1.4\",\n")
+        check world.out.write("        \"_rate_limit\": \"object - injected by MCP bridge only (not present on direct binary invocation). Fields: remaining (integer calls left this window), reset_at (integer Unix timestamp), limit (integer calls/hour), window (string). Check remaining proactively to throttle before hitting zero.\"\n")
+        check world.out.write("      },\n")
+        check world.out.write("      \"migop_schema\": {\n")
+        check world.out.write("        \"type\": \"add_column|drop_column|add_table|drop_table|set_not_null|drop_not_null|add_primary_key|drop_primary_key|add_unique|drop_unique|add_foreign_key|drop_foreign_key|add_default|drop_default|schema_truncated (v0.1.4 emits these fifteen)\",\n")
+        check world.out.write("        \"table\": \"string - name of the table affected by this operation\",\n")
+        check world.out.write("        \"column\": \"string - column name (absent for table-level ops)\",\n")
+        check world.out.write("        \"risk\": \"safe|notable|medium|high|critical\",\n")
+        check world.out.write("        \"data_loss\": \"boolean\",\n")
+        check world.out.write("        \"estimated_lock_ms\": \"integer\",\n")
+        check world.out.write("        \"retryable\": \"boolean\",\n")
+        check world.out.write("        \"agent_guidance\": \"string\"\n")
+        check world.out.write("      }\n")
+        check world.out.write("    }\n")
+        check world.out.write("  ],\n")
+        check world.out.write("  \"forge_schema_format\": {\n")
+        check world.out.write("    \"description\": \"Forge Schema Format (.forge) is a simple line-oriented schema description language.\",\n")
+        check world.out.write("    \"syntax\": \"TABLE <name>\\nCOLUMN <name> <type> [NOT_NULL] [NULLABLE] [PRIMARY_KEY] [UNIQUE] [REFERENCES] [DEFAULT]\",\n")
+        check world.out.write("    \"types\": [\"serial\", \"integer\", \"bigint\", \"text\", \"varchar\", \"decimal\", \"boolean\", \"timestamptz\", \"json\", \"uuid\"],\n")
+        check world.out.write("    \"example\": \"TABLE users|COLUMN id serial NOT_NULL PRIMARY_KEY|COLUMN email text NOT_NULL|COLUMN name text NULLABLE\"\n")
+        check world.out.write("  },\n")
+        check world.out.write("  \"error_handling\": \"Check error.retryable in every error response. If false: stop retrying immediately, surface the error to a human operator or calling orchestrator. If true: retry with exponential backoff.\",\n")
+        check world.out.write("  \"errors\": [\n")
+        check world.out.write("    {\"code\": \"FILE_NOT_FOUND\", \"retryable\": false, \"description\": \"The --from or --to schema content is missing or empty. Do not retry.\"},\n")
+        check world.out.write("    {\"code\": \"INVALID_SCHEMA\", \"retryable\": false, \"description\": \"Schema content failed to parse. Fix the schema string and retry.\"},\n")
+        check world.out.write("    {\"code\": \"SCHEMA_TOO_LARGE\", \"retryable\": false, \"description\": \"Schema exceeds 64 KiB. Reduce schema size. Do not retry with same input.\"},\n")
+        check world.out.write("    {\"code\": \"INVALID_INPUT\", \"retryable\": false, \"description\": \"A flag value contains disallowed characters. See error.field for which flag. Do not retry with same value.\"},\n")
+        check world.out.write("    {\"code\": \"IO_ERROR\", \"retryable\": true, \"description\": \"File system error. Retry with exponential backoff.\"},\n")
+        check world.out.write("    {\"code\": \"UNKNOWN_COMMAND\", \"retryable\": false, \"description\": \"Unrecognized command or missing required flag. Run forge --describe for usage. Do not retry.\"},\n")
+        check world.out.write("    {\"code\": \"RATE_LIMITED\", \"retryable\": true, \"description\": \"MCP bridge rate limit exceeded. Emitted by mcp-bridge.sh, not the binary. Read retry_after_seconds (integer) and limit_type (per_ip or per_org) from the error body. Wait before retrying.\"},\n")
+        check world.out.write("    {\"code\": \"EXEC_FAILED\", \"retryable\": true, \"description\": \"MCP bridge detected no output from forge binary (empty stdout, zero exit). Unexpected internal error. Emitted by mcp-bridge.sh only.\"}\n")
+        check world.out.write("  ],\n")
+        check world.out.write("  \"mcp_bridge\": {\"description\": \"When used via MCP (mcp-bridge.sh), the bridge injects _rate_limit into success responses and can emit RATE_LIMITED and EXEC_FAILED — codes the binary itself never produces. Direct binary invocation does not produce these codes.\"},\n")
+        check world.out.write("  \"upgrade_notes_schema\": \"Object keyed by version string. Check this field when version changes from a previously cached value. Never re-read on every call.\",\n")
+        check world.out.write("  \"upgrade_notes\": {\n")
+        check world.out.write("    \"v0.1.4\": \"MEDIUM tier for NOT_NULL column adds (RT-79a). Table adds now SAFE not NOTABLE (FE-12). Type changes now CRITICAL not SAFE — column hash includes type (RT-83). HIGH tier + decision_required for set_not_null (RT-82), add_primary_key (RT-88), add_unique (RT-92), add_foreign_key (RT-93). NOTABLE for DEFAULT add/drop (RT-87). Schema truncation warning for >256 columns (RT-99). Re-analyze any v0.1.3 result involving NOT_NULL adds, new tables, type changes, nullability/PK/UNIQUE/FK/DEFAULT changes, or schemas with >256 columns.\",\n")
+        check world.out.write("    \"v0.1.3\": \"Column diff upgraded from count-based to hash-set (V9 fix). Column renames within preserved tables now correctly report CRITICAL instead of SAFE. Compound migrations analyzed by v0.1.2 or earlier may have had incomplete operations lists: a column rename hidden behind a table rename was silently absent from the output. Re-audit any compound migration approved under v0.1.2 or earlier.\"\n")
+        check world.out.write("  },\n")
+        check world.out.write("  \"mcp\": {\n")
+        check world.out.write("    \"transport\": \"stdio\",\n")
+        check world.out.write("    \"protocol\": \"mcp-2025-11-25\",\n")
+        check world.out.write("    \"tools\": [\"forge_analyze\"],\n")
+        check world.out.write("    \"invoke\": \"forge --mcp-stdio\"\n")
+        check world.out.write("  }\n")
+        check world.out.write("}\n")
+        return
+    }
+
+    if std.mem.eql(cmd, "analyze") || std.mem.eql(cmd, "forge_analyze") {
+        // Parse --from and --to flags.
+        let mut from_idx: usize = 0
+        let mut to_idx: usize = 0
+        let mut ri_idx: usize = 0
+        let mut has_from = false
+        let mut has_to = false
+        let mut has_ri = false
+
+        let mut ai: usize = 2
+        while ai < argc {
+            let flag_opt = std.args.get(ai)
+            if flag_opt.has {
+                if std.mem.eql(flag_opt.value, "--from") {
+                    if ai + 1 < argc {
+                        let val_opt = std.args.get(ai + 1)
+                        if val_opt.has {
+                            from_idx = ai + 1
+                            has_from = true
+                        }
+                    }
+                }
+                if std.mem.eql(flag_opt.value, "--to") {
+                    if ai + 1 < argc {
+                        let val_opt = std.args.get(ai + 1)
+                        if val_opt.has {
+                            to_idx = ai + 1
+                            has_to = true
+                        }
+                    }
+                }
+                if std.mem.eql(flag_opt.value, "--request-id") {
+                    if ai + 1 < argc {
+                        let val_opt = std.args.get(ai + 1)
+                        if val_opt.has {
+                            ri_idx = ai + 1
+                            has_ri = true
+                        }
+                    }
+                }
+            }
+            ai = ai + 1
+        }
+
+        if has_from == false {
+            check world.out.write("{\"error\":{\"code\":\"UNKNOWN_COMMAND\",\"message\":\"Missing --from flag. Use forge --describe for usage.\",\"retryable\":false}}\n")
+            return
+        }
+        if has_to == false {
+            check world.out.write("{\"error\":{\"code\":\"UNKNOWN_COMMAND\",\"message\":\"Missing --to flag. Use forge --describe for usage.\",\"retryable\":false}}\n")
+            return
+        }
+
+        // Validate --request-id: must not contain JSON-breaking characters.
+        // Unescaped echo of attacker-controlled request_id into JSON output would allow
+        // injection attacks that make CRITICAL migrations appear SAFE to downstream parsers.
+        if has_ri {
+            let ri_check_opt = std.args.get(ri_idx)
+            if ri_check_opt.has {
+                let ri_check_sp = std.mem.span(ri_check_opt.value)
+                let ri_check_len = std.mem.len(ri_check_sp)
+                let mut rv: usize = 0
+                let mut ri_valid = true
+                while rv < ri_check_len {
+                    let rc = ri_check_sp[rv]
+                    if rc == 34 { ri_valid = false }
+                    if rc == 92 { ri_valid = false }
+                    if rc < 32 { ri_valid = false }
+                    rv = rv + 1
+                }
+                if ri_valid == false {
+                    check world.out.write("{\"error\":{\"code\":\"INVALID_INPUT\",\"message\":\"--request-id contains disallowed characters. Use alphanumeric characters, hyphens, and underscores only.\",\"field\":\"--request-id\",\"retryable\":false}}\n")
+                    return
+                }
+            }
+        }
+
+        let from_arg = std.args.get(from_idx)
+        let to_arg = std.args.get(to_idx)
+        if from_arg.has == false || to_arg.has == false {
+            check world.out.write("{\"error\":{\"code\":\"FILE_NOT_FOUND\",\"message\":\"Cannot read schema arguments.\",\"retryable\":false}}\n")
+            return
+        }
+
+        let from_sp = std.mem.span(from_arg.value)
+        let to_sp = std.mem.span(to_arg.value)
+        let from_len = std.mem.len(from_sp)
+        let to_len = std.mem.len(to_sp)
+
+        // Reject schemas exceeding 65536 bytes (64 KiB) to prevent DoS via O(N) parse.
+        if from_len > 65536 {
+            check world.out.write("{\"error\":{\"code\":\"SCHEMA_TOO_LARGE\",\"message\":\"--from schema exceeds 64 KiB limit.\",\"retryable\":false}}\n")
+            return
+        }
+        if to_len > 65536 {
+            check world.out.write("{\"error\":{\"code\":\"SCHEMA_TOO_LARGE\",\"message\":\"--to schema exceeds 64 KiB limit.\",\"retryable\":false}}\n")
+            return
+        }
+
+        // Schema token charset validation: reject schemas containing characters outside
+        // [A-Za-z0-9_\s|] to prevent prompt injection via table/column names (V3/V2 in threat model).
+        // Allowed: letters, digits, underscore, space, tab, |, newline.
+        let mut svi: usize = 0
+        while svi < from_len {
+            let sc = from_sp[svi]
+            let sc_ok = isIdChar(sc) || isWS(sc) || sc == 124 || sc == 10 || sc == 13
+            if sc_ok == false {
+                check world.out.write("{\"error\":{\"code\":\"INVALID_SCHEMA\",\"message\":\"--from schema contains invalid characters. Schema tokens must use letters, digits, underscore, and spaces only.\",\"retryable\":false}}\n")
+                return
+            }
+            svi = svi + 1
+        }
+        let mut svi2: usize = 0
+        while svi2 < to_len {
+            let sc2 = to_sp[svi2]
+            let sc2_ok = isIdChar(sc2) || isWS(sc2) || sc2 == 124 || sc2 == 10 || sc2 == 13
+            if sc2_ok == false {
+                check world.out.write("{\"error\":{\"code\":\"INVALID_SCHEMA\",\"message\":\"--to schema contains invalid characters. Schema tokens must use letters, digits, underscore, and spaces only.\",\"retryable\":false}}\n")
+                return
+            }
+            svi2 = svi2 + 1
+        }
+
+        // V6 mitigation: detect duplicate table names via dual hash (djb2 + SDBM).
+        // Dual hash reduces false-positive collision probability to ~1/2^64 vs ~1/2^32 for
+        // single djb2. A false positive (different names, same hash pair) would reject a
+        // valid schema; a false negative cannot occur since same-name always produces same hashes.
+        let mut fth: [32]u32 = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+        let mut fth2: [32]u32 = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+        let mut fth_s: [32]u32 = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+        let mut fth_l: [32]u32 = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+        let mut ftc: u32 = 0
+        let mut dpi: usize = 0
+        while dpi < from_len {
+            while dpi < from_len && isWS(from_sp[dpi]) { dpi = dpi + 1 }
+            let dp_start = dpi
+            while dpi < from_len && isIdChar(from_sp[dpi]) { dpi = dpi + 1 }
+            let dp_len = dpi - dp_start
+            if dp_len == 5 {
+                let db0 = from_sp[dp_start]
+                let db1 = from_sp[dp_start + 1]
+                let db2 = from_sp[dp_start + 2]
+                let db3 = from_sp[dp_start + 3]
+                let db4 = from_sp[dp_start + 4]
+                if toLower(db0) == 116 && toLower(db1) == 97 && toLower(db2) == 98 && toLower(db3) == 108 && toLower(db4) == 101 {
+                    while dpi < from_len && isWS(from_sp[dpi]) { dpi = dpi + 1 }
+                    let dn_start = dpi
+                    while dpi < from_len && isIdChar(from_sp[dpi]) { dpi = dpi + 1 }
+                    let dn_len = dpi - dn_start
+                    if dn_len > 0 {
+                        let mut nh: u32 = 5381
+                        let mut nh_s: u32 = 0
+                        let mut ni: usize = dn_start
+                        while ni < dn_start + dn_len {
+                            let nb = toLower(from_sp[ni]) as u32
+                            nh = nh * 33 + nb
+                            nh_s = nh_s * 65599 + nb
+                            ni = ni + 1
+                        }
+                        if ftc >= 32 {
+                            check world.out.write("{\"error\":{\"code\":\"INVALID_SCHEMA\",\"message\":\"--from schema exceeds maximum of 32 tables.\",\"retryable\":false}}\n")
+                            return
+                        }
+                        let mut dj: u32 = 0
+                        let mut dup_found = false
+                        while dj < ftc {
+                            if fth[dj as usize] == nh {
+                                if fth2[dj as usize] == nh_s { dup_found = true }
+                            }
+                            dj = dj + 1
+                        }
+                        if dup_found {
+                            check world.out.write("{\"error\":{\"code\":\"INVALID_SCHEMA\",\"message\":\"Duplicate table name in --from schema. Each table must appear exactly once.\",\"retryable\":false}}\n")
+                            return
+                        }
+                        fth[ftc as usize] = nh
+                        fth2[ftc as usize] = nh_s
+                        fth_s[ftc as usize] = dn_start as u32
+                        fth_l[ftc as usize] = dn_len as u32
+                        ftc = ftc + 1
+                    }
+                }
+            }
+            while dpi < from_len && from_sp[dpi] != 10 && from_sp[dpi] != 124 { dpi = dpi + 1 }
+            if dpi < from_len { dpi = dpi + 1 }
+        }
+        let mut tth: [32]u32 = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+        let mut tth2: [32]u32 = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+        let mut tth_s: [32]u32 = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+        let mut tth_l: [32]u32 = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+        let mut ttc: u32 = 0
+        let mut dpi2: usize = 0
+        while dpi2 < to_len {
+            while dpi2 < to_len && isWS(to_sp[dpi2]) { dpi2 = dpi2 + 1 }
+            let dp2_start = dpi2
+            while dpi2 < to_len && isIdChar(to_sp[dpi2]) { dpi2 = dpi2 + 1 }
+            let dp2_len = dpi2 - dp2_start
+            if dp2_len == 5 {
+                let db0b = to_sp[dp2_start]
+                let db1b = to_sp[dp2_start + 1]
+                let db2b = to_sp[dp2_start + 2]
+                let db3b = to_sp[dp2_start + 3]
+                let db4b = to_sp[dp2_start + 4]
+                if toLower(db0b) == 116 && toLower(db1b) == 97 && toLower(db2b) == 98 && toLower(db3b) == 108 && toLower(db4b) == 101 {
+                    while dpi2 < to_len && isWS(to_sp[dpi2]) { dpi2 = dpi2 + 1 }
+                    let dn2_start = dpi2
+                    while dpi2 < to_len && isIdChar(to_sp[dpi2]) { dpi2 = dpi2 + 1 }
+                    let dn2_len = dpi2 - dn2_start
+                    if dn2_len > 0 {
+                        let mut nh2: u32 = 5381
+                        let mut nh2_s: u32 = 0
+                        let mut ni2: usize = dn2_start
+                        while ni2 < dn2_start + dn2_len {
+                            let nb2 = toLower(to_sp[ni2]) as u32
+                            nh2 = nh2 * 33 + nb2
+                            nh2_s = nh2_s * 65599 + nb2
+                            ni2 = ni2 + 1
+                        }
+                        if ttc >= 32 {
+                            check world.out.write("{\"error\":{\"code\":\"INVALID_SCHEMA\",\"message\":\"--to schema exceeds maximum of 32 tables.\",\"retryable\":false}}\n")
+                            return
+                        }
+                        let mut dj2: u32 = 0
+                        let mut dup2_found = false
+                        while dj2 < ttc {
+                            if tth[dj2 as usize] == nh2 {
+                                if tth2[dj2 as usize] == nh2_s { dup2_found = true }
+                            }
+                            dj2 = dj2 + 1
+                        }
+                        if dup2_found {
+                            check world.out.write("{\"error\":{\"code\":\"INVALID_SCHEMA\",\"message\":\"Duplicate table name in --to schema. Each table must appear exactly once.\",\"retryable\":false}}\n")
+                            return
+                        }
+                        tth[ttc as usize] = nh2
+                        tth2[ttc as usize] = nh2_s
+                        tth_s[ttc as usize] = dn2_start as u32
+                        tth_l[ttc as usize] = dn2_len as u32
+                        ttc = ttc + 1
+                    }
+                }
+            }
+            while dpi2 < to_len && to_sp[dpi2] != 10 && to_sp[dpi2] != 124 { dpi2 = dpi2 + 1 }
+            if dpi2 < to_len { dpi2 = dpi2 + 1 }
+        }
+
+        // Table diff via hash-set comparison using dual hashes computed in dedup pass.
+        // Hash-set diff is name-aware: TABLE users -> TABLE customers is DROP+ADD (CRITICAL),
+        // not a no-op (SAFE) as count-only diff would produce. This closes the rename false-safe
+        // vulnerability where same table count masks destructive schema renames.
+        let mut dropped_tables: u32 = 0
+        let mut added_tables: u32 = 0
+
+        // --from tables not in --to = dropped
+        let mut fsd: u32 = 0
+        while fsd < ftc {
+            let mut tsd: u32 = 0
+            let mut found_f = false
+            while tsd < ttc {
+                if fth[fsd as usize] == tth[tsd as usize] {
+                    if fth2[fsd as usize] == tth2[tsd as usize] { found_f = true }
+                }
+                tsd = tsd + 1
+            }
+            if found_f == false { dropped_tables = dropped_tables + 1 }
+            fsd = fsd + 1
+        }
+
+        // --to tables not in --from = added
+        let mut tsa: u32 = 0
+        while tsa < ttc {
+            let mut fsa: u32 = 0
+            let mut found_t = false
+            while fsa < ftc {
+                if tth[tsa as usize] == fth[fsa as usize] {
+                    if tth2[tsa as usize] == fth2[fsa as usize] { found_t = true }
+                }
+                fsa = fsa + 1
+            }
+            if found_t == false { added_tables = added_tables + 1 }
+            tsa = tsa + 1
+        }
+
+        // Column diff via hash-set comparison (V9 fix — closes rename false-SAFE).
+        // Seeds column hash with the containing table's hash for per-table uniqueness:
+        // users.id and products.id produce different hashes → rename within a preserved
+        // table (same count, different names) is correctly detected as DROP+ADD (CRITICAL).
+        // Only indexes columns in preserved tables (exist in both schemas) to avoid
+        // double-counting columns that belong to a dropped or added table.
+        let mut from_col_h1: [256]u32 = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+        let mut from_col_h2: [256]u32 = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+        let mut to_col_h1: [256]u32 = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+        let mut to_col_h2: [256]u32 = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+        // 1 = column has NOT_NULL modifier; 0 = nullable/unspecified. Indexed parallel to col_h1/h2.
+        let mut to_col_nn: [256]u32 = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+        // RT-82: track NOT_NULL state for from-schema columns to detect set_not_null/drop_not_null.
+        let mut from_col_nn: [256]u32 = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+        // RT-88: track PRIMARY_KEY state for from/to columns. PRIMARY_KEY add = HIGH risk (full table scan + exclusive lock).
+        let mut to_col_pk: [256]u32 = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+        let mut from_col_pk: [256]u32 = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+        // RT-92: track UNIQUE state for from/to columns. UNIQUE add = HIGH risk (ACCESS EXCLUSIVE lock, full-table scan for uniqueness validation).
+        let mut to_col_uq: [256]u32 = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+        let mut from_col_uq: [256]u32 = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+        // RT-93: track REFERENCES (FK) for from/to columns. FK add = HIGH risk (ACCESS EXCLUSIVE + referential integrity scan).
+        let mut to_col_fk: [256]u32 = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+        let mut from_col_fk: [256]u32 = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+        // RT-87/DEFAULT: track DEFAULT modifier for from/to columns. DEFAULT add/drop = NOTABLE (fast PG11+ metadata op).
+        let mut to_col_df: [256]u32 = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+        let mut from_col_df: [256]u32 = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+        let mut from_cc: u32 = 0
+        let mut to_cc: u32 = 0
+        // RT-99: set when >256 columns in a preserved table — analysis is incomplete.
+        let mut schema_truncated: bool = false
+
+        // Scan from schema: track current table, record column hashes for preserved tables.
+        let mut fci_cur_h1: u32 = 0
+        let mut fci_cur_h2: u32 = 0
+        let mut fci_preserved: bool = false
+        let mut fci: usize = 0
+        while fci < from_len {
+            while fci < from_len && isWS(from_sp[fci]) { fci = fci + 1 }
+            let fci_ks = fci
+            while fci < from_len && isIdChar(from_sp[fci]) { fci = fci + 1 }
+            let fci_kl = fci - fci_ks
+            if fci_kl == 5 {
+                let fci_b0 = from_sp[fci_ks]
+                let fci_b1 = from_sp[fci_ks + 1]
+                let fci_b2 = from_sp[fci_ks + 2]
+                let fci_b3 = from_sp[fci_ks + 3]
+                let fci_b4 = from_sp[fci_ks + 4]
+                if toLower(fci_b0) == 116 && toLower(fci_b1) == 97 && toLower(fci_b2) == 98 && toLower(fci_b3) == 108 && toLower(fci_b4) == 101 {
+                    while fci < from_len && isWS(from_sp[fci]) { fci = fci + 1 }
+                    let fci_ts = fci
+                    while fci < from_len && isIdChar(from_sp[fci]) { fci = fci + 1 }
+                    let fci_tl = fci - fci_ts
+                    let mut fci_th1: u32 = 5381
+                    let mut fci_th2: u32 = 0
+                    let mut fci_ti: usize = fci_ts
+                    while fci_ti < fci_ts + fci_tl {
+                        let fci_tb = toLower(from_sp[fci_ti]) as u32
+                        fci_th1 = fci_th1 * 33 + fci_tb
+                        fci_th2 = fci_th2 * 65599 + fci_tb
+                        fci_ti = fci_ti + 1
+                    }
+                    fci_cur_h1 = fci_th1
+                    fci_cur_h2 = fci_th2
+                    let mut fci_pi: u32 = 0
+                    fci_preserved = false
+                    while fci_pi < ttc {
+                        if tth[fci_pi as usize] == fci_th1 {
+                            if tth2[fci_pi as usize] == fci_th2 { fci_preserved = true }
+                        }
+                        fci_pi = fci_pi + 1
+                    }
+                }
+            }
+            if fci_kl == 6 {
+                let fci_c0 = from_sp[fci_ks]
+                let fci_c1 = from_sp[fci_ks + 1]
+                let fci_c2 = from_sp[fci_ks + 2]
+                let fci_c3 = from_sp[fci_ks + 3]
+                let fci_c4 = from_sp[fci_ks + 4]
+                let fci_c5 = from_sp[fci_ks + 5]
+                if toLower(fci_c0) == 99 && toLower(fci_c1) == 111 && toLower(fci_c2) == 108 && toLower(fci_c3) == 117 && toLower(fci_c4) == 109 && toLower(fci_c5) == 110 {
+                    if fci_preserved {
+                        while fci < from_len && isWS(from_sp[fci]) { fci = fci + 1 }
+                        let fci_cs = fci
+                        while fci < from_len && isIdChar(from_sp[fci]) { fci = fci + 1 }
+                        let fci_cl = fci - fci_cs
+                        if fci_cl > 0 {
+                            let mut fci_ch1: u32 = fci_cur_h1
+                            let mut fci_ch2: u32 = fci_cur_h2
+                            let mut fci_ci: usize = fci_cs
+                            while fci_ci < fci_cs + fci_cl {
+                                let fci_cb = toLower(from_sp[fci_ci]) as u32
+                                fci_ch1 = fci_ch1 * 33 + fci_cb
+                                fci_ch2 = fci_ch2 * 65599 + fci_cb
+                                fci_ci = fci_ci + 1
+                            }
+                            // RT-83: include column type in hash so type changes appear as drop+add (CRITICAL).
+                            // Separator 255 prevents name/type length-extension hash collisions.
+                            fci_ch1 = fci_ch1 * 33 + 255
+                            fci_ch2 = fci_ch2 * 65599 + 255
+                            while fci_ci < from_len && isWS(from_sp[fci_ci]) { fci_ci = fci_ci + 1 }
+                            while fci_ci < from_len && isIdChar(from_sp[fci_ci]) {
+                                let fci_tcb = toLower(from_sp[fci_ci]) as u32
+                                fci_ch1 = fci_ch1 * 33 + fci_tcb
+                                fci_ch2 = fci_ch2 * 65599 + fci_tcb
+                                fci_ci = fci_ci + 1
+                            }
+                            if from_cc < 256 {
+                                from_col_h1[from_cc as usize] = fci_ch1
+                                from_col_h2[from_cc as usize] = fci_ch2
+                                // RT-82: NOT_NULL; RT-88: PRIMARY_KEY; RT-92: UNIQUE; RT-93: REFERENCES(FK); RT-87: DEFAULT for from-schema columns.
+                                let mut fci_nn_pos: usize = fci
+                                let mut fci_nn_found: bool = false
+                                let mut fci_pk_found: bool = false
+                                let mut fci_uq_found: bool = false
+                                let mut fci_fk_found: bool = false
+                                let mut fci_df_found: bool = false
+                                while fci_nn_pos < from_len && from_sp[fci_nn_pos] != 10 && from_sp[fci_nn_pos] != 13 && from_sp[fci_nn_pos] != 124 {
+                                    while fci_nn_pos < from_len && isWS(from_sp[fci_nn_pos]) { fci_nn_pos = fci_nn_pos + 1 }
+                                    let fci_nnt_s = fci_nn_pos
+                                    while fci_nn_pos < from_len && isIdChar(from_sp[fci_nn_pos]) { fci_nn_pos = fci_nn_pos + 1 }
+                                    let fci_nnt_l = fci_nn_pos - fci_nnt_s
+                                    if fci_nnt_l == 8 {
+                                        let fci_nn0 = toLower(from_sp[fci_nnt_s])
+                                        let fci_nn1 = toLower(from_sp[fci_nnt_s + 1])
+                                        let fci_nn2 = toLower(from_sp[fci_nnt_s + 2])
+                                        let fci_nn3 = from_sp[fci_nnt_s + 3]
+                                        let fci_nn4 = toLower(from_sp[fci_nnt_s + 4])
+                                        let fci_nn5 = toLower(from_sp[fci_nnt_s + 5])
+                                        let fci_nn6 = toLower(from_sp[fci_nnt_s + 6])
+                                        let fci_nn7 = toLower(from_sp[fci_nnt_s + 7])
+                                        if fci_nn0 == 110 && fci_nn1 == 111 && fci_nn2 == 116 && fci_nn3 == 95 && fci_nn4 == 110 && fci_nn5 == 117 && fci_nn6 == 108 && fci_nn7 == 108 {
+                                            fci_nn_found = true
+                                        }
+                                    }
+                                    // RT-88: PRIMARY_KEY = 11 bytes: p(112)r(114)i(105)m(109)a(97)r(114)y(121)_(95)k(107)e(101)y(121)
+                                    if fci_nnt_l == 11 {
+                                        let fci_pk0 = toLower(from_sp[fci_nnt_s])
+                                        let fci_pk1 = toLower(from_sp[fci_nnt_s + 1])
+                                        let fci_pk2 = toLower(from_sp[fci_nnt_s + 2])
+                                        let fci_pk3 = toLower(from_sp[fci_nnt_s + 3])
+                                        let fci_pk4 = toLower(from_sp[fci_nnt_s + 4])
+                                        let fci_pk5 = toLower(from_sp[fci_nnt_s + 5])
+                                        let fci_pk6 = toLower(from_sp[fci_nnt_s + 6])
+                                        let fci_pk7 = from_sp[fci_nnt_s + 7]
+                                        let fci_pk8 = toLower(from_sp[fci_nnt_s + 8])
+                                        let fci_pk9 = toLower(from_sp[fci_nnt_s + 9])
+                                        let fci_pk10 = toLower(from_sp[fci_nnt_s + 10])
+                                        if fci_pk0 == 112 && fci_pk1 == 114 && fci_pk2 == 105 && fci_pk3 == 109 && fci_pk4 == 97 && fci_pk5 == 114 && fci_pk6 == 121 && fci_pk7 == 95 && fci_pk8 == 107 && fci_pk9 == 101 && fci_pk10 == 121 {
+                                            fci_pk_found = true
+                                        }
+                                    }
+                                    // RT-92: UNIQUE = 6 bytes: u(117)n(110)i(105)q(113)u(117)e(101)
+                                    if fci_nnt_l == 6 {
+                                        let fci_uq0 = toLower(from_sp[fci_nnt_s])
+                                        let fci_uq1 = toLower(from_sp[fci_nnt_s + 1])
+                                        let fci_uq2 = toLower(from_sp[fci_nnt_s + 2])
+                                        let fci_uq3 = toLower(from_sp[fci_nnt_s + 3])
+                                        let fci_uq4 = toLower(from_sp[fci_nnt_s + 4])
+                                        let fci_uq5 = toLower(from_sp[fci_nnt_s + 5])
+                                        if fci_uq0 == 117 && fci_uq1 == 110 && fci_uq2 == 105 && fci_uq3 == 113 && fci_uq4 == 117 && fci_uq5 == 101 {
+                                            fci_uq_found = true
+                                        }
+                                    }
+                                    // RT-87/DEFAULT: DEFAULT = 7 bytes: d(100)e(101)f(102)a(97)u(117)l(108)t(116)
+                                    if fci_nnt_l == 7 {
+                                        let fci_df0 = toLower(from_sp[fci_nnt_s])
+                                        let fci_df1 = toLower(from_sp[fci_nnt_s + 1])
+                                        let fci_df2 = toLower(from_sp[fci_nnt_s + 2])
+                                        let fci_df3 = toLower(from_sp[fci_nnt_s + 3])
+                                        let fci_df4 = toLower(from_sp[fci_nnt_s + 4])
+                                        let fci_df5 = toLower(from_sp[fci_nnt_s + 5])
+                                        let fci_df6 = toLower(from_sp[fci_nnt_s + 6])
+                                        if fci_df0 == 100 && fci_df1 == 101 && fci_df2 == 102 && fci_df3 == 97 && fci_df4 == 117 && fci_df5 == 108 && fci_df6 == 116 {
+                                            fci_df_found = true
+                                        }
+                                    }
+                                    // RT-93: REFERENCES = 10 bytes: r(114)e(101)f(102)e(101)r(114)e(101)n(110)c(99)e(101)s(115)
+                                    if fci_nnt_l == 10 {
+                                        let fci_fk0 = toLower(from_sp[fci_nnt_s])
+                                        let fci_fk1 = toLower(from_sp[fci_nnt_s + 1])
+                                        let fci_fk2 = toLower(from_sp[fci_nnt_s + 2])
+                                        let fci_fk3 = toLower(from_sp[fci_nnt_s + 3])
+                                        let fci_fk4 = toLower(from_sp[fci_nnt_s + 4])
+                                        let fci_fk5 = toLower(from_sp[fci_nnt_s + 5])
+                                        let fci_fk6 = toLower(from_sp[fci_nnt_s + 6])
+                                        let fci_fk7 = toLower(from_sp[fci_nnt_s + 7])
+                                        let fci_fk8 = toLower(from_sp[fci_nnt_s + 8])
+                                        let fci_fk9 = toLower(from_sp[fci_nnt_s + 9])
+                                        if fci_fk0 == 114 && fci_fk1 == 101 && fci_fk2 == 102 && fci_fk3 == 101 && fci_fk4 == 114 && fci_fk5 == 101 && fci_fk6 == 110 && fci_fk7 == 99 && fci_fk8 == 101 && fci_fk9 == 115 {
+                                            fci_fk_found = true
+                                        }
+                                    }
+                                    // RT-91: guard against advancing past line/pipe terminators.
+                                    if fci_nnt_l == 0 && fci_nn_pos < from_len && from_sp[fci_nn_pos] != 10 && from_sp[fci_nn_pos] != 13 && from_sp[fci_nn_pos] != 124 { fci_nn_pos = fci_nn_pos + 1 }
+                                }
+                                if fci_nn_found { from_col_nn[from_cc as usize] = 1 }
+                                if fci_pk_found { from_col_pk[from_cc as usize] = 1 }
+                                if fci_uq_found { from_col_uq[from_cc as usize] = 1 }
+                                if fci_fk_found { from_col_fk[from_cc as usize] = 1 }
+                                if fci_df_found { from_col_df[from_cc as usize] = 1 }
+                                from_cc = from_cc + 1
+                            } else {
+                                // RT-99: column beyond 256-slot limit — mark analysis as incomplete.
+                                schema_truncated = true
+                            }
+                        }
+                    }
+                }
+            }
+            while fci < from_len && from_sp[fci] != 10 && from_sp[fci] != 124 { fci = fci + 1 }
+            if fci < from_len { fci = fci + 1 }
+        }
+
+        // Scan to schema: track current table, record column hashes for preserved tables.
+        let mut tci_cur_h1: u32 = 0
+        let mut tci_cur_h2: u32 = 0
+        let mut tci_preserved: bool = false
+        let mut tci: usize = 0
+        while tci < to_len {
+            while tci < to_len && isWS(to_sp[tci]) { tci = tci + 1 }
+            let tci_ks = tci
+            while tci < to_len && isIdChar(to_sp[tci]) { tci = tci + 1 }
+            let tci_kl = tci - tci_ks
+            if tci_kl == 5 {
+                let tci_b0 = to_sp[tci_ks]
+                let tci_b1 = to_sp[tci_ks + 1]
+                let tci_b2 = to_sp[tci_ks + 2]
+                let tci_b3 = to_sp[tci_ks + 3]
+                let tci_b4 = to_sp[tci_ks + 4]
+                if toLower(tci_b0) == 116 && toLower(tci_b1) == 97 && toLower(tci_b2) == 98 && toLower(tci_b3) == 108 && toLower(tci_b4) == 101 {
+                    while tci < to_len && isWS(to_sp[tci]) { tci = tci + 1 }
+                    let tci_ts = tci
+                    while tci < to_len && isIdChar(to_sp[tci]) { tci = tci + 1 }
+                    let tci_tl = tci - tci_ts
+                    let mut tci_th1: u32 = 5381
+                    let mut tci_th2: u32 = 0
+                    let mut tci_ti: usize = tci_ts
+                    while tci_ti < tci_ts + tci_tl {
+                        let tci_tb = toLower(to_sp[tci_ti]) as u32
+                        tci_th1 = tci_th1 * 33 + tci_tb
+                        tci_th2 = tci_th2 * 65599 + tci_tb
+                        tci_ti = tci_ti + 1
+                    }
+                    tci_cur_h1 = tci_th1
+                    tci_cur_h2 = tci_th2
+                    let mut tci_pi: u32 = 0
+                    tci_preserved = false
+                    while tci_pi < ftc {
+                        if fth[tci_pi as usize] == tci_th1 {
+                            if fth2[tci_pi as usize] == tci_th2 { tci_preserved = true }
+                        }
+                        tci_pi = tci_pi + 1
+                    }
+                }
+            }
+            if tci_kl == 6 {
+                let tci_c0 = to_sp[tci_ks]
+                let tci_c1 = to_sp[tci_ks + 1]
+                let tci_c2 = to_sp[tci_ks + 2]
+                let tci_c3 = to_sp[tci_ks + 3]
+                let tci_c4 = to_sp[tci_ks + 4]
+                let tci_c5 = to_sp[tci_ks + 5]
+                if toLower(tci_c0) == 99 && toLower(tci_c1) == 111 && toLower(tci_c2) == 108 && toLower(tci_c3) == 117 && toLower(tci_c4) == 109 && toLower(tci_c5) == 110 {
+                    if tci_preserved {
+                        while tci < to_len && isWS(to_sp[tci]) { tci = tci + 1 }
+                        let tci_cs = tci
+                        while tci < to_len && isIdChar(to_sp[tci]) { tci = tci + 1 }
+                        let tci_cl = tci - tci_cs
+                        if tci_cl > 0 {
+                            let mut tci_ch1: u32 = tci_cur_h1
+                            let mut tci_ch2: u32 = tci_cur_h2
+                            let mut tci_ci: usize = tci_cs
+                            while tci_ci < tci_cs + tci_cl {
+                                let tci_cb = toLower(to_sp[tci_ci]) as u32
+                                tci_ch1 = tci_ch1 * 33 + tci_cb
+                                tci_ch2 = tci_ch2 * 65599 + tci_cb
+                                tci_ci = tci_ci + 1
+                            }
+                            // RT-83: include column type in hash so type changes appear as drop+add (CRITICAL).
+                            tci_ch1 = tci_ch1 * 33 + 255
+                            tci_ch2 = tci_ch2 * 65599 + 255
+                            while tci_ci < to_len && isWS(to_sp[tci_ci]) { tci_ci = tci_ci + 1 }
+                            while tci_ci < to_len && isIdChar(to_sp[tci_ci]) {
+                                let tci_tcb = toLower(to_sp[tci_ci]) as u32
+                                tci_ch1 = tci_ch1 * 33 + tci_tcb
+                                tci_ch2 = tci_ch2 * 65599 + tci_tcb
+                                tci_ci = tci_ci + 1
+                            }
+                            if to_cc < 256 {
+                                to_col_h1[to_cc as usize] = tci_ch1
+                                to_col_h2[to_cc as usize] = tci_ch2
+                                // RT-82: NOT_NULL; RT-88: PRIMARY_KEY; RT-92: UNIQUE; RT-93: REFERENCES(FK); RT-87: DEFAULT for to-schema columns.
+                                let mut tci_nn_pos: usize = tci
+                                let mut tci_nn_found: bool = false
+                                let mut tci_pk_found: bool = false
+                                let mut tci_uq_found: bool = false
+                                let mut tci_fk_found: bool = false
+                                let mut tci_df_found: bool = false
+                                while tci_nn_pos < to_len && to_sp[tci_nn_pos] != 10 && to_sp[tci_nn_pos] != 13 && to_sp[tci_nn_pos] != 124 {
+                                    while tci_nn_pos < to_len && isWS(to_sp[tci_nn_pos]) { tci_nn_pos = tci_nn_pos + 1 }
+                                    let tci_nnt_s = tci_nn_pos
+                                    while tci_nn_pos < to_len && isIdChar(to_sp[tci_nn_pos]) { tci_nn_pos = tci_nn_pos + 1 }
+                                    let tci_nnt_l = tci_nn_pos - tci_nnt_s
+                                    if tci_nnt_l == 8 {
+                                        let tci_nn0 = toLower(to_sp[tci_nnt_s])
+                                        let tci_nn1 = toLower(to_sp[tci_nnt_s + 1])
+                                        let tci_nn2 = toLower(to_sp[tci_nnt_s + 2])
+                                        let tci_nn3 = to_sp[tci_nnt_s + 3]
+                                        let tci_nn4 = toLower(to_sp[tci_nnt_s + 4])
+                                        let tci_nn5 = toLower(to_sp[tci_nnt_s + 5])
+                                        let tci_nn6 = toLower(to_sp[tci_nnt_s + 6])
+                                        let tci_nn7 = toLower(to_sp[tci_nnt_s + 7])
+                                        if tci_nn0 == 110 && tci_nn1 == 111 && tci_nn2 == 116 && tci_nn3 == 95 && tci_nn4 == 110 && tci_nn5 == 117 && tci_nn6 == 108 && tci_nn7 == 108 {
+                                            tci_nn_found = true
+                                        }
+                                    }
+                                    // RT-88: PRIMARY_KEY = 11 bytes: p(112)r(114)i(105)m(109)a(97)r(114)y(121)_(95)k(107)e(101)y(121)
+                                    if tci_nnt_l == 11 {
+                                        let tci_pk0 = toLower(to_sp[tci_nnt_s])
+                                        let tci_pk1 = toLower(to_sp[tci_nnt_s + 1])
+                                        let tci_pk2 = toLower(to_sp[tci_nnt_s + 2])
+                                        let tci_pk3 = toLower(to_sp[tci_nnt_s + 3])
+                                        let tci_pk4 = toLower(to_sp[tci_nnt_s + 4])
+                                        let tci_pk5 = toLower(to_sp[tci_nnt_s + 5])
+                                        let tci_pk6 = toLower(to_sp[tci_nnt_s + 6])
+                                        let tci_pk7 = to_sp[tci_nnt_s + 7]
+                                        let tci_pk8 = toLower(to_sp[tci_nnt_s + 8])
+                                        let tci_pk9 = toLower(to_sp[tci_nnt_s + 9])
+                                        let tci_pk10 = toLower(to_sp[tci_nnt_s + 10])
+                                        if tci_pk0 == 112 && tci_pk1 == 114 && tci_pk2 == 105 && tci_pk3 == 109 && tci_pk4 == 97 && tci_pk5 == 114 && tci_pk6 == 121 && tci_pk7 == 95 && tci_pk8 == 107 && tci_pk9 == 101 && tci_pk10 == 121 {
+                                            tci_pk_found = true
+                                        }
+                                    }
+                                    // RT-92: UNIQUE = 6 bytes: u(117)n(110)i(105)q(113)u(117)e(101)
+                                    if tci_nnt_l == 6 {
+                                        let tci_uq0 = toLower(to_sp[tci_nnt_s])
+                                        let tci_uq1 = toLower(to_sp[tci_nnt_s + 1])
+                                        let tci_uq2 = toLower(to_sp[tci_nnt_s + 2])
+                                        let tci_uq3 = toLower(to_sp[tci_nnt_s + 3])
+                                        let tci_uq4 = toLower(to_sp[tci_nnt_s + 4])
+                                        let tci_uq5 = toLower(to_sp[tci_nnt_s + 5])
+                                        if tci_uq0 == 117 && tci_uq1 == 110 && tci_uq2 == 105 && tci_uq3 == 113 && tci_uq4 == 117 && tci_uq5 == 101 {
+                                            tci_uq_found = true
+                                        }
+                                    }
+                                    // RT-87/DEFAULT: DEFAULT = 7 bytes: d(100)e(101)f(102)a(97)u(117)l(108)t(116)
+                                    if tci_nnt_l == 7 {
+                                        let tci_df0 = toLower(to_sp[tci_nnt_s])
+                                        let tci_df1 = toLower(to_sp[tci_nnt_s + 1])
+                                        let tci_df2 = toLower(to_sp[tci_nnt_s + 2])
+                                        let tci_df3 = toLower(to_sp[tci_nnt_s + 3])
+                                        let tci_df4 = toLower(to_sp[tci_nnt_s + 4])
+                                        let tci_df5 = toLower(to_sp[tci_nnt_s + 5])
+                                        let tci_df6 = toLower(to_sp[tci_nnt_s + 6])
+                                        if tci_df0 == 100 && tci_df1 == 101 && tci_df2 == 102 && tci_df3 == 97 && tci_df4 == 117 && tci_df5 == 108 && tci_df6 == 116 {
+                                            tci_df_found = true
+                                        }
+                                    }
+                                    // RT-93: REFERENCES = 10 bytes: r(114)e(101)f(102)e(101)r(114)e(101)n(110)c(99)e(101)s(115)
+                                    if tci_nnt_l == 10 {
+                                        let tci_fk0 = toLower(to_sp[tci_nnt_s])
+                                        let tci_fk1 = toLower(to_sp[tci_nnt_s + 1])
+                                        let tci_fk2 = toLower(to_sp[tci_nnt_s + 2])
+                                        let tci_fk3 = toLower(to_sp[tci_nnt_s + 3])
+                                        let tci_fk4 = toLower(to_sp[tci_nnt_s + 4])
+                                        let tci_fk5 = toLower(to_sp[tci_nnt_s + 5])
+                                        let tci_fk6 = toLower(to_sp[tci_nnt_s + 6])
+                                        let tci_fk7 = toLower(to_sp[tci_nnt_s + 7])
+                                        let tci_fk8 = toLower(to_sp[tci_nnt_s + 8])
+                                        let tci_fk9 = toLower(to_sp[tci_nnt_s + 9])
+                                        if tci_fk0 == 114 && tci_fk1 == 101 && tci_fk2 == 102 && tci_fk3 == 101 && tci_fk4 == 114 && tci_fk5 == 101 && tci_fk6 == 110 && tci_fk7 == 99 && tci_fk8 == 101 && tci_fk9 == 115 {
+                                            tci_fk_found = true
+                                        }
+                                    }
+                                    // RT-91: guard against advancing past line/pipe terminators.
+                                    if tci_nnt_l == 0 && tci_nn_pos < to_len && to_sp[tci_nn_pos] != 10 && to_sp[tci_nn_pos] != 13 && to_sp[tci_nn_pos] != 124 { tci_nn_pos = tci_nn_pos + 1 }
+                                }
+                                if tci_nn_found { to_col_nn[to_cc as usize] = 1 }
+                                if tci_pk_found { to_col_pk[to_cc as usize] = 1 }
+                                if tci_uq_found { to_col_uq[to_cc as usize] = 1 }
+                                if tci_fk_found { to_col_fk[to_cc as usize] = 1 }
+                                if tci_df_found { to_col_df[to_cc as usize] = 1 }
+                                to_cc = to_cc + 1
+                            } else {
+                                // RT-99: column beyond 256-slot limit — mark analysis as incomplete.
+                                schema_truncated = true
+                            }
+                        }
+                    }
+                }
+            }
+            while tci < to_len && to_sp[tci] != 10 && to_sp[tci] != 124 { tci = tci + 1 }
+            if tci < to_len { tci = tci + 1 }
+        }
+
+        // Set-diff: from_col not in to_col = dropped; to_col not in from_col = added.
+        let mut dropped_cols: u32 = 0
+        let mut added_cols: u32 = 0
+        let mut added_not_null_cols: u32 = 0
+        let mut set_not_null_cols: u32 = 0
+        let mut drop_not_null_cols: u32 = 0
+        let mut add_primary_key_cols: u32 = 0
+        let mut drop_primary_key_cols: u32 = 0
+        let mut add_unique_cols: u32 = 0
+        let mut drop_unique_cols: u32 = 0
+        let mut add_fk_cols: u32 = 0
+        let mut drop_fk_cols: u32 = 0
+        let mut add_default_cols: u32 = 0
+        let mut drop_default_cols: u32 = 0
+        let mut fcs: u32 = 0
+        while fcs < from_cc {
+            let mut tcs: u32 = 0
+            let mut fcf: bool = false
+            while tcs < to_cc {
+                if from_col_h1[fcs as usize] == to_col_h1[tcs as usize] {
+                    if from_col_h2[fcs as usize] == to_col_h2[tcs as usize] { fcf = true }
+                }
+                tcs = tcs + 1
+            }
+            if fcf == false { dropped_cols = dropped_cols + 1 }
+            fcs = fcs + 1
+        }
+        let mut tcs2: u32 = 0
+        while tcs2 < to_cc {
+            let mut fcs2: u32 = 0
+            let mut tcf: bool = false
+            let mut matched_fcs: u32 = from_cc
+            while fcs2 < from_cc {
+                if to_col_h1[tcs2 as usize] == from_col_h1[fcs2 as usize] {
+                    if to_col_h2[tcs2 as usize] == from_col_h2[fcs2 as usize] {
+                        tcf = true
+                        matched_fcs = fcs2
+                    }
+                }
+                fcs2 = fcs2 + 1
+            }
+            if tcf == false {
+                added_cols = added_cols + 1
+                if to_col_nn[tcs2 as usize] == 1 { added_not_null_cols = added_not_null_cols + 1 }
+            } else {
+                // RT-82: detect nullability changes on preserved columns.
+                // RT-88: detect PRIMARY_KEY changes on preserved columns.
+                if matched_fcs < from_cc {
+                    if to_col_nn[tcs2 as usize] == 1 && from_col_nn[matched_fcs as usize] == 0 {
+                        set_not_null_cols = set_not_null_cols + 1
+                    }
+                    if to_col_nn[tcs2 as usize] == 0 && from_col_nn[matched_fcs as usize] == 1 {
+                        drop_not_null_cols = drop_not_null_cols + 1
+                    }
+                    if to_col_pk[tcs2 as usize] == 1 && from_col_pk[matched_fcs as usize] == 0 {
+                        add_primary_key_cols = add_primary_key_cols + 1
+                    }
+                    if to_col_pk[tcs2 as usize] == 0 && from_col_pk[matched_fcs as usize] == 1 {
+                        drop_primary_key_cols = drop_primary_key_cols + 1
+                    }
+                    // RT-92: UNIQUE constraint changes on preserved columns.
+                    if to_col_uq[tcs2 as usize] == 1 && from_col_uq[matched_fcs as usize] == 0 {
+                        add_unique_cols = add_unique_cols + 1
+                    }
+                    if to_col_uq[tcs2 as usize] == 0 && from_col_uq[matched_fcs as usize] == 1 {
+                        drop_unique_cols = drop_unique_cols + 1
+                    }
+                    // RT-93: FOREIGN KEY (REFERENCES) changes on preserved columns.
+                    if to_col_fk[tcs2 as usize] == 1 && from_col_fk[matched_fcs as usize] == 0 {
+                        add_fk_cols = add_fk_cols + 1
+                    }
+                    if to_col_fk[tcs2 as usize] == 0 && from_col_fk[matched_fcs as usize] == 1 {
+                        drop_fk_cols = drop_fk_cols + 1
+                    }
+                    // RT-87/DEFAULT: DEFAULT modifier changes on preserved columns.
+                    if to_col_df[tcs2 as usize] == 1 && from_col_df[matched_fcs as usize] == 0 {
+                        add_default_cols = add_default_cols + 1
+                    }
+                    if to_col_df[tcs2 as usize] == 0 && from_col_df[matched_fcs as usize] == 1 {
+                        drop_default_cols = drop_default_cols + 1
+                    }
+                }
+            }
+            tcs2 = tcs2 + 1
+        }
+
+        let has_drop = dropped_tables > 0 || dropped_cols > 0
+        // Adding tables is always SAFE (CREATE TABLE has no impact on existing data).
+        // Only column additions to preserved tables elevate risk tier.
+        let has_add = added_cols > 0
+
+        let mut risk_tier = "SAFE"
+        let mut risk_score = "0.0"
+        let mut retryable = "true"
+        if has_drop {
+            risk_tier = "CRITICAL"
+            risk_score = "1.0"
+            retryable = "false"
+        } else {
+            if set_not_null_cols > 0 || add_primary_key_cols > 0 || add_unique_cols > 0 || add_fk_cols > 0 {
+                risk_tier = "HIGH"
+                risk_score = "0.75"
+                retryable = "false"
+            } else {
+                if added_not_null_cols > 0 {
+                    risk_tier = "MEDIUM"
+                    risk_score = "0.5"
+                    retryable = "true"
+                } else {
+                    if has_add || drop_not_null_cols > 0 || drop_primary_key_cols > 0 || drop_unique_cols > 0 || drop_fk_cols > 0 || add_default_cols > 0 || drop_default_cols > 0 {
+                        risk_tier = "NOTABLE"
+                        risk_score = "0.25"
+                        retryable = "true"
+                    }
+                }
+            }
+        }
+
+        // RT-99: if schema was truncated, ensure risk is at least NOTABLE so agent pauses.
+        if schema_truncated {
+            if risk_tier == "SAFE" {
+                risk_tier = "NOTABLE"
+                risk_score = "0.25"
+                retryable = "true"
+            }
+        }
+
+        // decision_required: explicit halt signal for agents (LLM06 Excessive Agency mitigation).
+        // Triggers on data loss (has_drop), set_not_null (can fail/lock), or add_primary_key/add_unique
+        // (ACCESS EXCLUSIVE lock + full table scan — requires human sign-off before executing).
+        // MEDIUM adds are flagged in operations but not decision-gated — no data destruction.
+        // Agents MUST NOT auto-proceed when decision_required is true.
+        let decision_required = has_drop || set_not_null_cols > 0 || add_primary_key_cols > 0 || add_unique_cols > 0 || add_fk_cols > 0
+
+        check world.out.write("{\"schema_version\":1,\"_forge_version\":\"0.1.4\"")
+        if has_ri {
+            let ri_arg = std.args.get(ri_idx)
+            if ri_arg.has {
+                check world.out.write(",\"request_id\":\"")
+                check world.out.write(ri_arg.value)
+                check world.out.write("\"")
+            }
+        }
+        check world.out.write(",\"risk_tier\":\"")
+        check world.out.write(risk_tier)
+        check world.out.write("\",\"risk_score\":")
+        check world.out.write(risk_score)
+        check world.out.write(",\"retryable\":")
+        check world.out.write(retryable)
+        check world.out.write(",\"has_data_loss\":")
+        if has_drop {
+            check world.out.write("true")
+        } else {
+            check world.out.write("false")
+        }
+        check world.out.write(",\"decision_required\":")
+        if decision_required {
+            check world.out.write("true")
+        } else {
+            check world.out.write("false")
+        }
+        check world.out.write(",\"operations\":[")
+
+        let mut first_op = true
+
+        if dropped_tables > 0 {
+            let mut fout: u32 = 0
+            while fout < ftc {
+                let mut tout: u32 = 0
+                let mut fout_found = false
+                while tout < ttc {
+                    if fth[fout as usize] == tth[tout as usize] {
+                        if fth2[fout as usize] == tth2[tout as usize] { fout_found = true }
+                    }
+                    tout = tout + 1
+                }
+                if fout_found == false {
+                    if first_op == false { check world.out.write(",") }
+                    first_op = false
+                    check world.out.write("{\"type\":\"drop_table\",\"table\":\"")
+                    let fn_s = fth_s[fout as usize] as usize
+                    let fn_l = fth_l[fout as usize] as usize
+                    let mut fn_i: usize = 0
+                    let mut fn_cb: [1]u8 = [0]
+                    while fn_i < fn_l {
+                        fn_cb[0] = from_sp[fn_s + fn_i]
+                        if isIdChar(fn_cb[0]) {
+                            check world.out.write(fn_cb)
+                            fn_i = fn_i + 1
+                        } else {
+                            check world.out.write("__INVALID_NAME__")
+                            fn_i = fn_l
+                        }
+                    }
+                    check world.out.write("\",\"risk\":\"critical\",\"data_loss\":true,\"estimated_lock_ms\":0,\"retryable\":false,\"agent_guidance\":\"Table dropped. All data permanently deleted. Verify no foreign key references or application queries target this table.\"}")
+                }
+                fout = fout + 1
+            }
+        }
+
+        if added_tables > 0 {
+            let mut tadd: u32 = 0
+            while tadd < ttc {
+                let mut fadd: u32 = 0
+                let mut tadd_found = false
+                while fadd < ftc {
+                    if tth[tadd as usize] == fth[fadd as usize] {
+                        if tth2[tadd as usize] == fth2[fadd as usize] { tadd_found = true }
+                    }
+                    fadd = fadd + 1
+                }
+                if tadd_found == false {
+                    if first_op == false { check world.out.write(",") }
+                    first_op = false
+                    check world.out.write("{\"type\":\"add_table\",\"table\":\"")
+                    let tn_s = tth_s[tadd as usize] as usize
+                    let tn_l = tth_l[tadd as usize] as usize
+                    let mut tn_i: usize = 0
+                    let mut tn_cb: [1]u8 = [0]
+                    while tn_i < tn_l {
+                        tn_cb[0] = to_sp[tn_s + tn_i]
+                        if isIdChar(tn_cb[0]) {
+                            check world.out.write(tn_cb)
+                            tn_i = tn_i + 1
+                        } else {
+                            check world.out.write("__INVALID_NAME__")
+                            tn_i = tn_l
+                        }
+                    }
+                    check world.out.write("\",\"risk\":\"safe\",\"data_loss\":false,\"estimated_lock_ms\":0,\"retryable\":true,\"agent_guidance\":\"New table added. No impact on existing tables or application code.\"}")
+                }
+                tadd = tadd + 1
+            }
+        }
+
+        if dropped_cols > 0 {
+            if first_op == false { check world.out.write(",") }
+            first_op = false
+            check world.out.write("{\"type\":\"drop_column\",\"risk\":\"critical\",\"data_loss\":true,\"estimated_lock_ms\":0,\"retryable\":false,\"agent_guidance\":\"One or more columns dropped. Data cannot be recovered without a backup restore. Verify no application code reads these columns.\"}")
+        }
+
+        if set_not_null_cols > 0 {
+            if first_op == false { check world.out.write(",") }
+            first_op = false
+            check world.out.write("{\"type\":\"set_not_null\",\"risk\":\"high\",\"data_loss\":false,\"estimated_lock_ms\":30000,\"retryable\":false,\"agent_guidance\":\"Adding NOT NULL constraint to existing column. Will fail if any row contains a null. Requires: 1) UPDATE t SET col=<default> WHERE col IS NULL; 2) then ALTER TABLE t ALTER COLUMN col SET NOT NULL. Full table scan required — slow on large tables. decision_required: must have human approval.\"}")
+        }
+        if add_primary_key_cols > 0 {
+            if first_op == false { check world.out.write(",") }
+            first_op = false
+            check world.out.write("{\"type\":\"add_primary_key\",\"risk\":\"high\",\"data_loss\":false,\"estimated_lock_ms\":60000,\"retryable\":false,\"agent_guidance\":\"Adding PRIMARY KEY constraint to existing column. Acquires ACCESS EXCLUSIVE lock for duration of full table scan (uniqueness + NOT NULL validation). Will fail if column contains nulls or duplicate values. Zero-downtime strategy: create UNIQUE index CONCURRENTLY first, then ADD CONSTRAINT using that index. decision_required: must have human approval.\"}")
+        }
+        if drop_primary_key_cols > 0 {
+            if first_op == false { check world.out.write(",") }
+            first_op = false
+            check world.out.write("{\"type\":\"drop_primary_key\",\"risk\":\"notable\",\"data_loss\":false,\"estimated_lock_ms\":100,\"retryable\":true,\"agent_guidance\":\"Removing PRIMARY KEY constraint from existing column. Acquires ACCESS EXCLUSIVE lock briefly for constraint metadata removal. No data deleted. Verify no foreign keys in other tables reference this primary key before dropping.\"}")
+        }
+        if add_unique_cols > 0 {
+            if first_op == false { check world.out.write(",") }
+            first_op = false
+            check world.out.write("{\"type\":\"add_unique\",\"risk\":\"high\",\"data_loss\":false,\"estimated_lock_ms\":60000,\"retryable\":false,\"agent_guidance\":\"Adding UNIQUE constraint to existing column. Acquires ACCESS EXCLUSIVE lock for full-table uniqueness scan. Will fail if column contains duplicate values. Zero-downtime strategy: CREATE UNIQUE INDEX CONCURRENTLY first, then ADD CONSTRAINT using that index. decision_required: must have human approval.\"}")
+        }
+        if drop_unique_cols > 0 {
+            if first_op == false { check world.out.write(",") }
+            first_op = false
+            check world.out.write("{\"type\":\"drop_unique\",\"risk\":\"notable\",\"data_loss\":false,\"estimated_lock_ms\":100,\"retryable\":true,\"agent_guidance\":\"Removing UNIQUE constraint from existing column. Acquires ACCESS EXCLUSIVE lock briefly for constraint metadata removal. No data deleted. Application code that relied on uniqueness guarantees should be audited.\"}")
+        }
+        if add_fk_cols > 0 {
+            if first_op == false { check world.out.write(",") }
+            first_op = false
+            check world.out.write("{\"type\":\"add_foreign_key\",\"risk\":\"high\",\"data_loss\":false,\"estimated_lock_ms\":30000,\"retryable\":false,\"agent_guidance\":\"Adding FOREIGN KEY constraint to existing column. Acquires ACCESS EXCLUSIVE lock on constrained table and SHARE ROW EXCLUSIVE lock on referenced table. Will fail if any column value does not exist in the referenced table. Validate referential integrity before applying. decision_required: must have human approval.\"}")
+        }
+        if drop_fk_cols > 0 {
+            if first_op == false { check world.out.write(",") }
+            first_op = false
+            check world.out.write("{\"type\":\"drop_foreign_key\",\"risk\":\"notable\",\"data_loss\":false,\"estimated_lock_ms\":100,\"retryable\":true,\"agent_guidance\":\"Removing FOREIGN KEY constraint from existing column. Acquires ACCESS EXCLUSIVE lock briefly for constraint metadata removal. No data deleted. Application code relying on referential integrity will no longer have database-level enforcement.\"}")
+        }
+        if add_default_cols > 0 {
+            if first_op == false { check world.out.write(",") }
+            first_op = false
+            check world.out.write("{\"type\":\"add_default\",\"risk\":\"notable\",\"data_loss\":false,\"estimated_lock_ms\":100,\"retryable\":true,\"agent_guidance\":\"Adding DEFAULT value to existing column. In PostgreSQL 11+ this is a fast metadata-only operation for non-volatile defaults (no table rewrite). Existing rows are NOT backfilled — only new rows will receive the default. Verify application code handles existing null rows.\"}")
+        }
+        if drop_default_cols > 0 {
+            if first_op == false { check world.out.write(",") }
+            first_op = false
+            check world.out.write("{\"type\":\"drop_default\",\"risk\":\"notable\",\"data_loss\":false,\"estimated_lock_ms\":100,\"retryable\":true,\"agent_guidance\":\"Dropping DEFAULT value from existing column. Fast metadata-only operation. Existing rows retain their stored values. New rows inserted without an explicit value will receive NULL (or fail NOT NULL constraint if set).\"}")
+        }
+        if drop_not_null_cols > 0 {
+            if first_op == false { check world.out.write(",") }
+            first_op = false
+            check world.out.write("{\"type\":\"drop_not_null\",\"risk\":\"notable\",\"data_loss\":false,\"estimated_lock_ms\":100,\"retryable\":true,\"agent_guidance\":\"Removing NOT NULL constraint from existing column. No data impact — changes constraint metadata only. Application code that previously relied on NOT NULL guarantees should be audited.\"}")
+        }
+        if added_not_null_cols > 0 {
+            if first_op == false { check world.out.write(",") }
+            first_op = false
+            check world.out.write("{\"type\":\"add_column\",\"risk\":\"medium\",\"data_loss\":false,\"estimated_lock_ms\":5000,\"retryable\":true,\"agent_guidance\":\"NOT NULL column(s) added without DEFAULT. Existing rows will fail NOT NULL constraint on next write unless you add a DEFAULT, backfill nulls first, then add the constraint in separate steps.\"}")
+        }
+        let added_nullable_cols = added_cols - added_not_null_cols
+        if added_nullable_cols > 0 {
+            if first_op == false { check world.out.write(",") }
+            first_op = false
+            check world.out.write("{\"type\":\"add_column\",\"risk\":\"notable\",\"data_loss\":false,\"estimated_lock_ms\":0,\"retryable\":true,\"agent_guidance\":\"New nullable column(s) added. Safe for most cases — no impact on existing rows or queries.\"}")
+        }
+        // RT-99: emit truncation warning when analysis is incomplete.
+        if schema_truncated {
+            if first_op == false { check world.out.write(",") }
+            check world.out.write("{\"type\":\"schema_truncated\",\"risk\":\"notable\",\"data_loss\":false,\"estimated_lock_ms\":0,\"retryable\":false,\"agent_guidance\":\"One or more tables contain more than 256 columns. Columns beyond the 256-column limit were not analyzed. This result may be incomplete — actual risk may be higher. Treat as NOTABLE minimum and review manually.\"}")
+        }
+
+        check world.out.write("]}\n")
+        return
+    }
+
+    check world.out.write("{\"error\":{\"code\":\"UNKNOWN_COMMAND\",\"message\":\"Unknown command. Use forge --describe to see valid commands.\",\"retryable\":false}}\n")
+}

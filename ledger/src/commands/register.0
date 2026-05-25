@@ -1,0 +1,102 @@
+use fmt
+
+pub fun run(world: World) -> Void raises {
+    let fs = std.fs.host()
+
+    // Parse --org-name flag (scan from arg index 2 onward)
+    let mut org_name: String = ""
+    let arg_count = std.args.len()
+    let mut i: usize = 2
+    while i < arg_count {
+        let arg = std.args.get(i)
+        if arg.has {
+            if std.mem.eql(std.mem.span(arg.value), std.mem.span("--org-name")) {
+                let next = std.args.get(i + 1)
+                if next.has {
+                    org_name = next.value
+                }
+            }
+        }
+        i = i + 1
+    }
+
+    if std.mem.eql(std.mem.span(org_name), std.mem.span("")) {
+        check world.out.write("{\"error_code\":\"MISSING_FLAG\",\"flag\":\"--org-name\",\"retryable\":true,\"error\":\"Required flag not provided. Example: ledger register --org-name 'Acme Corp'\"}\n")
+        raise MissingFlag
+    }
+    if std.mem.span(org_name).len > 256 {
+        check world.out.write("{\"error_code\":\"INVALID_INPUT\",\"field\":\"--org-name\",\"max_length\":256,\"retryable\":true,\"error\":\"--org-name exceeds maximum length of 256 bytes.\"}\n")
+        raise InvalidInput
+    }
+    if fmt.hasControlChar(org_name) {
+        check world.out.write("{\"error_code\":\"INVALID_INPUT\",\"field\":\"--org-name\",\"retryable\":true,\"error\":\"--org-name must not contain control characters (bytes 0x00-0x1F, 0x7F).\"}\n")
+        raise InvalidInput
+    }
+    if fmt.hasNonAscii(org_name) {
+        check world.out.write("{\"error_code\":\"INVALID_INPUT\",\"field\":\"--org-name\",\"retryable\":true,\"error\":\"--org-name must be ASCII only (bytes 0x20-0x7E). Non-ASCII bytes are not supported in v0.1.\"}\n")
+        raise InvalidInput
+    }
+
+    // Check if already registered
+    let existing = std.fs.open(fs, ".ledger-data")
+    if existing.has {
+        // Org already exists — read and return existing fields alongside ORG_EXISTS
+        let mut buf: owned<File> = existing.value
+        let mut read_storage: [768]u8 = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+        let read_len = std.fs.readOrRaise(&mut buf, read_storage)
+        std.fs.close(&mut buf)
+        // Find position of closing } — everything between { and } are the existing fields
+        let mut close_pos: usize = 0
+        let mut scan_j: usize = 0
+        while scan_j < read_len {
+            if read_storage[scan_j] == 125 { close_pos = scan_j }
+            scan_j = scan_j + 1
+        }
+        if close_pos > 60 {
+            // Merge existing fields into the error response
+            // Output: {"error_code":"ORG_EXISTS","<existing fields...>","status":"ok"}
+            check world.out.write("{\"error_code\":\"ORG_EXISTS\",")
+            let mut out_k: usize = 1
+            while out_k < close_pos {
+                check world.out.write(fmt.byteChar(read_storage[out_k]))
+                out_k = out_k + 1
+            }
+            check world.out.write(",\"retryable\":false,\"status\":\"ok\"}\n")
+        } else {
+            check world.out.write("{\"error_code\":\"ORG_EXISTS\",\"error\":\"Org already registered.\",\"retryable\":false,\"status\":\"ok\"}\n")
+        }
+        return
+    }
+
+    // Generate org_id: "org_" + 8 hex chars of hash32(org_name + entropy)
+    let entropy = std.rand.entropyU32()
+    let name_hash = std.crypto.hash32(std.mem.span(org_name))
+    let org_hash = entropy + name_hash
+
+    let ts = std.time.wallSeconds()
+
+    // Write .ledger-data config file
+    let mut cfg: owned<File> = check std.fs.createOrRaise(fs, ".ledger-data")
+    let mut reg_ok: bool = true
+    if reg_ok { if std.fs.writeAll(&mut cfg, std.mem.span("{\"org_id\":\"org_")) == false { reg_ok = false } }
+    if reg_ok { if fmt.writeU32HexToFile(&mut cfg, org_hash) == false { reg_ok = false } }
+    if reg_ok { if std.fs.writeAll(&mut cfg, std.mem.span("\",\"org_name\":\"")) == false { reg_ok = false } }
+    if reg_ok { if fmt.jsonEscapeFileWrite(&mut cfg, org_name) == false { reg_ok = false } }
+    if reg_ok { if std.fs.writeAll(&mut cfg, std.mem.span("\",\"created_at\":")) == false { reg_ok = false } }
+    if reg_ok { if fmt.writeI64ToFile(&mut cfg, ts) == false { reg_ok = false } }
+    if reg_ok { if std.fs.writeAll(&mut cfg, std.mem.span("}\n")) == false { reg_ok = false } }
+    std.fs.close(&mut cfg)
+    if reg_ok == false {
+        check world.out.write("{\"error_code\":\"STORE_WRITE_FAILED\",\"error\":\"Registration store write failed. Store may be corrupted. Check disk space.\",\"retryable\":false}\n")
+        raise WriteError
+    }
+
+    // Output confirmation JSON to stdout
+    check world.out.write("{\"org_id\":\"org_")
+    check fmt.writeU32Hex(world, org_hash)
+    check world.out.write("\",\"org_name\":\"")
+    check fmt.jsonEscapeWrite(world, org_name)
+    check world.out.write("\",\"created_at\":")
+    check fmt.writeI64(world, ts)
+    check world.out.write(",\"status\":\"ok\"}\n")
+}

@@ -1,0 +1,1113 @@
+// jsonschema_mini - JSON Schema Draft-07 subset validator for agent-native workflows.
+// Single-file Zero v0.1.x. Inline schema + data args (no stdin; blocked on world.in).
+// Interface: jsonschema validate --schema JSON --data JSON
+// Scope: type, required, properties (depth 1+2), minLength, maxLength, minimum, maximum, enum, const, additionalProperties:false.
+// Deferred to v0.2: pattern, $ref, anyOf/allOf/oneOf, $schema meta-validation, nested depth>2, enum/const at depth 2, required/additionalProperties at depth 2.
+
+use std.args
+use std.mem
+
+// ============================================================
+// Type codes for JSON Schema types
+// ============================================================
+// 0 = unset/unknown  1 = object  2 = string  3 = number
+// 4 = integer        5 = boolean 6 = null     7 = array
+
+// ============================================================
+// Error codes (stored as u8)
+// ============================================================
+// 1 = REQUIRED_MISSING   2 = TYPE_MISMATCH
+// 3 = MIN_LENGTH         4 = MAX_LENGTH
+// 5 = MINIMUM            6 = MAXIMUM
+// 7 = ENUM_MISMATCH      8 = UNSUPPORTED_TYPE
+// 9 = ADDITIONAL_PROPERTY
+// 10 = CONST_MISMATCH
+
+// ============================================================
+// JSON token helpers — all pure, operate on Span<u8> + length
+// ============================================================
+
+fun skipWS(sp: Span<u8>, len: usize, pos: usize) -> usize {
+    let mut p = pos
+    while p < len {
+        let b = sp[p]
+        if b == 32 || b == 9 || b == 10 || b == 13 { p = p + 1 } else { return p }
+    }
+    return p
+}
+
+// Skips past a JSON string starting at pos (which must be at '"').
+// Handles backslash escapes (skips escaped chars). Returns position after closing '"'.
+fun skipJsonString(sp: Span<u8>, len: usize, pos: usize) -> usize {
+    let mut q = pos + 1
+    while q < len {
+        let b = sp[q]
+        if b == 92 { q = q + 2 }
+        else if b == 34 { return q + 1 }
+        else { q = q + 1 }
+    }
+    return len
+}
+
+// Skips past a JSON array starting at '['. Handles nesting and embedded strings.
+fun skipJsonArray(sp: Span<u8>, len: usize, pos: usize) -> usize {
+    let mut q = pos + 1
+    let mut depth: usize = 1
+    while q < len && depth > 0 {
+        let b = sp[q]
+        if b == 34 { q = skipJsonString(sp, len, q) }
+        else if b == 91  { depth = depth + 1; q = q + 1 }
+        else if b == 93  { depth = depth - 1; q = q + 1 }
+        else { q = q + 1 }
+    }
+    return q
+}
+
+// Skips past a JSON object starting at '{'. Handles nesting and embedded strings.
+fun skipJsonObject(sp: Span<u8>, len: usize, pos: usize) -> usize {
+    let mut q = pos + 1
+    let mut depth: usize = 1
+    while q < len && depth > 0 {
+        let b = sp[q]
+        if b == 34  { q = skipJsonString(sp, len, q) }
+        else if b == 123 { depth = depth + 1; q = q + 1 }
+        else if b == 125 { depth = depth - 1; q = q + 1 }
+        else { q = q + 1 }
+    }
+    return q
+}
+
+// Skips past any JSON value at pos.
+fun skipJsonValue(sp: Span<u8>, len: usize, pos: usize) -> usize {
+    let p = skipWS(sp, len, pos)
+    if p >= len { return p }
+    let b = sp[p]
+    if b == 34  { return skipJsonString(sp, len, p) }
+    if b == 123 { return skipJsonObject(sp, len, p) }
+    if b == 91  { return skipJsonArray(sp, len, p) }
+    if b == 116 { return p + 4 }  // true
+    if b == 102 { return p + 5 }  // false
+    if b == 110 { return p + 4 }  // null
+    // number: scan digits, decimal, exponent
+    let mut q = p
+    if q < len && sp[q] == 45 { q = q + 1 }  // leading -
+    while q < len {
+        let c = sp[q]
+        if (c >= 48 && c <= 57) || c == 46 || c == 101 || c == 69 || c == 43 || c == 45 { q = q + 1 } else { return q }
+    }
+    return q
+}
+
+// Detects JSON value type at pos (after whitespace).
+// Returns type code: 1=object 2=array 3=string 4=number 5=bool 6=null 0=unknown
+fun detectValueType(sp: Span<u8>, len: usize, pos: usize) -> u8 {
+    let p = skipWS(sp, len, pos)
+    if p >= len { return 0 }
+    let b = sp[p]
+    if b == 123 { return 1 }    // {  → object
+    if b == 91  { return 2 }    // [  → array
+    if b == 34  { return 3 }    // "  → string
+    if b >= 48 && b <= 57 { return 4 }  // digit → number
+    if b == 45  { return 4 }    // - → number
+    if b == 116 { return 5 }    // t → true (bool)
+    if b == 102 { return 5 }    // f → false (bool)
+    if b == 110 { return 6 }    // n → null
+    return 0
+}
+
+// Returns true if JSON string at pos in sp exactly matches the bytes of key string.
+// Assumes key has no escape sequences (safe for all ASCII schema keywords).
+fun jsonKeyEq(sp: Span<u8>, len: usize, pos: usize, key: String) -> Bool {
+    let p = skipWS(sp, len, pos)
+    if p >= len || sp[p] != 34 { return false }
+    let key_sp = std.mem.span(key)
+    let key_len = std.mem.len(key_sp)
+    let mut ki: usize = p + 1  // past opening "
+    let mut ti: usize = 0
+    while ti < key_len {
+        if ki >= len { return false }
+        if sp[ki] != key_sp[ti] { return false }
+        ki = ki + 1
+        ti = ti + 1
+    }
+    if ki >= len { return false }
+    return sp[ki] == 34  // must be exactly at closing "
+}
+
+// Scans JSON object starting at pos, returns position of VALUE for first key matching key.
+// Returns len if key not found.
+fun findKey(sp: Span<u8>, len: usize, pos: usize, key: String) -> usize {
+    let p = skipWS(sp, len, pos)
+    if p >= len || sp[p] != 123 { return len }  // not an object
+    let mut q = p + 1
+    while q < len {
+        q = skipWS(sp, len, q)
+        if q >= len || sp[q] == 125 { return len }  // end of object
+        if sp[q] != 34 { return len }  // expected string key
+        let key_match = jsonKeyEq(sp, len, q, key)
+        // Skip key string
+        q = skipJsonString(sp, len, q)
+        q = skipWS(sp, len, q)
+        if q >= len || sp[q] != 58 { return len }  // expected ':'
+        q = q + 1
+        q = skipWS(sp, len, q)
+        if key_match { return q }  // found: return position of value
+        q = skipJsonValue(sp, len, q)
+        q = skipWS(sp, len, q)
+        if q < len && sp[q] == 44 { q = q + 1 }  // skip ','
+    }
+    return len
+}
+
+// Gets logical Unicode code-point count of JSON string at pos (not counting quotes).
+// RT-120: \uXXXX is 6 raw bytes but 1 code point — advance 6, count 1.
+// Other escapes (\", \\, \n, \t, etc.) are 2 raw bytes, 1 logical char.
+fun jsonStringLen(sp: Span<u8>, len: usize, pos: usize) -> usize {
+    let p = skipWS(sp, len, pos)
+    if p >= len || sp[p] != 34 { return 0 }
+    let mut q = p + 1
+    let mut count: usize = 0
+    while q < len {
+        let b = sp[q]
+        if b == 34 { return count }  // closing "
+        if b == 92 {
+            // RT-120: \uXXXX = 6 raw bytes = 1 code point; all other \x = 2 bytes = 1 char.
+            if q + 1 < len && sp[q + 1] == 117 { q = q + 6 } else { q = q + 2 }
+            count = count + 1
+        }
+        else { q = q + 1; count = count + 1 }
+    }
+    return count
+}
+
+// Parses an integer value at pos (must point to digits or '-').
+fun jsonParseInt(sp: Span<u8>, len: usize, pos: usize) -> i64 {
+    let p = skipWS(sp, len, pos)
+    if p >= len { return 0 }
+    let mut neg = false
+    let mut q = p
+    if sp[q] == 45 { neg = true; q = q + 1 }
+    let mut val: i64 = 0
+    let mut digs: u32 = 0
+    while q < len {
+        let b = sp[q]
+        if b >= 48 && b <= 57 {
+            digs = digs + 1
+            if digs > 18 { return if neg { -9999999999 } else { 9999999999 } }
+            val = val * 10 + (b as i64 - 48)
+            q = q + 1
+        } else {
+            return if neg { val * -1 } else { val }
+        }
+    }
+    return if neg { val * -1 } else { val }
+}
+
+// Compares two JSON strings at their respective positions. Returns true if equal bytes.
+// Both positions must be at '"'. Handles escape sequences correctly (RT-118).
+fun jsonStrEq(sp1: Span<u8>, len1: usize, pos1: usize, sp2: Span<u8>, len2: usize, pos2: usize) -> Bool {
+    let p1 = skipWS(sp1, len1, pos1)
+    let p2 = skipWS(sp2, len2, pos2)
+    if p1 >= len1 || p2 >= len2 { return false }
+    if sp1[p1] != 34 || sp2[p2] != 34 { return false }
+    let mut q1 = p1 + 1
+    let mut q2 = p2 + 1
+    while q1 < len1 && q2 < len2 {
+        let b1 = sp1[q1]
+        let b2 = sp2[q2]
+        if b1 == 34 && b2 == 34 { return true }   // both reach closing "
+        if b1 == 34 || b2 == 34 { return false }  // one closes, other doesn't
+        if b1 != b2 { return false }
+        if b1 == 92 {
+            // RT-118: both at \; also compare the escaped char before advancing
+            // past the escape sequence. Without this, "foo\n" == "foo\t" (wrong).
+            let ec1 = if q1 + 1 < len1 { sp1[q1 + 1] } else { 0 }
+            let ec2 = if q2 + 1 < len2 { sp2[q2 + 1] } else { 0 }
+            if ec1 != ec2 { return false }
+            q1 = q1 + 2
+            q2 = q2 + 2
+        } else {
+            q1 = q1 + 1
+            q2 = q2 + 1
+        }
+    }
+    return false
+}
+
+// Maps schema "type" string value to type code.
+// Type string at pos must be a JSON string.
+fun parseTypeCode(sp: Span<u8>, len: usize, pos: usize) -> u8 {
+    if jsonKeyEq(sp, len, pos, "object")  { return 1 }
+    if jsonKeyEq(sp, len, pos, "string")  { return 2 }
+    if jsonKeyEq(sp, len, pos, "number")  { return 3 }
+    if jsonKeyEq(sp, len, pos, "integer") { return 4 }
+    if jsonKeyEq(sp, len, pos, "boolean") { return 5 }
+    if jsonKeyEq(sp, len, pos, "null")    { return 6 }
+    if jsonKeyEq(sp, len, pos, "array")   { return 7 }
+    return 0
+}
+
+// Returns true if JSON data value type (code) satisfies schema type code.
+// data_type uses schema codes (3=number) after the val_json_type→val_type mapping.
+// RT-122: old code had data_type==4, but data is mapped to 3 before call; fixed to 3.
+fun typeCompatible(schema_type: u8, data_type: u8) -> Bool {
+    if schema_type == 0 { return true }   // unset = no constraint
+    if schema_type == data_type { return true }
+    if schema_type == 4 && data_type == 3 { return true }  // integer accepts number (validated below)
+    return false
+}
+
+// ============================================================
+// Integer output helpers (same as zlog_mini.0)
+// ============================================================
+
+fun decDigit(d: u8) -> String {
+    if d == 0 { return "0" }
+    if d == 1 { return "1" }
+    if d == 2 { return "2" }
+    if d == 3 { return "3" }
+    if d == 4 { return "4" }
+    if d == 5 { return "5" }
+    if d == 6 { return "6" }
+    if d == 7 { return "7" }
+    if d == 8 { return "8" }
+    if d == 9 { return "9" }
+    return "0"
+}
+
+// Write a usize value to stdout as decimal digits.
+// Uses world.out.write pattern: must be called with specific world handling.
+// Returns new world (cannot return World; must inline in main).
+
+// ============================================================
+// Main
+// ============================================================
+
+pub fun main(world: World) -> Void raises {
+    let argc = std.args.len()
+
+    if argc < 2 {
+        check world.out.write("{\"error_code\":\"UNKNOWN_COMMAND\",\"retryable\":false,\"error\":\"Usage: jsonschema <validate|--version|--describe>\"}\n")
+        return
+    }
+
+    let cmd_opt = std.args.get(1)
+    if cmd_opt.has == false {
+        check world.out.write("{\"error_code\":\"UNKNOWN_COMMAND\",\"retryable\":false}\n")
+        return
+    }
+    let cmd = cmd_opt.value
+
+    if std.mem.eql(cmd, "--version") {
+        check world.out.write("{\"name\":\"jsonschema\",\"version\":\"0.1.8\",\"schema_version\":1}\n")
+        return
+    }
+
+    if std.mem.eql(cmd, "--describe") {
+        check world.out.write("{\n")
+        check world.out.write("  \"name\": \"jsonschema\",\n")
+        check world.out.write("  \"version\": \"0.1.8\",\n")
+        check world.out.write("  \"schema_version\": 1,\n")
+        check world.out.write("  \"description\": \"JSON Schema Draft-07 subset validator. Validates a JSON data object against a JSON Schema inline argument. Machine-readable on every code path. No interactive prompts.\",\n")
+        check world.out.write("  \"commands\": [{\"name\": \"validate\", \"description\": \"Validate data against a schema.\"}],\n")
+        check world.out.write("  \"flags\": [\n")
+        check world.out.write("    {\"name\": \"--schema\", \"type\": \"string\", \"required\": true, \"description\": \"JSON Schema object as inline string. Supported keywords: type, required, properties (with type/minLength/maxLength/minimum/maximum/enum/const per-property; depth 2 supports type/minLength/maxLength/minimum/maximum), additionalProperties:false.\"},\n")
+        check world.out.write("    {\"name\": \"--data\",   \"type\": \"string\", \"required\": true, \"description\": \"JSON data object to validate, as inline string.\"}\n")
+        check world.out.write("  ],\n")
+        check world.out.write("  \"output_schema\": {\n")
+        check world.out.write("    \"valid\": \"boolean\",\n")
+        check world.out.write("    \"schema_version\": \"integer always 1\",\n")
+        check world.out.write("    \"errors\": \"array of error objects (absent when valid:true)\",\n")
+        check world.out.write("    \"error_schema\": {\"path\": \"string ($.field at depth 1; $.parent.child at depth 2)\", \"code\": \"string\", \"details\": \"string\"},\n")
+        check world.out.write("    \"validation_error_codes\": [\n")
+        check world.out.write("      {\"code\": \"REQUIRED_MISSING\",    \"numeric\": 1, \"description\": \"Required field absent from data.\"},\n")
+        check world.out.write("      {\"code\": \"TYPE_MISMATCH\",        \"numeric\": 2, \"description\": \"Field value has wrong JSON type.\"},\n")
+        check world.out.write("      {\"code\": \"MIN_LENGTH\",           \"numeric\": 3, \"description\": \"String value shorter than minLength.\"},\n")
+        check world.out.write("      {\"code\": \"MAX_LENGTH\",           \"numeric\": 4, \"description\": \"String value longer than maxLength.\"},\n")
+        check world.out.write("      {\"code\": \"MINIMUM\",              \"numeric\": 5, \"description\": \"Numeric value below minimum.\"},\n")
+        check world.out.write("      {\"code\": \"MAXIMUM\",              \"numeric\": 6, \"description\": \"Numeric value above maximum.\"},\n")
+        check world.out.write("      {\"code\": \"ENUM_MISMATCH\",        \"numeric\": 7, \"description\": \"Value not in enum array.\"},\n")
+        check world.out.write("      {\"code\": \"UNSUPPORTED_TYPE\",     \"numeric\": 8, \"description\": \"Schema root type is a known non-object type (e.g. string, integer, array); only object schemas are supported at root.\"},\n")
+        check world.out.write("      {\"code\": \"ADDITIONAL_PROPERTY\",  \"numeric\": 9, \"description\": \"Data has property not in schema (additionalProperties:false).\"},\n")
+        check world.out.write("      {\"code\": \"CONST_MISMATCH\",       \"numeric\": 10, \"description\": \"Value does not equal const.\"}\n")
+        check world.out.write("    ]\n")
+        check world.out.write("  },\n")
+        check world.out.write("  \"error_codes\": [\n")
+        check world.out.write("    {\"code\": \"UNKNOWN_COMMAND\", \"retryable\": false},\n")
+        check world.out.write("    {\"code\": \"MISSING_FLAG\",     \"retryable\": false},\n")
+        check world.out.write("    {\"code\": \"INVALID_INPUT\",    \"retryable\": false, \"description\": \"Schema or data exceeds size limit or is not a JSON object.\"},\n")
+        check world.out.write("    {\"code\": \"SCHEMA_ERROR\",     \"retryable\": false, \"description\": \"Schema keyword not recognized or value has wrong type.\"}\n")
+        check world.out.write("  ],\n")
+        check world.out.write("  \"v01_constraints\": {\n")
+        check world.out.write("    \"max_schema_bytes\": 4096,\n")
+        check world.out.write("    \"max_data_bytes\": 4096,\n")
+        check world.out.write("    \"max_properties\": 8,\n")
+        check world.out.write("    \"max_nested_properties\": 8,\n")
+        check world.out.write("    \"max_required\": 8,\n")
+        check world.out.write("    \"max_enum_values\": 8,\n")
+        check world.out.write("    \"max_errors\": 16,\n")
+        check world.out.write("    \"depth\": \"depth 1: full constraints; depth 2: type/minLength/maxLength/minimum/maximum; depth 3+: deferred to v0.2\",\n")
+        check world.out.write("    \"unsupported\": [\"pattern\", \"$ref\", \"anyOf\", \"allOf\", \"oneOf\", \"if/then/else\", \"format\", \"$schema meta-validation\", \"nested depth>2\", \"enum/const at depth 2\", \"required at depth 2\", \"additionalProperties at depth 2\", \"non-object root schema (emits UNSUPPORTED_TYPE)\", \"unknown keywords silently ignored\"]\n")
+        check world.out.write("  }\n")
+        check world.out.write("}\n")
+        return
+    }
+
+    if std.mem.eql(cmd, "validate") == false {
+        check world.out.write("{\"error_code\":\"UNKNOWN_COMMAND\",\"retryable\":false,\"error\":\"Unknown command. Run jsonschema --describe for usage.\"}\n")
+        return
+    }
+
+    // Parse --schema and --data flags
+    let mut schema_idx: usize = 0
+    let mut has_schema = false
+    let mut data_idx: usize = 0
+    let mut has_data = false
+
+    let mut ai: usize = 2
+    while ai < argc {
+        let flag_opt = std.args.get(ai)
+        if flag_opt.has {
+            let flag = flag_opt.value
+            if std.mem.eql(flag, "--schema") {
+                if ai + 1 < argc {
+                    let nxt = std.args.get(ai + 1)
+                    if nxt.has { schema_idx = ai + 1; has_schema = true; ai = ai + 1 }
+                }
+            } else {
+                if std.mem.eql(flag, "--data") {
+                    if ai + 1 < argc {
+                        let nxt = std.args.get(ai + 1)
+                        if nxt.has { data_idx = ai + 1; has_data = true; ai = ai + 1 }
+                    }
+                }
+            }
+        }
+        ai = ai + 1
+    }
+
+    if has_schema == false {
+        check world.out.write("{\"error_code\":\"MISSING_FLAG\",\"retryable\":false,\"error\":\"--schema is required\"}\n")
+        return
+    }
+    if has_data == false {
+        check world.out.write("{\"error_code\":\"MISSING_FLAG\",\"retryable\":false,\"error\":\"--data is required\"}\n")
+        return
+    }
+
+    let schema_arg = std.args.get(schema_idx)
+    let data_arg   = std.args.get(data_idx)
+    if schema_arg.has == false || data_arg.has == false {
+        check world.out.write("{\"error_code\":\"MISSING_FLAG\",\"retryable\":false,\"error\":\"Schema or data arg missing\"}\n")
+        return
+    }
+
+    let sch_sp  = std.mem.span(schema_arg.value)
+    let sch_len = std.mem.len(sch_sp)
+    let dat_sp  = std.mem.span(data_arg.value)
+    let dat_len = std.mem.len(dat_sp)
+
+    if sch_len > 4096 {
+        check world.out.write("{\"error_code\":\"INVALID_INPUT\",\"retryable\":false,\"error\":\"--schema exceeds 4096 bytes\"}\n")
+        return
+    }
+    if dat_len > 4096 {
+        check world.out.write("{\"error_code\":\"INVALID_INPUT\",\"retryable\":false,\"error\":\"--data exceeds 4096 bytes\"}\n")
+        return
+    }
+
+    // Schema must be an object
+    let sch_start = skipWS(sch_sp, sch_len, 0)
+    if sch_start >= sch_len || sch_sp[sch_start] != 123 {
+        check world.out.write("{\"error_code\":\"INVALID_INPUT\",\"retryable\":false,\"error\":\"--schema must be a JSON object\"}\n")
+        return
+    }
+    // Data must be an object
+    let dat_start = skipWS(dat_sp, dat_len, 0)
+    if dat_start >= dat_len || dat_sp[dat_start] != 123 {
+        check world.out.write("{\"error_code\":\"INVALID_INPUT\",\"retryable\":false,\"error\":\"--data must be a JSON object\"}\n")
+        return
+    }
+
+    // ============================================================
+    // Parse schema constraints
+    // ============================================================
+
+    // Top-level type
+    let type_val_pos = findKey(sch_sp, sch_len, sch_start, "type")
+    let mut top_type: u8 = 0
+    if type_val_pos < sch_len {
+        top_type = parseTypeCode(sch_sp, sch_len, type_val_pos)
+    }
+
+    // Required array: collect positions of required key strings (up to 8)
+    let req_arr_pos = findKey(sch_sp, sch_len, sch_start, "required")
+    let mut req_key_pos: [8]usize = [0, 0, 0, 0, 0, 0, 0, 0]
+    let mut req_count: usize = 0
+    if req_arr_pos < sch_len && sch_sp[skipWS(sch_sp, sch_len, req_arr_pos)] == 91 {
+        let mut rp = skipWS(sch_sp, sch_len, req_arr_pos)
+        rp = rp + 1  // past '['
+        while rp < sch_len && req_count < 8 {
+            rp = skipWS(sch_sp, sch_len, rp)
+            if rp >= sch_len || sch_sp[rp] == 93 { rp = sch_len }  // end of array (break)
+            else {
+                if sch_sp[rp] == 34 {
+                    req_key_pos[req_count] = rp
+                    req_count = req_count + 1
+                    rp = skipJsonString(sch_sp, sch_len, rp)
+                    rp = skipWS(sch_sp, sch_len, rp)
+                    if rp < sch_len && sch_sp[rp] == 44 { rp = rp + 1 }
+                } else {
+                    rp = sch_len  // unexpected — stop
+                }
+            }
+        }
+    }
+
+    // Properties: enumerate property names and their constraint sub-schemas (up to 8)
+    let props_pos = findKey(sch_sp, sch_len, sch_start, "properties")
+    let mut prop_key_pos:  [8]usize = [0, 0, 0, 0, 0, 0, 0, 0]  // pos of key in sch_sp
+    let mut prop_type:     [8]u8    = [0, 0, 0, 0, 0, 0, 0, 0]  // type code
+    let mut prop_min_len:  [8]i64   = [-1, -1, -1, -1, -1, -1, -1, -1]
+    let mut prop_max_len:  [8]i64   = [-1, -1, -1, -1, -1, -1, -1, -1]
+    let mut prop_minimum:  [8]i64   = [0, 0, 0, 0, 0, 0, 0, 0]
+    let mut prop_maximum:  [8]i64   = [0, 0, 0, 0, 0, 0, 0, 0]
+    let mut prop_has_min:  [8]bool  = [false, false, false, false, false, false, false, false]
+    let mut prop_has_max:  [8]bool  = [false, false, false, false, false, false, false, false]
+    let mut prop_has_enum:  [8]bool  = [false, false, false, false, false, false, false, false]
+    let mut prop_enum_pos:  [8]usize = [0, 0, 0, 0, 0, 0, 0, 0]  // pos of enum array in sch_sp
+    let mut prop_has_const: [8]bool  = [false, false, false, false, false, false, false, false]
+    let mut prop_const_pos: [8]usize = [0, 0, 0, 0, 0, 0, 0, 0]  // pos of const value in sch_sp
+    let mut prop_has_nested: [8]bool  = [false, false, false, false, false, false, false, false]
+    let mut prop_nested_props_pos: [8]usize = [0, 0, 0, 0, 0, 0, 0, 0]  // pos of nested properties '{' in sch_sp
+    let mut prop_count: usize = 0
+    // Nested property arrays (reused per outer property during data walk)
+    let mut np_key_pos: [8]usize = [0, 0, 0, 0, 0, 0, 0, 0]
+    let mut np_type: [8]u8 = [0, 0, 0, 0, 0, 0, 0, 0]
+    let mut np_min_len: [8]i64 = [-1, -1, -1, -1, -1, -1, -1, -1]
+    let mut np_max_len: [8]i64 = [-1, -1, -1, -1, -1, -1, -1, -1]
+    let mut np_minimum: [8]i64 = [0, 0, 0, 0, 0, 0, 0, 0]
+    let mut np_maximum: [8]i64 = [0, 0, 0, 0, 0, 0, 0, 0]
+    let mut np_has_min: [8]bool = [false, false, false, false, false, false, false, false]
+    let mut np_has_max: [8]bool = [false, false, false, false, false, false, false, false]
+    let mut np_count: usize = 0
+
+    let props_ws_pos = if props_pos < sch_len { skipWS(sch_sp, sch_len, props_pos) } else { sch_len }
+    if props_ws_pos < sch_len && sch_sp[props_ws_pos] == 123 {
+        let mut pp = props_ws_pos + 1  // past '{'
+        while pp < sch_len && prop_count < 8 {
+            pp = skipWS(sch_sp, sch_len, pp)
+            if pp >= sch_len || sch_sp[pp] == 125 { pp = sch_len }  // end (break)
+            else {
+                if sch_sp[pp] != 34 { pp = sch_len }  // unexpected
+                else {
+                    // Store property key position
+                    prop_key_pos[prop_count] = pp
+                    // Skip key to get to ':'
+                    let key_end = skipJsonString(sch_sp, sch_len, pp)
+                    let colon_pos = skipWS(sch_sp, sch_len, key_end)
+                    if colon_pos >= sch_len || sch_sp[colon_pos] != 58 { pp = sch_len }
+                    else {
+                        let sub_start = skipWS(sch_sp, sch_len, colon_pos + 1)
+                        // sub-schema should be an object
+                        if sub_start < sch_len && sch_sp[sub_start] == 123 {
+                            // Extract constraints from sub-schema
+                            let ptype_pos = findKey(sch_sp, sch_len, sub_start, "type")
+                            if ptype_pos < sch_len {
+                                prop_type[prop_count] = parseTypeCode(sch_sp, sch_len, ptype_pos)
+                            }
+                            let pminl_pos = findKey(sch_sp, sch_len, sub_start, "minLength")
+                            if pminl_pos < sch_len {
+                                prop_min_len[prop_count] = jsonParseInt(sch_sp, sch_len, pminl_pos)
+                            }
+                            let pmaxl_pos = findKey(sch_sp, sch_len, sub_start, "maxLength")
+                            if pmaxl_pos < sch_len {
+                                prop_max_len[prop_count] = jsonParseInt(sch_sp, sch_len, pmaxl_pos)
+                            }
+                            let pmin_pos = findKey(sch_sp, sch_len, sub_start, "minimum")
+                            if pmin_pos < sch_len {
+                                prop_minimum[prop_count] = jsonParseInt(sch_sp, sch_len, pmin_pos)
+                                prop_has_min[prop_count] = true
+                            }
+                            let pmax_pos = findKey(sch_sp, sch_len, sub_start, "maximum")
+                            if pmax_pos < sch_len {
+                                prop_maximum[prop_count] = jsonParseInt(sch_sp, sch_len, pmax_pos)
+                                prop_has_max[prop_count] = true
+                            }
+                            let penum_pos = findKey(sch_sp, sch_len, sub_start, "enum")
+                            if penum_pos < sch_len {
+                                let penum_ws = skipWS(sch_sp, sch_len, penum_pos)
+                                if penum_ws < sch_len && sch_sp[penum_ws] == 91 {
+                                    prop_has_enum[prop_count] = true
+                                    prop_enum_pos[prop_count] = penum_ws
+                                }
+                            }
+                            let pconst_pos = findKey(sch_sp, sch_len, sub_start, "const")
+                            if pconst_pos < sch_len {
+                                prop_has_const[prop_count] = true
+                                prop_const_pos[prop_count] = pconst_pos
+                            }
+                            // Nested properties (v0.1.7): if sub-schema type is object, look for sub-properties
+                            if prop_type[prop_count] == 1 {
+                                let pnested_pos = findKey(sch_sp, sch_len, sub_start, "properties")
+                                if pnested_pos < sch_len {
+                                    let pnested_ws = skipWS(sch_sp, sch_len, pnested_pos)
+                                    if pnested_ws < sch_len && sch_sp[pnested_ws] == 123 {
+                                        prop_has_nested[prop_count] = true
+                                        prop_nested_props_pos[prop_count] = pnested_ws
+                                    }
+                                }
+                            }
+                        }
+                        pp = skipJsonValue(sch_sp, sch_len, sub_start)
+                        pp = skipWS(sch_sp, sch_len, pp)
+                        if pp < sch_len && sch_sp[pp] == 44 { pp = pp + 1 }
+                        prop_count = prop_count + 1
+                    }
+                }
+            }
+        }
+    }
+
+    // Parse additionalProperties: false (v0.1.5)
+    let mut has_addl_props_false = false
+    let addl_pos = findKey(sch_sp, sch_len, sch_start, "additionalProperties")
+    if addl_pos < sch_len {
+        let addl_ws = skipWS(sch_sp, sch_len, addl_pos)
+        if addl_ws < sch_len && sch_sp[addl_ws] == 102 { has_addl_props_false = true }
+    }
+
+    // ============================================================
+    // Validate data
+    // ============================================================
+
+    // Error collection: code + property index.
+    // pidx 200 = additional property sentinel (path read from err_data_key_pos).
+    // pidx 201 = nested property error sentinel (parent from err_parent_prop_idx, key from err_nested_key_pos).
+    let mut err_codes:            [16]u8    = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    let mut err_prop_idx:         [16]usize = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    let mut err_data_key_pos:     [16]usize = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    let mut err_nested_key_pos:   [16]usize = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    let mut err_parent_prop_idx:  [16]usize = [255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255]
+    let mut err_count: usize = 0
+
+    // Track which required fields were found
+    let mut req_found: [8]bool = [false, false, false, false, false, false, false, false]
+
+    // Check top-level type
+    if top_type != 0 && top_type != 1 {
+        // Schema says non-object type; we only support object validation for v0.1
+        if err_count < 16 { err_codes[err_count] = 8; err_prop_idx[err_count] = 0; err_count = err_count + 1 }
+    }
+
+    // Scan data object for properties
+    let mut dp = dat_start + 1  // past '{'
+    while dp < dat_len {
+        dp = skipWS(dat_sp, dat_len, dp)
+        if dp >= dat_len || dat_sp[dp] == 125 { dp = dat_len }  // end of object (break)
+        else {
+            if dat_sp[dp] != 34 { dp = dat_len }  // unexpected
+            else {
+                let data_key_pos = dp
+                dp = skipJsonString(dat_sp, dat_len, dp)
+                dp = skipWS(dat_sp, dat_len, dp)
+                if dp >= dat_len || dat_sp[dp] != 58 { dp = dat_len }
+                else {
+                    dp = dp + 1  // past ':'
+                    dp = skipWS(dat_sp, dat_len, dp)
+                    let data_val_pos = dp
+
+                    // Check if this key matches any schema property
+                    let mut pi: usize = 0
+                    let mut matched_prop: usize = 255  // 255 = no match
+                    while pi < prop_count {
+                        if jsonStrEq(sch_sp, sch_len, prop_key_pos[pi], dat_sp, dat_len, data_key_pos) {
+                            matched_prop = pi
+                            pi = prop_count  // break
+                        }
+                        pi = pi + 1
+                    }
+
+                    // Check if this key matches any required field
+                    let mut ri: usize = 0
+                    while ri < req_count {
+                        if jsonStrEq(sch_sp, sch_len, req_key_pos[ri], dat_sp, dat_len, data_key_pos) {
+                            req_found[ri] = true
+                        }
+                        ri = ri + 1
+                    }
+
+                    // Validate against matched property constraints
+                    if matched_prop < 255 {
+                        let mp = matched_prop
+                        let p_type = prop_type[mp]
+
+                        if p_type != 0 {
+                            // Check value type
+                            let val_json_type = detectValueType(dat_sp, dat_len, data_val_pos)
+                            // Map JSON type to schema type code
+                            let mut val_type: u8 = 0
+                            if val_json_type == 1 { val_type = 1 }       // object
+                            if val_json_type == 2 { val_type = 7 }       // array
+                            if val_json_type == 3 { val_type = 2 }       // string
+                            if val_json_type == 4 { val_type = 3 }       // number (or integer)
+                            if val_json_type == 5 { val_type = 5 }       // boolean
+                            if val_json_type == 6 { val_type = 6 }       // null
+
+                            if typeCompatible(p_type, val_type) == false {
+                                if err_count < 16 { err_codes[err_count] = 2; err_prop_idx[err_count] = mp; err_count = err_count + 1 }
+                            } else {
+                                // Type OK — check string length constraints
+                                if p_type == 2 && val_type == 2 {
+                                    let slen = jsonStringLen(dat_sp, dat_len, data_val_pos) as i64
+                                    if prop_min_len[mp] >= 0 && slen < prop_min_len[mp] {
+                                        if err_count < 16 { err_codes[err_count] = 3; err_prop_idx[err_count] = mp; err_count = err_count + 1 }
+                                    }
+                                    if prop_max_len[mp] >= 0 && slen > prop_max_len[mp] {
+                                        if err_count < 16 { err_codes[err_count] = 4; err_prop_idx[err_count] = mp; err_count = err_count + 1 }
+                                    }
+                                }
+                                // Check numeric range constraints
+                                if (p_type == 3 || p_type == 4) && (val_type == 3) {
+                                    let num_val = jsonParseInt(dat_sp, dat_len, data_val_pos)
+                                    if prop_has_min[mp] && num_val < prop_minimum[mp] {
+                                        if err_count < 16 { err_codes[err_count] = 5; err_prop_idx[err_count] = mp; err_count = err_count + 1 }
+                                    }
+                                    if prop_has_max[mp] && num_val > prop_maximum[mp] {
+                                        if err_count < 16 { err_codes[err_count] = 6; err_prop_idx[err_count] = mp; err_count = err_count + 1 }
+                                    }
+                                }
+                                // Check enum constraint
+                                if prop_has_enum[mp] {
+                                    let enum_arr = prop_enum_pos[mp]
+                                    // Scan enum array for a match with data value
+                                    let mut ep = enum_arr + 1  // past '['
+                                    let mut enum_matched = false
+                                    while ep < sch_len && enum_matched == false {
+                                        ep = skipWS(sch_sp, sch_len, ep)
+                                        if ep >= sch_len || sch_sp[ep] == 93 { ep = sch_len }  // end of array
+                                        else {
+                                            // Compare data value raw JSON against enum value raw JSON
+                                            let data_vt = detectValueType(dat_sp, dat_len, data_val_pos)
+                                            let enum_vt = detectValueType(sch_sp, sch_len, ep)
+                                            if data_vt == 3 && enum_vt == 3 {
+                                                // Both strings: compare
+                                                if jsonStrEq(dat_sp, dat_len, data_val_pos, sch_sp, sch_len, ep) {
+                                                    enum_matched = true
+                                                }
+                                            }
+                                            // For non-string enums: raw byte comparison.
+                                            // RT-121: jsonParseInt stops at 'e', so 1e5 parsed as 1
+                                            // — bypasses enum [1]. Raw comparison prevents this.
+                                            // P3 limitation: 1.0 won't match 1 (use consistent repr).
+                                            if data_vt != 3 {
+                                                if data_vt == enum_vt {
+                                                    let dv_s = skipWS(dat_sp, dat_len, data_val_pos)
+                                                    let dv_e = skipJsonValue(dat_sp, dat_len, data_val_pos)
+                                                    let ev_s = skipWS(sch_sp, sch_len, ep)
+                                                    let ev_e = skipJsonValue(sch_sp, sch_len, ep)
+                                                    let dv_l = dv_e - dv_s
+                                                    let ev_l = ev_e - ev_s
+                                                    if dv_l == ev_l {
+                                                        let mut bi: usize = 0
+                                                        let mut bm = true
+                                                        while bi < dv_l && bm {
+                                                            if dat_sp[dv_s + bi] != sch_sp[ev_s + bi] { bm = false }
+                                                            bi = bi + 1
+                                                        }
+                                                        if bm { enum_matched = true }
+                                                    }
+                                                }
+                                            }
+                                            ep = skipJsonValue(sch_sp, sch_len, ep)
+                                            ep = skipWS(sch_sp, sch_len, ep)
+                                            if ep < sch_len && sch_sp[ep] == 44 { ep = ep + 1 }
+                                        }
+                                    }
+                                    if enum_matched == false {
+                                        if err_count < 16 { err_codes[err_count] = 7; err_prop_idx[err_count] = mp; err_count = err_count + 1 }
+                                    }
+                                }
+                            }
+                        }
+
+                        // Check const constraint (independent of type; raw-byte for non-strings)
+                        if prop_has_const[mp] {
+                            let const_val_pos = prop_const_pos[mp]
+                            let const_ws = skipWS(sch_sp, sch_len, const_val_pos)
+                            let data_vt  = detectValueType(dat_sp, dat_len, data_val_pos)
+                            let const_vt = detectValueType(sch_sp, sch_len, const_ws)
+                            let mut const_matched = false
+                            if data_vt == 3 && const_vt == 3 {
+                                if jsonStrEq(dat_sp, dat_len, data_val_pos, sch_sp, sch_len, const_ws) {
+                                    const_matched = true
+                                }
+                            }
+                            if data_vt != 3 {
+                                if data_vt == const_vt {
+                                    let dv_s = skipWS(dat_sp, dat_len, data_val_pos)
+                                    let dv_e = skipJsonValue(dat_sp, dat_len, data_val_pos)
+                                    let cv_s = skipWS(sch_sp, sch_len, const_ws)
+                                    let cv_e = skipJsonValue(sch_sp, sch_len, const_ws)
+                                    let dv_l = dv_e - dv_s
+                                    let cv_l = cv_e - cv_s
+                                    if dv_l == cv_l {
+                                        let mut bi: usize = 0
+                                        let mut bm = true
+                                        while bi < dv_l && bm {
+                                            if dat_sp[dv_s + bi] != sch_sp[cv_s + bi] { bm = false }
+                                            bi = bi + 1
+                                        }
+                                        if bm { const_matched = true }
+                                    }
+                                }
+                            }
+                            if const_matched == false {
+                                if err_count < 16 { err_codes[err_count] = 10; err_prop_idx[err_count] = mp; err_count = err_count + 1 }
+                            }
+                        }
+
+                        // Nested properties validation (v0.1.7): type check at depth 2
+                        if prop_has_nested[mp] {
+                            let nested_obj_vt = detectValueType(dat_sp, dat_len, data_val_pos)
+                            if nested_obj_vt == 1 {
+                                // Parse nested schema properties for this outer property
+                                let nested_schema_start = prop_nested_props_pos[mp]
+                                np_count = 0
+                                let mut npp = nested_schema_start + 1  // past '{'
+                                while npp < sch_len && np_count < 8 {
+                                    npp = skipWS(sch_sp, sch_len, npp)
+                                    if npp >= sch_len || sch_sp[npp] == 125 { npp = sch_len }
+                                    else {
+                                        if sch_sp[npp] != 34 { npp = sch_len }
+                                        else {
+                                            np_key_pos[np_count] = npp
+                                            let nk_end = skipJsonString(sch_sp, sch_len, npp)
+                                            let nc_pos = skipWS(sch_sp, sch_len, nk_end)
+                                            if nc_pos >= sch_len || sch_sp[nc_pos] != 58 { npp = sch_len }
+                                            else {
+                                                let ns_start = skipWS(sch_sp, sch_len, nc_pos + 1)
+                                                np_type[np_count] = 0
+                                                np_min_len[np_count] = -1
+                                                np_max_len[np_count] = -1
+                                                np_has_min[np_count] = false
+                                                np_has_max[np_count] = false
+                                                if ns_start < sch_len && sch_sp[ns_start] == 123 {
+                                                    let nt_pos = findKey(sch_sp, sch_len, ns_start, "type")
+                                                    if nt_pos < sch_len {
+                                                        np_type[np_count] = parseTypeCode(sch_sp, sch_len, nt_pos)
+                                                    }
+                                                    let nminl = findKey(sch_sp, sch_len, ns_start, "minLength")
+                                                    if nminl < sch_len { np_min_len[np_count] = jsonParseInt(sch_sp, sch_len, nminl) }
+                                                    let nmaxl = findKey(sch_sp, sch_len, ns_start, "maxLength")
+                                                    if nmaxl < sch_len { np_max_len[np_count] = jsonParseInt(sch_sp, sch_len, nmaxl) }
+                                                    let nmin = findKey(sch_sp, sch_len, ns_start, "minimum")
+                                                    if nmin < sch_len { np_minimum[np_count] = jsonParseInt(sch_sp, sch_len, nmin); np_has_min[np_count] = true }
+                                                    let nmax = findKey(sch_sp, sch_len, ns_start, "maximum")
+                                                    if nmax < sch_len { np_maximum[np_count] = jsonParseInt(sch_sp, sch_len, nmax); np_has_max[np_count] = true }
+                                                }
+                                                npp = skipJsonValue(sch_sp, sch_len, ns_start)
+                                                npp = skipWS(sch_sp, sch_len, npp)
+                                                if npp < sch_len && sch_sp[npp] == 44 { npp = npp + 1 }
+                                                np_count = np_count + 1
+                                            }
+                                        }
+                                    }
+                                }
+                                // Walk nested data object and type-check each key
+                                let val_ws = skipWS(dat_sp, dat_len, data_val_pos)
+                                let mut ndp = val_ws + 1  // past '{'
+                                while ndp < dat_len {
+                                    ndp = skipWS(dat_sp, dat_len, ndp)
+                                    if ndp >= dat_len || dat_sp[ndp] == 125 { ndp = dat_len }
+                                    else {
+                                        if dat_sp[ndp] != 34 { ndp = dat_len }
+                                        else {
+                                            let nested_key_pos = ndp
+                                            ndp = skipJsonString(dat_sp, dat_len, ndp)
+                                            ndp = skipWS(dat_sp, dat_len, ndp)
+                                            if ndp >= dat_len || dat_sp[ndp] != 58 { ndp = dat_len }
+                                            else {
+                                                ndp = ndp + 1
+                                                ndp = skipWS(dat_sp, dat_len, ndp)
+                                                let nested_val_pos = ndp
+                                                // Find matching nested property
+                                                let mut npi: usize = 0
+                                                let mut matched_np: usize = 255
+                                                while npi < np_count {
+                                                    if jsonStrEq(sch_sp, sch_len, np_key_pos[npi], dat_sp, dat_len, nested_key_pos) {
+                                                        matched_np = npi
+                                                        npi = np_count
+                                                    }
+                                                    npi = npi + 1
+                                                }
+                                                // Type check nested property (depth 2)
+                                                if matched_np < 255 {
+                                                    let np_t = np_type[matched_np]
+                                                    if np_t != 0 {
+                                                        let nvjt = detectValueType(dat_sp, dat_len, nested_val_pos)
+                                                        let mut nval_t: u8 = 0
+                                                        if nvjt == 1 { nval_t = 1 }
+                                                        if nvjt == 2 { nval_t = 7 }
+                                                        if nvjt == 3 { nval_t = 2 }
+                                                        if nvjt == 4 { nval_t = 3 }
+                                                        if nvjt == 5 { nval_t = 5 }
+                                                        if nvjt == 6 { nval_t = 6 }
+                                                        if typeCompatible(np_t, nval_t) == false {
+                                                            if err_count < 16 {
+                                                                err_codes[err_count] = 2
+                                                                err_prop_idx[err_count] = 201
+                                                                err_parent_prop_idx[err_count] = mp
+                                                                err_nested_key_pos[err_count] = nested_key_pos
+                                                                err_count = err_count + 1
+                                                            }
+                                                        } else {
+                                                            // Type OK — depth-2 string length constraints (v0.1.8)
+                                                            if np_t == 2 && nval_t == 2 {
+                                                                let nslen = jsonStringLen(dat_sp, dat_len, nested_val_pos) as i64
+                                                                if np_min_len[matched_np] >= 0 && nslen < np_min_len[matched_np] {
+                                                                    if err_count < 16 { err_codes[err_count] = 3; err_prop_idx[err_count] = 201; err_parent_prop_idx[err_count] = mp; err_nested_key_pos[err_count] = nested_key_pos; err_count = err_count + 1 }
+                                                                }
+                                                                if np_max_len[matched_np] >= 0 && nslen > np_max_len[matched_np] {
+                                                                    if err_count < 16 { err_codes[err_count] = 4; err_prop_idx[err_count] = 201; err_parent_prop_idx[err_count] = mp; err_nested_key_pos[err_count] = nested_key_pos; err_count = err_count + 1 }
+                                                                }
+                                                            }
+                                                            // Depth-2 numeric range constraints (v0.1.8)
+                                                            if (np_t == 3 || np_t == 4) && nval_t == 3 {
+                                                                let nnum = jsonParseInt(dat_sp, dat_len, nested_val_pos)
+                                                                if np_has_min[matched_np] && nnum < np_minimum[matched_np] {
+                                                                    if err_count < 16 { err_codes[err_count] = 5; err_prop_idx[err_count] = 201; err_parent_prop_idx[err_count] = mp; err_nested_key_pos[err_count] = nested_key_pos; err_count = err_count + 1 }
+                                                                }
+                                                                if np_has_max[matched_np] && nnum > np_maximum[matched_np] {
+                                                                    if err_count < 16 { err_codes[err_count] = 6; err_prop_idx[err_count] = 201; err_parent_prop_idx[err_count] = mp; err_nested_key_pos[err_count] = nested_key_pos; err_count = err_count + 1 }
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                                ndp = skipJsonValue(dat_sp, dat_len, nested_val_pos)
+                                                ndp = skipWS(dat_sp, dat_len, ndp)
+                                                if ndp < dat_len && dat_sp[ndp] == 44 { ndp = ndp + 1 }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Additional property — in data but absent from schema properties.
+                    if matched_prop == 255 && has_addl_props_false {
+                        if err_count < 16 {
+                            err_codes[err_count] = 9
+                            err_prop_idx[err_count] = 200
+                            err_data_key_pos[err_count] = data_key_pos
+                            err_count = err_count + 1
+                        }
+                    }
+
+                    dp = skipJsonValue(dat_sp, dat_len, data_val_pos)
+                    dp = skipWS(dat_sp, dat_len, dp)
+                    if dp < dat_len && dat_sp[dp] == 44 { dp = dp + 1 }
+                }
+            }
+        }
+    }
+
+    // Check required fields
+    let mut ri2: usize = 0
+    while ri2 < req_count {
+        if req_found[ri2] == false {
+            if err_count < 16 { err_codes[err_count] = 1; err_prop_idx[err_count] = ri2 + 128; err_count = err_count + 1 }
+        }
+        ri2 = ri2 + 1
+    }
+
+    // ============================================================
+    // Emit result
+    // ============================================================
+
+    if err_count == 0 {
+        check world.out.write("{\"valid\":true,\"schema_version\":1}\n")
+        return
+    }
+
+    // Emit errors array
+    check world.out.write("{\"valid\":false,\"schema_version\":1,\"errors\":[")
+
+    let mut ei: usize = 0
+    let mut fn_cb: [1]u8 = [0]
+    while ei < err_count {
+        if ei > 0 { check world.out.write(",") }
+        let code = err_codes[ei]
+        let pidx = err_prop_idx[ei]
+
+        // RT-213 fix: UNSUPPORTED_TYPE (code 8) is a root-level error — path is "$" not "$."
+        if code == 8 {
+            check world.out.write("{\"path\":\"$")
+        } else {
+            check world.out.write("{\"path\":\"$.")
+        }
+
+        // Emit property path (skipped for code 8 since pidx=0 and prop_count=0 for UNSUPPORTED_TYPE)
+        if pidx == 201 {
+            // Nested property error — path: $.parent.nested_key
+            let pp_idx = err_parent_prop_idx[ei]
+            if pp_idx < prop_count {
+                let pk_pos = prop_key_pos[pp_idx]
+                let pk_p = skipWS(sch_sp, sch_len, pk_pos)
+                if pk_p < sch_len && sch_sp[pk_p] == 34 {
+                    let mut pk_q = pk_p + 1
+                    while pk_q < sch_len {
+                        let b = sch_sp[pk_q]
+                        if b == 34 { pk_q = sch_len }
+                        else if b == 92 {
+                            pk_q = pk_q + 1
+                            if pk_q < sch_len {
+                                fn_cb[0] = 92
+                                check world.out.write(fn_cb)
+                                fn_cb[0] = sch_sp[pk_q]
+                                check world.out.write(fn_cb)
+                                pk_q = pk_q + 1
+                            }
+                        } else {
+                            fn_cb[0] = b
+                            check world.out.write(fn_cb)
+                            pk_q = pk_q + 1
+                        }
+                    }
+                }
+            }
+            check world.out.write(".")
+            // Then nested key from dat_sp
+            let nk_pos = err_nested_key_pos[ei]
+            let nk_p = skipWS(dat_sp, dat_len, nk_pos)
+            if nk_p < dat_len && dat_sp[nk_p] == 34 {
+                let mut nk_q = nk_p + 1
+                while nk_q < dat_len {
+                    let b = dat_sp[nk_q]
+                    if b == 34 { nk_q = dat_len }
+                    else if b == 92 {
+                        nk_q = nk_q + 1
+                        if nk_q < dat_len {
+                            fn_cb[0] = 92
+                            check world.out.write(fn_cb)
+                            fn_cb[0] = dat_sp[nk_q]
+                            check world.out.write(fn_cb)
+                            nk_q = nk_q + 1
+                        }
+                    } else {
+                        fn_cb[0] = b
+                        check world.out.write(fn_cb)
+                        nk_q = nk_q + 1
+                    }
+                }
+            }
+        } else if pidx == 200 {
+            // Additional property error — path from dat_sp via err_data_key_pos
+            let dk_pos = err_data_key_pos[ei]
+            let dk_p = skipWS(dat_sp, dat_len, dk_pos)
+            if dk_p < dat_len && dat_sp[dk_p] == 34 {
+                let mut dk_q = dk_p + 1
+                while dk_q < dat_len {
+                    let b = dat_sp[dk_q]
+                    if b == 34 { dk_q = dat_len }
+                    else if b == 92 {
+                        dk_q = dk_q + 1
+                        if dk_q < dat_len {
+                            fn_cb[0] = 92
+                            check world.out.write(fn_cb)
+                            fn_cb[0] = dat_sp[dk_q]
+                            check world.out.write(fn_cb)
+                            dk_q = dk_q + 1
+                        }
+                    } else {
+                        fn_cb[0] = b
+                        check world.out.write(fn_cb)
+                        dk_q = dk_q + 1
+                    }
+                }
+            }
+        } else {
+            if pidx >= 128 {
+                // Required field error — path comes from req_key_pos
+                let req_idx = pidx - 128
+                if req_idx < req_count {
+                    // Write the key bytes from schema span
+                    let rk_pos = req_key_pos[req_idx]
+                    let rk_p = skipWS(sch_sp, sch_len, rk_pos)
+                    if rk_p < sch_len && sch_sp[rk_p] == 34 {
+                        let mut rk_q = rk_p + 1
+                        while rk_q < sch_len {
+                            let b = sch_sp[rk_q]
+                            if b == 34 { rk_q = sch_len }
+                            else if b == 92 {
+                                // RT-116: preserve escape sequence — write \ then escaped char.
+                                // Writing only the escaped char drops the \, causing raw " to
+                                // appear in the JSON string context and breaking output validity.
+                                rk_q = rk_q + 1
+                                if rk_q < sch_len {
+                                    fn_cb[0] = 92
+                                    check world.out.write(fn_cb)
+                                    fn_cb[0] = sch_sp[rk_q]
+                                    check world.out.write(fn_cb)
+                                    rk_q = rk_q + 1
+                                }
+                            } else {
+                                fn_cb[0] = b
+                                check world.out.write(fn_cb)
+                                rk_q = rk_q + 1
+                            }
+                        }
+                    }
+                }
+            } else {
+                // Property error — path comes from prop_key_pos
+                if pidx < prop_count {
+                    let pk_pos = prop_key_pos[pidx]
+                    let pk_p = skipWS(sch_sp, sch_len, pk_pos)
+                    if pk_p < sch_len && sch_sp[pk_p] == 34 {
+                        let mut pk_q = pk_p + 1
+                        while pk_q < sch_len {
+                            let b = sch_sp[pk_q]
+                            if b == 34 { pk_q = sch_len }
+                            else if b == 92 {
+                                // RT-116: preserve escape sequence — write \ then escaped char.
+                                pk_q = pk_q + 1
+                                if pk_q < sch_len {
+                                    fn_cb[0] = 92
+                                    check world.out.write(fn_cb)
+                                    fn_cb[0] = sch_sp[pk_q]
+                                    check world.out.write(fn_cb)
+                                    pk_q = pk_q + 1
+                                }
+                            } else {
+                                fn_cb[0] = b
+                                check world.out.write(fn_cb)
+                                pk_q = pk_q + 1
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        check world.out.write("\",\"code\":\"")
+
+        if code == 1 { check world.out.write("REQUIRED_MISSING") }
+        if code == 2 { check world.out.write("TYPE_MISMATCH") }
+        if code == 3 { check world.out.write("MIN_LENGTH") }
+        if code == 4 { check world.out.write("MAX_LENGTH") }
+        if code == 5 { check world.out.write("MINIMUM") }
+        if code == 6 { check world.out.write("MAXIMUM") }
+        if code == 7 { check world.out.write("ENUM_MISMATCH") }
+        if code == 8 { check world.out.write("UNSUPPORTED_TYPE") }
+        if code == 9  { check world.out.write("ADDITIONAL_PROPERTY") }
+        if code == 10 { check world.out.write("CONST_MISMATCH") }
+
+        check world.out.write("\"}")
+        ei = ei + 1
+    }
+
+    check world.out.write("]}\n")
+}
