@@ -1,7 +1,0 @@
-{
-  "schemaVersion": 1,
-  "format": "zero-lock-v1",
-  "package": {"name": "test_crossraise", "version": "0.1.0"},
-  "dependencyGraphHash": "d7fa0d06fe912180",
-  "dependencies": []
-}
