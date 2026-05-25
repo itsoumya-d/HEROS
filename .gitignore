@@ -5,6 +5,10 @@ forge/forge
 ledger/ledger
 forge/forge-analyze
 
+# Zero compiler cache (platform-specific, regenerated automatically)
+.zero/
+**/.zero/
+
 # Compiled binaries (keep .0 source files)
 *.elf
 *.bin
