@@ -488,7 +488,7 @@ invoke_ledger() {
     # When HEROS_API_KEY is set, every call is authenticated against .heros-keys.
     # Unauthenticated calls are allowed only when HEROS_API_KEY is unset (migration mode).
     local _api_key="${HEROS_API_KEY:-}"
-    local _auth_ok=false _key_id="" _key_scope="" _org_id=""
+    local _key_id="" _key_scope="" _org_id=""
     if [[ -n "$_api_key" ]]; then
         local _required_scope="ro"
         case "$name" in
@@ -506,8 +506,12 @@ invoke_ledger() {
                 echo '{"error_code":"INSUFFICIENT_SCOPE","retryable":false,"hint":"Use an rw-scoped key for write operations"}'
                 return ;;
             0)
-                _auth_ok=true
                 IFS='_' read -r _ _key_scope _key_id _ <<< "$_api_key"
+                case "$name" in
+                    ledger_register|ledger_invoice_create|ledger_invoice_list|ledger_invoice_count)
+                        _audit "$_key_id" "$_key_scope" "$name" "$_org_id"
+                        ;;
+                esac
                 ;;
             *)
                 _audit_fail 1
@@ -794,9 +798,8 @@ invoke_ledger() {
     esac
 
     # Audit every authenticated dispatch (including binary-level failures — RT-128 audit note)
-    if [[ "$_auth_ok" == "true" ]]; then
-        _audit "$_key_id" "$_key_scope" "$name" "$_org_id"
-    fi
+    # Authenticated known-tool dispatches are audited immediately after auth succeeds.
+    # That captures early validation/storage failures without auditing unknown tool names.
 }
 
 # ── handle_message — dispatch one JSON-RPC 2.0 message ────────────────────
