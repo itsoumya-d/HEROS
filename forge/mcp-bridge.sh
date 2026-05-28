@@ -259,10 +259,15 @@ _audit() {
 # rc: 1=INVALID_API_KEY 2=API_KEY_REVOKED 3=INSUFFICIENT_SCOPE
 _audit_fail() {
     local rc="$1"
+    local prefix="$2"
     local epoch
     epoch=$(date +%s 2>/dev/null || echo "0")
-    printf '%s FAIL rc=%s\n' "$epoch" "$rc" \
-        >> "${HEROS_DATA_DIR}/.heros-audit-failed" 2>/dev/null || true
+    local log_file="${HEROS_DATA_DIR}/.heros-audit-failed"
+    printf '%s %s FAIL rc=%s\n' "$epoch" "$prefix" "$rc" \
+        >> "$log_file" 2>/dev/null || true
+    if [[ -f "$log_file" ]] && (( $(wc -l < "$log_file" 2>/dev/null || echo 0) > 100 )); then
+        ( flock -x 200 && if (( $(wc -l < "$log_file" 2>/dev/null || echo 0) > 100 )); then tail -n 50 "$log_file" > "${log_file}.tmp" 2>/dev/null && mv "${log_file}.tmp" "$log_file" 2>/dev/null || true; fi ) 200>"${log_file}.lock"
+    fi
 }
 
 # ── Session state (global) ────────────────────────────────────────────────
@@ -552,16 +557,21 @@ handle_message() {
             local _forge_api_key="${HEROS_API_KEY:-}"
             local _forge_key_id="" _forge_key_scope="" _forge_org_id="" _forge_auth_ok=false
             if [[ -n "$_forge_api_key" ]]; then
+                local _forge_key_prefix="UNKNOWN"
+                if [[ "$_forge_api_key" =~ ^heros_(ro|rw)_([0-9a-f]{8}) ]]; then
+                    _forge_key_prefix="${BASH_REMATCH[2]}"
+                fi
+
                 local _forge_auth_rc=0
                 _forge_org_id=$(_validate_api_key "$_forge_api_key" "ro") || _forge_auth_rc=$?
                 case $_forge_auth_rc in
                     2)
-                        _audit_fail 2
+                        _audit_fail 2 "$_forge_key_prefix"
                         content_json=$(jq -cn \
                             '{"content":[{"type":"text","text":"{\"error_code\":\"API_KEY_REVOKED\",\"retryable\":false,\"hint\":\"Rotate key via `ledger key rotate`\"}"}],"isError":true}')
                         rpc_ok "$id" "$content_json"; return ;;
                     3)
-                        _audit_fail 3
+                        _audit_fail 3 "$_forge_key_prefix"
                         content_json=$(jq -cn \
                             '{"content":[{"type":"text","text":"{\"error_code\":\"INSUFFICIENT_SCOPE\",\"retryable\":false,\"hint\":\"forge_analyze requires ro or rw scope\"}"}],"isError":true}')
                         rpc_ok "$id" "$content_json"; return ;;
@@ -569,7 +579,7 @@ handle_message() {
                         _forge_auth_ok=true
                         IFS='_' read -r _ _forge_key_scope _forge_key_id _ <<< "$_forge_api_key" ;;
                     *)
-                        _audit_fail 1
+                        _audit_fail 1 "$_forge_key_prefix"
                         content_json=$(jq -cn \
                             '{"content":[{"type":"text","text":"{\"error_code\":\"INVALID_API_KEY\",\"retryable\":false,\"hint\":\"Obtain a valid key via `ledger key create --scope ro`\"}"}],"isError":true}')
                         rpc_ok "$id" "$content_json"; return ;;

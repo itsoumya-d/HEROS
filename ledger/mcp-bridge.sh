@@ -363,11 +363,16 @@ _audit() {
 # rc: 1=INVALID_API_KEY 2=API_KEY_REVOKED 3=INSUFFICIENT_SCOPE
 _audit_fail() {
     local rc="$1"
+    local prefix="$2"
     local epoch
     epoch=$(date +%s 2>/dev/null || echo "0")
-    printf '%s FAIL rc=%s\n' "$epoch" "$rc" \
-        >> "${HEROS_DATA_DIR}/.heros-audit-failed" || \
-        echo "[ledger-audit-warn] audit-failed write failed — check permissions/disk on ${HEROS_DATA_DIR}/.heros-audit-failed" >&2
+    local log_file="${HEROS_DATA_DIR}/.heros-audit-failed"
+    printf '%s %s FAIL rc=%s\n' "$epoch" "$prefix" "$rc" \
+        >> "$log_file" || \
+        echo "[ledger-audit-warn] audit-failed write failed — check permissions/disk on $log_file" >&2
+    if [[ -f "$log_file" ]] && (( $(wc -l < "$log_file" 2>/dev/null || echo 0) > 100 )); then
+        ( flock -x 200 && if (( $(wc -l < "$log_file" 2>/dev/null || echo 0) > 100 )); then tail -n 50 "$log_file" > "${log_file}.tmp" 2>/dev/null && mv "${log_file}.tmp" "$log_file" 2>/dev/null || true; fi ) 200>"${log_file}.lock"
+    fi
 }
 
 # ── Session state (global — mutated from handle_message) ──────────────────
@@ -490,6 +495,11 @@ invoke_ledger() {
     local _api_key="${HEROS_API_KEY:-}"
     local _key_id="" _key_scope="" _org_id=""
     if [[ -n "$_api_key" ]]; then
+        local _key_prefix="UNKNOWN"
+        if [[ "$_api_key" =~ ^heros_(ro|rw)_([0-9a-f]{8}) ]]; then
+            _key_prefix="${BASH_REMATCH[2]}"
+        fi
+
         local _required_scope="ro"
         case "$name" in
             ledger_register|ledger_invoice_create) _required_scope="rw" ;;
@@ -498,11 +508,11 @@ invoke_ledger() {
         _org_id=$(_validate_api_key "$_api_key" "$_required_scope") || _auth_rc=$?
         case $_auth_rc in
             2)
-                _audit_fail 2
+                _audit_fail 2 "$_key_prefix"
                 echo '{"error_code":"API_KEY_REVOKED","retryable":false,"hint":"Rotate key via `ledger key rotate`"}'
                 return ;;
             3)
-                _audit_fail 3
+                _audit_fail 3 "$_key_prefix"
                 echo '{"error_code":"INSUFFICIENT_SCOPE","retryable":false,"hint":"Use an rw-scoped key for write operations"}'
                 return ;;
             0)
@@ -514,7 +524,7 @@ invoke_ledger() {
                 esac
                 ;;
             *)
-                _audit_fail 1
+                _audit_fail 1 "$_key_prefix"
                 echo '{"error_code":"INVALID_API_KEY","retryable":false,"hint":"Obtain a valid key via `ledger key create --scope rw`"}'
                 return ;;
         esac
