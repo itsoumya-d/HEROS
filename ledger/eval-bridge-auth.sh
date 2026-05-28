@@ -79,9 +79,9 @@ REV_HASH=$(_hmac "$REV_KEY_ID" "$REV_SECRET")
 
 # .heros-keys: key_id scope org_id hmac_hash created_epoch revoked
 {
-    printf '%s rw org_eval %s 1716000000 0\n' "$RW_KEY_ID" "$RW_HASH"
-    printf '%s ro org_eval %s 1716000001 0\n' "$RO_KEY_ID" "$RO_HASH"
-    printf '%s rw org_eval %s 1716000002 1\n' "$REV_KEY_ID" "$REV_HASH"
+    printf '%s rw org_00000003 %s 1716000000 0\n' "$RW_KEY_ID" "$RW_HASH"
+    printf '%s ro org_00000003 %s 1716000001 0\n' "$RO_KEY_ID" "$RO_HASH"
+    printf '%s rw org_00000003 %s 1716000002 1\n' "$REV_KEY_ID" "$REV_HASH"
 } > "${TEST_DIR}/.heros-keys"
 
 # Full API key strings

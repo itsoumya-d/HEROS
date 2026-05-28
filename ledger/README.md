@@ -98,12 +98,12 @@ Provisions an accounting org. Idempotent: if the org already exists, returns `OR
 
 **Success:**
 ```json
-{"org_id":"org_A1B2C3D4","org_name":"MyOrg","created_at":1747526400,"status":"ok"}
+{"org_id":"org_a1b2c3d4","org_name":"MyOrg","created_at":1747526400,"status":"ok"}
 ```
 
 **Org already exists:**
 ```json
-{"org_id":"org_A1B2C3D4","org_name":"MyOrg","created_at":1747526400,"error_code":"ORG_EXISTS","error":"Org already registered"}
+{"org_id":"org_a1b2c3d4","org_name":"MyOrg","created_at":1747526400,"error_code":"ORG_EXISTS","error":"Org already registered"}
 ```
 
 ---

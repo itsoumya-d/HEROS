@@ -41,7 +41,7 @@ export HEROS_DATA_DIR="$TMP"
 _source_bridge "$TMP"
 
 # ── BA-01: key-gen produces valid JSON with expected fields ──────────────────
-BA01_ORG="org_test_1"
+BA01_ORG="org_00000001"
 BA01_OUT=$(bash "${SCRIPT_DIR}/key-gen.sh" --scope rw --org-id "$BA01_ORG" 2>&1)
 if jq -e '.status == "ok" and (.key | startswith("heros_rw_")) and .key_id and .warning' \
     <<< "$BA01_OUT" >/dev/null 2>&1; then
@@ -139,12 +139,20 @@ fi
 
 # ── BA-10: key-gen rejects empty HEROS_HMAC_SEED ────────────────────────────
 HEROS_HMAC_SEED=""
-BA10_OUT=$(bash "${SCRIPT_DIR}/key-gen.sh" --scope rw --org-id "org_x" 2>&1) || true
+BA10_OUT=$(bash "${SCRIPT_DIR}/key-gen.sh" --scope rw --org-id "org_00000004" 2>&1) || true
 HEROS_HMAC_SEED="$ORIG_SEED"
 if jq -e '.error_code == "INVALID_INPUT"' <<< "$BA10_OUT" >/dev/null 2>&1; then
     pass "BA-10" "key-gen rejects empty HEROS_HMAC_SEED with INVALID_INPUT"
 else
     fail "BA-10" "key-gen with empty seed: $BA10_OUT"
+fi
+
+# ── BA-11: key-gen rejects org_id values the bridges would reject ───────────
+BA11_OUT=$(bash "${SCRIPT_DIR}/key-gen.sh" --scope rw --org-id "org_x" 2>&1) || true
+if jq -e '.error_code == "INVALID_INPUT"' <<< "$BA11_OUT" >/dev/null 2>&1; then
+    pass "BA-11" "key-gen rejects invalid org_id before writing .heros-keys"
+else
+    fail "BA-11" "key-gen with invalid org_id: $BA11_OUT"
 fi
 
 # ── Summary ──────────────────────────────────────────────────────────────────

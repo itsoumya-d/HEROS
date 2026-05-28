@@ -41,7 +41,7 @@ export HEROS_DATA_DIR="$TMP"
 _source_forge_bridge "$TMP"
 
 # ── FA-01: key-gen (via ledger/key-gen.sh) creates key readable by forge bridge ─
-FA01_ORG="org_forge_test"
+FA01_ORG="org_00000002"
 FA01_OUT=$(bash "${LEDGER_DIR}/key-gen.sh" --scope ro --org-id "$FA01_ORG" 2>&1)
 if jq -e '.status == "ok" and (.key | startswith("heros_ro_"))' <<< "$FA01_OUT" >/dev/null 2>&1; then
     pass "FA-01" "ledger/key-gen.sh creates ro key readable by forge bridge"

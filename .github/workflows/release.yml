@@ -20,8 +20,26 @@ permissions:
   packages: read
 
 jobs:
+  zero-compiler-config:
+    name: Zero compiler config
+    runs-on: ubuntu-22.04
+    timeout-minutes: 5
+    steps:
+      - name: Check Zero compiler variables
+        run: |
+          if [[ -z "${{ vars.ZERO_RELEASE_URL }}" || -z "${{ vars.ZERO_COMPILER_SHA256 }}" ]]; then
+            if [[ "${{ github.event_name }}" == "release" ]]; then
+              echo "ZERO_RELEASE_URL and ZERO_COMPILER_SHA256 must be configured for releases."
+              exit 1
+            fi
+            echo "::notice::ZERO_RELEASE_URL/ZERO_COMPILER_SHA256 are not configured; Zero compiler jobs are skipped on push. Configure repository variables to enable binary evals."
+          else
+            echo "Zero compiler variables configured."
+          fi
+
   build-and-sign:
     name: Build, sign, and verify
+    if: github.event_name == 'release' || (vars.ZERO_RELEASE_URL != '' && vars.ZERO_COMPILER_SHA256 != '')
     runs-on: ubuntu-22.04
     timeout-minutes: 30
     env:
@@ -275,6 +293,7 @@ jobs:
   # bridge eval builds forge inline via the mcp-bridge.sh FORGE_BIN env var).
   forge-bridge-eval:
     name: forge MCP bridge eval (V39 + RT-109)
+    if: github.event_name == 'release' || (vars.ZERO_RELEASE_URL != '' && vars.ZERO_COMPILER_SHA256 != '')
     runs-on: ubuntu-22.04
     timeout-minutes: 10
     steps:
@@ -329,7 +348,7 @@ jobs:
           bash ledger/eval-bridge-auth.sh
 
   # ── Ledger V44 key-gen + auth eval (BA series) ───────────────────────────
-  # Runs ledger/eval-auth.sh: 10 cases (BA-01..BA-10) covering:
+  # Runs ledger/eval-auth.sh: 11 cases (BA-01..BA-11) covering:
   # - BA-01: key-gen produces valid rw key JSON
   # - BA-02: generated rw key validates (validate_api_key returns org_id)
   # - BA-03: rw key satisfies ro scope requirement
@@ -340,6 +359,7 @@ jobs:
   # - BA-08: revoked key → API_KEY_REVOKED (rc=2)
   # - BA-09: empty HEROS_HMAC_SEED → INVALID_API_KEY (RT-132)
   # - BA-10: key-gen with empty HEROS_HMAC_SEED → INVALID_INPUT
+  # - BA-11: key-gen with invalid org_id → INVALID_INPUT
   ledger-v44-auth-eval:
     name: ledger V44 key-gen + auth eval (BA series)
     runs-on: ubuntu-22.04
@@ -388,6 +408,7 @@ jobs:
   # nested depth-2 (type/min/max/minLength/maxLength), and regression tests.
   jsonschema-eval:
     name: jsonschema v0.1.8 eval (30 cases)
+    if: github.event_name == 'release' || (vars.ZERO_RELEASE_URL != '' && vars.ZERO_COMPILER_SHA256 != '')
     runs-on: ubuntu-22.04
     timeout-minutes: 15
     steps:

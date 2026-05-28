@@ -45,6 +45,11 @@ if [[ -z "$ORG_ID" ]]; then
     exit 1
 fi
 
+if [[ ! "$ORG_ID" =~ ^org_[0-9a-f]{8}$ ]]; then
+    printf '{"error_code":"INVALID_INPUT","retryable":false,"error":"--org-id must match org_[0-9a-f]{8}"}\n' >&2
+    exit 1
+fi
+
 # RT-132: non-empty seed required — empty seed makes HMAC predictable
 if [[ -z "${HEROS_HMAC_SEED:-}" ]]; then
     printf '{"error_code":"INVALID_INPUT","retryable":false,"error":"HEROS_HMAC_SEED must be set to a non-empty secret. Generate one: openssl rand -hex 32"}\n' >&2
