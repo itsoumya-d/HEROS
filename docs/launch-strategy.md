@@ -45,7 +45,7 @@ Thread starting with the core insight:
 > Every library, every API, every tool you use was designed for a human at a keyboard. We're rebuilding infrastructure for agents. Starting with schema migrations and accounting.
 >
 > forge: schema migration risk analysis that agents can act on without asking a human
-> ledger: double-entry accounting with idempotency keys so agents never double-charge
+> ledger: agent-native accounting with idempotency keys so agents never double-charge
 >
 > Both ship as MCP servers. JSON-only. Static binaries. Try in 60 seconds with Claude Code.
 
@@ -107,19 +107,19 @@ Priority docs to ship alongside launch:
 
 HEROS fits the YC RFS "Software for Agents" category exactly. The application should emphasize:
 
-**What we built (not what we're building):** forge and ledger are live. Not prototype, not mockup — production binaries with MCP transport, rate limiting, idempotency, and 239+ red-team security cycles.
+**What we built (not what we're building):** forge and ledger are live. Not prototype, not mockup — production binaries with MCP transport, rate limiting, idempotency, and a documented red-team security process.
 
 **The timing argument:** The MCP ecosystem is 6 months old and growing exponentially. Every AI company building agents needs the same infrastructure: schema management and financial records. The window to define the standards is now.
 
 **The Zero lang angle:** Nobody else is building agent-native infra in a language designed for agent-native software. This is a genuine moat — the compilation target (ELF64 musl), the capability model, the self-describing output format. Building on Zero before v0.2 ships (stdin support) means HEROS will be the reference implementation when the language matures.
 
-**The team:** Solo founder who built a complete production stack (two tools, MCP protocol, 239+ security cycles, comprehensive eval suite) from scratch. Execution velocity matters more than team size at this stage.
+**The team:** Solo founder who built a complete production stack (two tools, MCP protocol, a documented red-team process, comprehensive eval suite) from scratch. Execution velocity matters more than team size at this stage.
 
 ### Key Numbers for the Application
 
 - 2 production tools shipped
 - 38 documented eval tests (forge) + 33 binary-testable eval cases; 25 binary-testable ledger eval cases
-- 239+ red-team security cycles, all P1/P2 resolved
+- Documented red-team process; all P1/P2 findings resolved
 - 4 critical/high security bugs found and fixed (TOCTOU race, non-atomic write, table-name injection guard, non-ASCII input bypass)
 - ~7-35 KiB binary size (compare: any Python tool is 50MB+ with dependencies)
 - MCP 2025-11-25 protocol compliant

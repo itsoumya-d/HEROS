@@ -8,7 +8,7 @@
 
 ## 1. System Description
 
-`ledger` is an agent-callable double-entry accounting CLI built in Zero. Callers are autonomous LLM agents. There is no human in the loop. Every input is potentially adversarial; every output flows back into an agent's context and can be used to attack that agent.
+`ledger` is an agent-callable agent-native accounting CLI built in Zero. Callers are autonomous LLM agents. There is no human in the loop. Every input is potentially adversarial; every output flows back into an agent's context and can be used to attack that agent.
 
 **Current (v0.1):** Local binary, flat-file persistence (`.ledger-data`, `.ledger-invoices`), no network, no auth beyond org_id.
 **Planned (v0.2+):** MCP server (stdio + HTTP), multi-tenant, API key auth, billing, rate limiting, registry publication.
@@ -669,7 +669,7 @@ The following gates MUST be satisfied before publishing to any registry (npm, Py
 3. **Install documentation includes verify step**: the README install section must include the cosign verify-blob command before any `mcp-bridge.sh` invocation:
    ```
    cosign verify-blob \
-     --certificate-identity-regexp "https://github.com/soumyadebnath/heros" \
+     --certificate-identity-regexp "https://github.com/itsoumya-d/HEROS" \
      --certificate-oidc-issuer https://token.actions.githubusercontent.com \
      --signature ledger/mcp-manifest.json.sig \
      ledger/mcp-manifest.json
@@ -679,7 +679,7 @@ The following gates MUST be satisfied before publishing to any registry (npm, Py
 
 5. **V30 SDK audit gate**: before publishing, confirm mcp-bridge.sh is not using any MCP SDK version affected by the April 2026 RCE. mcp-bridge.sh is pure bash + jq (no SDK), so this is automatically satisfied — but document it at publish time.
 
-6. **`OWNER/REPO` placeholder FIXED (2026-05-25)**: `verify_cmd` in both manifests updated to `soumyadebnath/heros`. CI `sed` step also stamps the correct URL at release time.
+6. **`OWNER/REPO` placeholder FIXED (2026-05-25)**: `verify_cmd` in both manifests updated to `itsoumya-d/HEROS`. CI `sed` step also stamps the correct URL at release time.
 
 **Manifest transport security (v0.2+):**
 - When served via HTTP: serve `.well-known/mcp-server` over HTTPS only (HSTS required)

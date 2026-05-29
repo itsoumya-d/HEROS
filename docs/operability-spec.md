@@ -62,7 +62,7 @@ Publish to MCP Registry at `registry.modelcontextprotocol.io`:
 {
   "name": "io.ledger/accounting",
   "display_name": "Ledger — Agent-Native Accounting",
-  "description": "Double-entry bookkeeping for autonomous agents. Programmatic signup, idempotent mutations, stable error codes. No GUI, no browser OAuth, no human approval.",
+  "description": "Agent-native accounting for autonomous agents. Programmatic signup, idempotent mutations, stable error codes. No GUI, no browser OAuth, no human approval.",
   "version": "0.2.0",
   "transport": ["stdio", "streamable-http"],
   "packages": [

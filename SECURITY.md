@@ -38,7 +38,7 @@ HEROS tools are designed with the following trust boundaries:
 ## Security Hardening Summary
 
 - OWASP Agentic AI Top 10 (ASI01-ASI10) audited; see `docs/threat-model.md`
-- 250+ red-team security cycles completed (CRIT-1, CRIT-2, HIGH-2, HIGH-3, MED-1, MED-2 fixed 2026-05-25)
+- Documented red-team review process; P0–P2 findings resolved (CRIT-1, CRIT-2, HIGH-2, HIGH-3, MED-1, MED-2 fixed 2026-05-25)
 - No `eval` anywhere in shell code (RT-33)
 - All shell argument construction uses bash arrays (no string concatenation)
 - All user input extracted via `jq --arg` (never concatenated into shell commands) — including all eval harness error messages (CRIT-2 fix)

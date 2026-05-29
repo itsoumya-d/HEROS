@@ -20,7 +20,7 @@
   "signing": {
     "manifest_sha256": "UNSIGNED in source — cosign sign-blob runs in CI (release.yml) at publish time",
     "sig_file": "forge/mcp-manifest.json.sig (produced by CI, uploaded as release artifact)",
-    "verify_cmd": "cosign verify-blob --certificate-identity-regexp https://github.com/soumyadebnath/heros --certificate-oidc-issuer https://token.actions.githubusercontent.com --signature forge/mcp-manifest.json.sig forge/mcp-manifest.json",
+    "verify_cmd": "cosign verify-blob --certificate-identity-regexp https://github.com/itsoumya-d/HEROS --certificate-oidc-issuer https://token.actions.githubusercontent.com --signature forge/mcp-manifest.json.sig forge/mcp-manifest.json",
     "signed_at": null,
     "cosign_bundle_url": null
   },

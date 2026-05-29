@@ -8,7 +8,7 @@
 pub fun writeDescribe(world: World) -> Void raises {
     check world.out.write("{\n")
     check world.out.write("  \"name\": \"forge\",\n")
-    check world.out.write("  \"version\": \"0.1.0\",\n")
+    check world.out.write("  \"version\": \"0.1.4\",\n")
     check world.out.write("  \"schema_version\": 1,\n")
     check world.out.write("  \"description\": \"Agent-safe database schema migration engine. Analyzes DDL schema changes and returns structured JSON risk reports. Built for agent-first usage: no interactive prompts, no ANSI codes, stable error codes.\",\n")
     check world.out.write("  \"invocation\": \"forge <command> [flags] --json\",\n")
@@ -19,7 +19,7 @@ pub fun writeDescribe(world: World) -> Void raises {
     check world.out.write("      \"name\": \"analyze\",\n")
     check world.out.write("      \"description\": \"Analyze the risk of migrating from one schema to another. Returns a structured risk report with per-operation risk scores and agent guidance. Call this before executing any schema change. Does NOT modify any database - read-only analysis.\",\n")
     check world.out.write("      \"when_to_use\": \"Before running any database migration. Input is two .forge schema files describing the current and desired state.\",\n")
-    check world.out.write("      \"when_not_to_use\": \"Do not use to execute migrations - use execute command for that (not yet implemented in v0.1.0).\",\n")
+    check world.out.write("      \"when_not_to_use\": \"Do not use to execute migrations - use execute command for that (not yet implemented in v0.1.x).\",\n")
     check world.out.write("      \"flags\": [\n")
     check world.out.write("        {\n")
     check world.out.write("          \"name\": \"--from\",\n")

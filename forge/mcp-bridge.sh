@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: MIT
 # ┌──────────────────────────────────────────────────────────────────────────┐
 # │ forge/mcp-bridge.sh — MCP stdio server for forge                        │
 # │                                                                          │

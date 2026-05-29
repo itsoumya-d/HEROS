@@ -80,7 +80,7 @@ All forge commands return a single JSON object to stdout.
 
 **`forge --version`:**
 ```json
-{"name":"forge","version":"0.1.0","schema_version":1}
+{"name":"forge","version":"0.1.4","schema_version":1}
 ```
 
 **`forge analyze` (safe migration):**
@@ -142,7 +142,7 @@ All forge commands return a single JSON object to stdout.
 ```json
 {
   "name": "forge",
-  "version": "0.1.0",
+  "version": "0.1.4",
   "schema_version": 1,
   "description": "Agent-native database schema migration analyzer. Emits structured JSON on every code path.",
   "commands": [
@@ -200,7 +200,7 @@ The full implementation is structured across six Zero source files:
 | `src/describe.0` | Agent discovery schema emitter |
 | `src/main.0` | CLI dispatch — routes flags to commands, handles all error paths |
 
-**Note on v0.1.0 binary:** The shipped forge binary (`forge_mini.0`) is optimized for Zero v0.1.1's direct ELF64 backend, which currently supports programs with inline main-level logic. The full modular implementation (`schema.0`, `diff.0`, etc.) type-checks cleanly with `zero check .` and will be the production binary when Zero v0.2+ ships full backend support.
+**Note on v0.1.4 binary:** The shipped forge binary (`forge_mini.0`) is optimized for Zero v0.1.1's direct ELF64 backend, which currently supports programs with inline main-level logic. The full modular implementation (`schema.0`, `diff.0`, etc.) type-checks cleanly with `zero check .` and will be the production binary when Zero v0.2+ ships full backend support.
 
 ---
 
@@ -368,4 +368,4 @@ forge is designed with the assumption that every caller is untrusted and every o
 
 Soumya Debnath — [soumyadebnath1619@gmail.com](mailto:soumyadebnath1619@gmail.com)
 
-forge v0.1.0 — Built for the YC RFS "Software for Agents" category.
+forge v0.1.4 — Built for the YC RFS "Software for Agents" category.

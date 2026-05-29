@@ -1,7 +1,12 @@
-# YC Application Draft — Forge
+# YC Application Draft — Forge (supporting material)
+
+> **This is forge-specific supporting material.** The canonical, company-level YC application
+> is [`../docs/yc-application.md`](../docs/yc-application.md). This document drills into forge
+> alone and feeds that application.
+
 ## Batch: [Current] | Category: Software for Agents (RFS)
 
-**Company:** Forge
+**Company:** HEROS (forge is one of two tools)
 **Founder:** Soumya Debnath
 **Email:** soumyadebnath1619@gmail.com
 
@@ -82,4 +87,4 @@ The JVM-based tools have an additional problem: cold-start latency of 2–5 seco
 
 ---
 
-*Forge v0.1.0 — Soumya Debnath — soumyadebnath1619@gmail.com*
+*Forge v0.1.4 — Soumya Debnath — soumyadebnath1619@gmail.com*

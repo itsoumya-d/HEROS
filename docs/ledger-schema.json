@@ -1,7 +1,7 @@
 {
   "tool": "ledger",
   "version": "0.1.0",
-  "description": "Agent-native accounting operations. Double-entry bookkeeping rebuilt for autonomous agents. No GUI, no human approval, no browser OAuth. Every operation returns structured JSON with stable error codes. Idempotent mutations. Programmatic signup.",
+  "description": "Agent-native accounting operations. Agent-native accounting rebuilt for autonomous agents. No GUI, no human approval, no browser OAuth. Every operation returns structured JSON with stable error codes. Idempotent mutations. Programmatic signup.",
   "quickstart": [
     "1. ledger register --org-name 'My Org'   → save org_id",
     "2. ledger invoice create --to 'Vendor' --amount 10000 --currency USD --idempotency-key <uuid>",

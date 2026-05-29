@@ -6,6 +6,17 @@ All notable changes to forge and ledger. Follows [Keep a Changelog](https://keep
 
 ## [Unreleased]
 
+### Changed (2026-05-29 — YC application readiness pass)
+- **Canonical YC application**: `docs/yc-application.md` rewritten as the single source of truth, structured around YC's actual application questions with every claim cited to a repo file, an explicit pre-revenue/pre-users traction statement, and a "RFS: Software for Agents" mapping. `forge/yc_application_draft.md` and `forge/yc_scorecard.md` re-labeled as forge-specific supporting material that link to it.
+- **Honest claims**: `ledger` described as agent-native invoice/org accounting (true double-entry journals moved to the v0.2 roadmap) across README, landing page, manifest, and docs. Unverifiable "239+/250+ red-team cycles" counts replaced with the verifiable substance (documented red-team process, OWASP Agentic Top-10 audit, P0–P2 findings resolved, zero `eval`). Hosted pricing tiers explicitly marked planned/not-yet-deployed.
+- **Demo**: added `docs/demo-transcript.md` — a 60-second walkthrough whose outputs are reproduced from the CI-gated eval suite + binary source (forge SAFE/NOTABLE/CRITICAL, ledger idempotent writes).
+
+### Fixed (2026-05-29)
+- Corrected the broken GitHub URL (`soumyadebnath/heros` → `itsoumya-d/HEROS`) in all 9 affected files — the README/landing `curl` install commands were 404ing.
+- Resolved version drift: non-compiled `forge/src/*.0` + `forge/zero.json` aligned to the shipped `0.1.4`; `ledger/src/*.0` + `ledger/zero.json` aligned to `0.1.11` (matches the compiled `*_mini.0` binaries; no binary behavior change).
+- Corrected the README quickstart output (adding a NULLABLE column is `NOTABLE`, not `SAFE`, and `add_column` emits no `table`/`column` field) to match eval case FE-03 and `forge_mini.0`. Fixed the landing-page hero op shape and its dead `docs/*.html` links.
+- Added `SPDX-License-Identifier: MIT` headers to the bridge and key-gen scripts.
+
 ### Security (2026-05-25 — Launch Hardening Round)
 - **CRIT-1**: `ledger/key-gen.sh` — HMAC seed was passed via `openssl dgst -hmac <seed>` CLI arg, exposing it in `/proc/<pid>/cmdline`. Replaced with `python3` env-based computation (same pattern as both bridges). Eliminated `xxd` dependency.
 - **CRIT-2**: `zero-ecosystem/eval-harness/zeval.sh` — Four error messages used raw shell variable interpolation into JSON string contexts (`echo "{...\"$line\"...}"`). Replaced all four with `jq -cn --arg` calls. A crafted non-JSON line in eval-cases.jsonl could previously inject `"status":"ok"` into the CI pass/fail JSON.
@@ -16,7 +27,7 @@ All notable changes to forge and ledger. Follows [Keep a Changelog](https://keep
 
 ### Fixed
 - Eval test case descriptions corrected: FE-04 ("drop table"), FE-06 ("analyze without --from → UNKNOWN_COMMAND"), FE-07 ("identical schemas → SAFE baseline"), LE-15 ("unknown top-level command → UNKNOWN_COMMAND").
-- GitHub repo URL placeholder (`OWNER/REPO`) replaced with `soumyadebnath/heros` in README, docs, MCP manifests, and Show HN post.
+- GitHub repo URL placeholder (`OWNER/REPO`) replaced with `itsoumya-d/HEROS` in README, docs, MCP manifests, and Show HN post.
 
 ### Added
 - `CONTRIBUTING.md` — gstack-style team workflow, autoresearch eval loop pattern, security standards.

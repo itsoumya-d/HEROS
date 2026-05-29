@@ -11,7 +11,7 @@ Built in [Zero lang](https://github.com/vercel-labs/zero) — deterministic late
 | Tool | What it does | Status |
 |---|---|---|
 | [forge](forge/README.md) | Database schema migration engine — risk-scores schema changes before they run | v0.1.4 |
-| [ledger](ledger/README.md) | Double-entry accounting — create invoices and register orgs with idempotency keys | v0.1.11 |
+| [ledger](ledger/README.md) | Agent accounting — idempotent invoices and org registration with stable JSON error codes | v0.1.11 |
 
 ---
 
@@ -21,7 +21,7 @@ Built in [Zero lang](https://github.com/vercel-labs/zero) — deterministic late
 
 ```bash
 # Install: download the binary (Linux x86-64)
-curl -L https://github.com/soumyadebnath/heros/releases/latest/download/forge -o forge && chmod +x forge
+curl -L https://github.com/itsoumya-d/HEROS/releases/latest/download/forge -o forge && chmod +x forge
 
 # Analyze migration risk
 forge analyze \
@@ -32,11 +32,14 @@ forge analyze \
 Output:
 ```json
 {
-  "risk_tier": "SAFE",
+  "schema_version": 1,
+  "_forge_version": "0.1.4",
+  "risk_tier": "NOTABLE",
+  "risk_score": 0.25,
+  "retryable": true,
   "has_data_loss": false,
   "decision_required": false,
-  "schema_version": 1,
-  "operations": [{"type":"add_column","table":"users","column":"bio","risk":"safe","data_loss":false,"retryable":true}]
+  "operations": [{"type":"add_column","risk":"notable","data_loss":false,"estimated_lock_ms":0,"retryable":true,"agent_guidance":"New nullable column(s) added. Safe for most cases — no impact on existing rows or queries."}]
 }
 ```
 
@@ -44,7 +47,7 @@ Output:
 
 ```bash
 # Install: download the binary (Linux x86-64)
-curl -L https://github.com/soumyadebnath/heros/releases/latest/download/ledger -o ledger && chmod +x ledger
+curl -L https://github.com/itsoumya-d/HEROS/releases/latest/download/ledger -o ledger && chmod +x ledger
 
 # Register your org (idempotent)
 ledger register --org-name "MyOrg"
@@ -52,6 +55,10 @@ ledger register --org-name "MyOrg"
 # Create an invoice
 ledger invoice create --to "Vendor Inc" --amount "1000.00" --currency USD --idempotency-key "uuid-v4"
 ```
+
+> See [`docs/demo-transcript.md`](docs/demo-transcript.md) for a full 60-second walkthrough with
+> real outputs (SAFE/CRITICAL forge analyses + idempotent ledger writes), every line reproduced
+> from the CI-gated eval suite.
 
 ---
 
@@ -134,10 +141,12 @@ The bridge owns I/O and session state. The binary owns business logic. This sepa
 
 ## Status
 
-| Component | Tests | Security Cycles | Zero Version |
+| Component | Tests | Security | Zero Version |
 |---|---|---|---|
-| forge v0.1.4 | 38 eval_log tests; 33 binary cases in CI | 239+ cycles (all P2+ resolved) | v0.1.3 |
-| ledger v0.1.11 | 25 binary cases in CI | 239+ cycles (all P2+ resolved) | v0.1.3 |
+| forge v0.1.4 | 38 eval_log tests; 33 binary cases in CI | OWASP Agentic Top-10 audited; P0–P2 findings resolved | v0.1.3 |
+| ledger v0.1.11 | 25 binary cases in CI | HMAC auth + OWASP audit; P0–P2 findings resolved | v0.1.3 |
+
+Security process is documented in [`docs/threat-model.md`](docs/threat-model.md) and [`docs/redteam-cycle1.md`](docs/redteam-cycle1.md). Zero `eval` in any shell path.
 
 Binary compilation requires Linux x86-64 (Zero ELF64 backend). Source compiles with the Zero compiler at [zero.vercel.app](https://zero.vercel.app).
 

@@ -19,7 +19,7 @@ use output
 use types
 
 fun writeVersion(world: World) -> Void raises {
-    check world.out.write("{\"name\":\"forge\",\"version\":\"0.1.0\",\"schema_version\":1}\n")
+    check world.out.write("{\"name\":\"forge\",\"version\":\"0.1.4\",\"schema_version\":1}\n")
 }
 
 fun writeHelp(world: World) -> Void raises {

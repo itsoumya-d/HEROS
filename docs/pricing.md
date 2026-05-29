@@ -1,5 +1,10 @@
 # HEROS Pricing Model
 
+> **Status:** The **self-hosted** tier is available today (MIT-licensed source + signed release
+> binaries). The **hosted** tiers below (Developer / Pro / Team / Enterprise) describe the
+> *planned* managed MCP endpoint — it is **not yet deployed**. Figures are model assumptions,
+> not live offerings.
+
 **Philosophy:** Agent-native infrastructure should be free to try, cheap to run, and priced on usage — not seats. Agents don't have expense accounts; the humans deploying them do.
 
 ---

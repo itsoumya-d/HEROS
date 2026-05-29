@@ -20,22 +20,22 @@ Get forge and ledger running in Claude Code in under 5 minutes.
 mkdir -p ~/heros && cd ~/heros
 
 # Download forge (schema migration engine)
-curl -L https://github.com/soumyadebnath/heros/releases/latest/download/forge-linux-x64.bin \
+curl -L https://github.com/itsoumya-d/HEROS/releases/latest/download/forge-linux-x64.bin \
   -o forge && chmod +x forge
 
 # Download ledger (agent accounting)
-curl -L https://github.com/soumyadebnath/heros/releases/latest/download/ledger-linux-x64.bin \
+curl -L https://github.com/itsoumya-d/HEROS/releases/latest/download/ledger-linux-x64.bin \
   -o ledger && chmod +x ledger
 
 # Download MCP bridges and manifests
-curl -L https://raw.githubusercontent.com/soumyadebnath/heros/main/forge/mcp-bridge.sh \
+curl -L https://raw.githubusercontent.com/itsoumya-d/HEROS/main/forge/mcp-bridge.sh \
   -o forge-bridge.sh && chmod +x forge-bridge.sh
-curl -L https://raw.githubusercontent.com/soumyadebnath/heros/main/forge/mcp-manifest.json \
+curl -L https://raw.githubusercontent.com/itsoumya-d/HEROS/main/forge/mcp-manifest.json \
   -o forge-manifest.json
 
-curl -L https://raw.githubusercontent.com/soumyadebnath/heros/main/ledger/mcp-bridge.sh \
+curl -L https://raw.githubusercontent.com/itsoumya-d/HEROS/main/ledger/mcp-bridge.sh \
   -o ledger-bridge.sh && chmod +x ledger-bridge.sh
-curl -L https://raw.githubusercontent.com/soumyadebnath/heros/main/ledger/mcp-manifest.json \
+curl -L https://raw.githubusercontent.com/itsoumya-d/HEROS/main/ledger/mcp-manifest.json \
   -o ledger-manifest.json
 ```
 
@@ -212,12 +212,12 @@ VOLUME ["/data"]
 ```bash
 # Verify cosign signature (requires cosign CLI)
 cosign verify-blob \
-  --certificate-identity-regexp https://github.com/soumyadebnath/heros \
+  --certificate-identity-regexp https://github.com/itsoumya-d/HEROS \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
   --signature forge-linux-x64.bin.sig \
   forge-linux-x64.bin
 
 # Check SHA-256 against published checksum
 sha256sum forge-linux-x64.bin
-# Compare against: https://github.com/soumyadebnath/heros/releases/latest/download/forge-linux-x64.bin.sha256
+# Compare against: https://github.com/itsoumya-d/HEROS/releases/latest/download/forge-linux-x64.bin.sha256
 ```

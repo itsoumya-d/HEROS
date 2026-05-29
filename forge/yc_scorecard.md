@@ -1,5 +1,9 @@
 # YC RFS "Software for Agents" Fit Scorecard
 
+> **Supporting material.** The canonical YC application is
+> [`../docs/yc-application.md`](../docs/yc-application.md). This is an internal self-assessment
+> of forge against the RFS criteria — useful for prep, not the submitted document.
+
 **Project:** forge — Zero-language agent-native database schema migration engine
 **Evaluated:** 2026-05-24 (re-scored after Cycles 5–7, 10–12, 20–28, 100–239; current version: v0.1.4 binary + forge bridge v0.1.4 / ledger bridge v0.1.11)
 **Evaluator:** Internal — against YC RFS "Software for Agents" criteria
