@@ -423,21 +423,40 @@ invoke_forge() {
 handle_message() {
     local line="$1"
 
-    # Validate JSON
-    if ! jq -e . >/dev/null 2>&1 <<< "$line"; then
+    # Validate JSON and extract fields in a single jq invocation to reduce process spawn overhead
+    local parsed id method has_id is_jsonrpc method_is_str
+    parsed=$(jq -r '
+        if type != "object" then
+            "NOT_OBJECT"
+        else
+            [
+                (.id // null | tojson),
+                (.method // ""),
+                (has("id") | tojson),
+                (.jsonrpc == "2.0" | tojson),
+                ((.method | type) == "string" | tojson)
+            ] | @sh
+        end
+    ' <<< "$line" 2>/dev/null)
+
+    if [[ -z "$parsed" ]]; then
         rpc_err "null" -32700 "Parse error: message is not valid JSON"
         return
     fi
 
     # RT-38: reject non-object JSON-RPC (arrays and primitives are invalid)
-    if ! jq -e 'type == "object"' >/dev/null 2>&1 <<< "$line"; then
+    if [[ "$parsed" == "NOT_OBJECT" ]]; then
         rpc_err "null" -32600 "Invalid Request: message must be a JSON object, not an array or primitive"
         return
     fi
 
-    local id method
-    id=$(jq -c '.id // null' <<< "$line")
-    method=$(jq -r '.method // ""' <<< "$line")
+    local arr
+    eval "arr=($parsed)"
+    id="${arr[0]}"
+    method="${arr[1]}"
+    has_id="${arr[2]}"
+    is_jsonrpc="${arr[3]}"
+    method_is_str="${arr[4]}"
 
     # RT-431: guard oversized id values — jq's --argjson passes id as an execve argv string;
     # Linux MAX_ARG_STRLEN = 131072 bytes; a >4KB id cannot be a legitimate MCP id (UUIDs are
@@ -448,20 +467,20 @@ handle_message() {
     fi
 
     # Notifications: absent "id" key means no response expected
-    if ! jq -e 'has("id")' >/dev/null 2>&1 <<< "$line"; then
+    if [[ "$has_id" == "false" ]]; then
         # V119 port: only accept notifications/initialized after initialize was processed
         [[ "$method" == "notifications/initialized" && "$INIT_REQUESTED" == "true" ]] && INITIALIZED=true
         return
     fi
 
     # RT-292 port: reject requests with missing or wrong jsonrpc version field
-    if ! jq -e '.jsonrpc == "2.0"' >/dev/null 2>&1 <<< "$line"; then
+    if [[ "$is_jsonrpc" == "false" ]]; then
         rpc_err "$id" -32600 "Invalid Request: jsonrpc field must be \"2.0\""
         return
     fi
 
     # V154 port: non-string method must return -32600 (Invalid Request), not -32601 (Method not found)
-    if ! jq -e '.method | type == "string"' >/dev/null 2>&1 <<< "$line"; then
+    if [[ "$method_is_str" == "false" ]]; then
         rpc_err "$id" -32600 "Invalid Request: method must be a string"
         return
     fi
