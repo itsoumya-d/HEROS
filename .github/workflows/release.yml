@@ -436,9 +436,9 @@ jobs:
           JSONSCHEMA_BIN=zero-ecosystem/json-schema/jsonschema \
             bash zero-ecosystem/json-schema/eval-runner.sh
 
-  # ── Shell script lint (mcp-bridge.sh) ────────────────────────────────────
+  # ── Shell script lint (all bridge + eval scripts) ────────────────────────
   shell-lint:
-    name: Lint MCP bridge scripts
+    name: Lint all shell scripts (shellcheck -S warning)
     runs-on: ubuntu-22.04
     timeout-minutes: 10
     steps:
@@ -447,26 +447,56 @@ jobs:
       - name: Install shellcheck
         run: sudo apt-get install -y shellcheck
 
-      - name: Lint ledger/mcp-bridge.sh
-        run: shellcheck -S warning ledger/mcp-bridge.sh
+      - name: Lint forge scripts
+        run: |
+          shellcheck -S warning \
+            forge/mcp-bridge.sh \
+            forge/eval-bridge.sh \
+            forge/eval-auth.sh \
+            forge/squawk-bridge.sh \
+            forge/eval-squawk.sh
 
-      - name: Lint forge/mcp-bridge.sh
-        run: shellcheck -S warning forge/mcp-bridge.sh
+      - name: Lint ledger scripts
+        run: |
+          shellcheck -S warning \
+            ledger/mcp-bridge.sh \
+            ledger/key-gen.sh \
+            ledger/eval-auth.sh \
+            ledger/eval-bridge-auth.sh \
+            ledger/litestream-replicate.sh \
+            ledger/eval-litestream.sh
 
-      - name: Lint ledger/eval-bridge-auth.sh
-        run: shellcheck -S warning ledger/eval-bridge-auth.sh
+      - name: Lint guardian scripts
+        run: |
+          shellcheck -S warning \
+            guardian/mcp-bridge.sh \
+            guardian/eval-bridge.sh
 
-      - name: Lint ledger/key-gen.sh
-        run: shellcheck -S warning ledger/key-gen.sh
+      - name: Lint vault scripts
+        run: |
+          shellcheck -S warning \
+            vault/mcp-bridge.sh \
+            vault/eval-bridge.sh
 
-      - name: Lint ledger/eval-auth.sh
-        run: shellcheck -S warning ledger/eval-auth.sh
+      - name: Lint audit scripts
+        run: |
+          shellcheck -S warning \
+            audit/mcp-bridge.sh \
+            audit/eval-bridge.sh
 
-      - name: Lint forge/eval-auth.sh
-        run: shellcheck -S warning forge/eval-auth.sh
+      - name: Lint herd scripts
+        run: |
+          shellcheck -S warning \
+            herd/herd.sh \
+            herd/eval-herd.sh
 
-      - name: Lint zero-ecosystem/json-schema/eval-runner.sh
-        run: shellcheck -S warning zero-ecosystem/json-schema/eval-runner.sh
+      - name: Lint observability scripts
+        run: |
+          shellcheck -S warning \
+            zero-ecosystem/observability/otel-trace.sh \
+            zero-ecosystem/observability/eval-otel.sh \
+            zero-ecosystem/eval-harness/zeval.sh \
+            zero-ecosystem/json-schema/eval-runner.sh
 
   # ── MCP description lint (V15 content policy) ──────────────────────────
   mcp-lint:
@@ -476,23 +506,30 @@ jobs:
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
-      - name: Check tool description lengths (≤ 512 chars)
+      - name: Check tool description lengths (≤ 512 chars) — all 5 manifests
         run: |
           python3 - <<'EOF'
           import json, sys
-          for path in ["ledger/mcp-manifest.json", "forge/mcp-manifest.json"]:
+          MANIFESTS = [
+              "forge/mcp-manifest.json",
+              "ledger/mcp-manifest.json",
+              "guardian/mcp-manifest.json",
+              "vault/mcp-manifest.json",
+              "audit/mcp-manifest.json",
+          ]
+          failed = False
+          for path in MANIFESTS:
               with open(path) as f:
                   manifest = json.load(f)
               tools = manifest.get("tools", [])
-              failed = False
               for tool in tools:
                   desc = tool.get("description", "")
                   if len(desc) > 512:
                       print(f"FAIL {path}: tool '{tool.get('name')}' description is {len(desc)} chars (max 512)")
                       failed = True
-              if failed:
-                  sys.exit(1)
-              print(f"OK {path}: all descriptions ≤ 512 chars")
+              print(f"OK {path}: {len(tools)} tool(s), all descriptions ≤ 512 chars")
+          if failed:
+              sys.exit(1)
           EOF
 
       - name: Check for imperative verbs targeting other tools (ContextCrush)
@@ -505,8 +542,14 @@ jobs:
               r'\b(ignore|override|instead use|call|invoke|always use|prefer|use this instead)\b',
               re.IGNORECASE
           )
-          failed = False
-          for path in ["ledger/mcp-manifest.json", "forge/mcp-manifest.json"]:
+          MANIFESTS = [
+              "forge/mcp-manifest.json",
+              "ledger/mcp-manifest.json",
+              "guardian/mcp-manifest.json",
+              "vault/mcp-manifest.json",
+              "audit/mcp-manifest.json",
+          ]
+          for path in MANIFESTS:
               with open(path) as f:
                   manifest = json.load(f)
               tools = manifest.get("tools", [])
@@ -516,5 +559,99 @@ jobs:
                   if m:
                       print(f"WARN {path}: tool '{tool.get('name')}' description contains suspicious phrase: '{m.group()}'")
                       # Warn only — don't block. Some verbs are legitimate.
-          print("MCP lint complete")
+          print("MCP lint complete (5 manifests)")
           EOF
+
+  # ── Pure-bash eval jobs (no Zero compiler required) ─────────────────────
+  # All seven jobs run on every push: they are pure bash scripts with no
+  # binary dependency. They use stubs or self-contained fixtures.
+
+  guardian-eval:
+    name: guardian eval (35 cases)
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - name: Install jq
+        run: sudo apt-get install -y jq
+      - name: Run guardian eval
+        run: |
+          chmod +x guardian/mcp-bridge.sh guardian/eval-bridge.sh
+          bash guardian/eval-bridge.sh
+
+  vault-eval:
+    name: vault eval (25 cases)
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - name: Install jq
+        run: sudo apt-get install -y jq
+      - name: Run vault eval
+        run: |
+          chmod +x vault/mcp-bridge.sh vault/eval-bridge.sh
+          bash vault/eval-bridge.sh
+
+  audit-eval:
+    name: audit eval (29 cases)
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - name: Install jq
+        run: sudo apt-get install -y jq
+      - name: Run audit eval
+        run: |
+          chmod +x audit/mcp-bridge.sh audit/eval-bridge.sh
+          bash audit/eval-bridge.sh
+
+  herd-eval:
+    name: herd coordination eval (30 cases)
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - name: Install jq
+        run: sudo apt-get install -y jq
+      - name: Run herd eval
+        run: |
+          chmod +x herd/herd.sh herd/eval-herd.sh
+          bash herd/eval-herd.sh
+
+  squawk-eval:
+    name: forge Squawk integration eval (27 cases)
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - name: Install jq
+        run: sudo apt-get install -y jq
+      - name: Run squawk eval (stub-based)
+        run: |
+          chmod +x forge/squawk-bridge.sh forge/eval-squawk.sh
+          bash forge/eval-squawk.sh
+
+  otel-eval:
+    name: OpenTelemetry tracing eval (7 cases)
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - name: Run otel eval
+        run: |
+          chmod +x zero-ecosystem/observability/otel-trace.sh \
+                   zero-ecosystem/observability/eval-otel.sh
+          bash zero-ecosystem/observability/eval-otel.sh
+
+  litestream-eval:
+    name: Litestream replication eval (22 cases)
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - name: Install jq
+        run: sudo apt-get install -y jq
+      - name: Run litestream eval (stub-based)
+        run: |
+          chmod +x ledger/litestream-replicate.sh ledger/eval-litestream.sh
+          bash ledger/eval-litestream.sh

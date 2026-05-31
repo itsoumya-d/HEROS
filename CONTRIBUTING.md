@@ -1,5 +1,9 @@
 # Contributing to HEROS
 
+**Repository:** https://github.com/itsoumya-d/HEROS
+
+Fork the repo, create a branch off `main`, and submit a pull request. Clone: `git clone https://github.com/itsoumya-d/HEROS.git`
+
 HEROS uses a gstack-style virtual engineering team for development workflow.
 Install [gstack](https://github.com/garrytan/gstack) to enable the full team.
 
@@ -13,12 +17,33 @@ Install [gstack](https://github.com/garrytan/gstack) to enable the full team.
 # Code review (independent check for production bugs)
 /review
 
-# QA (run eval harnesses)
+# QA — pure-bash tools (run without a compiled binary)
+bash guardian/eval-bridge.sh
+bash vault/eval-bridge.sh
+bash audit/eval-bridge.sh
+bash herd/eval-herd.sh
+bash forge/eval-squawk.sh
+bash zero-ecosystem/observability/eval-otel.sh
+bash ledger/eval-litestream.sh
+bash ledger/eval-auth.sh
+bash ledger/eval-bridge-auth.sh   # requires xxd in PATH
+bash forge/eval-auth.sh
+
+# QA — binary evals (requires compiled forge/ledger binaries from CI)
 bash zero-ecosystem/eval-harness/zeval.sh --binary forge/forge --cases forge/eval-cases.jsonl
 bash zero-ecosystem/eval-harness/zeval.sh --binary ledger/ledger --cases ledger/eval-cases.jsonl
-bash forge/eval-bridge.sh
-bash ledger/eval-auth.sh
-bash ledger/eval-bridge-auth.sh
+bash forge/eval-bridge.sh    # requires forge binary at forge/forge
+
+# Shellcheck all scripts
+shellcheck -S warning forge/mcp-bridge.sh forge/eval-bridge.sh forge/eval-auth.sh \
+  forge/squawk-bridge.sh forge/eval-squawk.sh \
+  ledger/mcp-bridge.sh ledger/key-gen.sh ledger/eval-auth.sh ledger/eval-bridge-auth.sh \
+  ledger/litestream-replicate.sh ledger/eval-litestream.sh \
+  guardian/mcp-bridge.sh guardian/eval-bridge.sh \
+  vault/mcp-bridge.sh vault/eval-bridge.sh \
+  audit/mcp-bridge.sh audit/eval-bridge.sh \
+  herd/herd.sh herd/eval-herd.sh \
+  zero-ecosystem/observability/otel-trace.sh zero-ecosystem/observability/eval-otel.sh
 ```
 
 ### Autoresearch-style eval loop
@@ -41,29 +66,37 @@ The metric: **eval_pass_rate** = passing eval cases / total eval cases.
 ## Architecture
 
 ```
-forge/
-  forge_mini.0        — Zero binary source (pure compute, no I/O)
-  mcp-bridge.sh       — MCP stdio server (bash, owns I/O + auth + rate limit)
-  mcp-manifest.json   — Self-describing API contract
-  eval-cases.jsonl    — Binary behavioral eval (run via zeval.sh)
-  eval-bridge.sh      — Bridge protocol eval (nonce, rate limit, auth)
-  eval-auth.sh        — V44 auth eval
+forge/             — DB migration risk engine (Zero binary + bash bridge)
+  forge_mini.0     — Zero binary source (pure compute, no I/O)
+  mcp-bridge.sh    — MCP stdio server (bash, owns I/O + auth + rate limit)
+  squawk-bridge.sh — Squawk Postgres lock-hazard integration
+  mcp-manifest.json, eval-cases.jsonl, eval-bridge.sh, eval-auth.sh, eval-squawk.sh
 
-ledger/
-  ledger_mini.0       — Zero binary source
-  mcp-bridge.sh       — MCP stdio server
-  mcp-manifest.json   — Self-describing API contract
-  eval-cases.jsonl    — Binary behavioral eval
-  eval-bridge-auth.sh — Bridge auth eval
-  eval-auth.sh        — V44 key-gen + auth eval
-  key-gen.sh          — API key generator (V44)
+ledger/            — Agent accounting (Zero binary + bash bridge)
+  ledger_mini.0, mcp-bridge.sh, key-gen.sh, litestream-replicate.sh
+  mcp-manifest.json, eval-cases.jsonl, eval-bridge-auth.sh, eval-auth.sh, eval-litestream.sh
+
+guardian/          — Universal operation safety oracle (pure bash, no binary)
+  mcp-bridge.sh, mcp-manifest.json, eval-cases.jsonl, eval-bridge.sh
+
+vault/             — Agent-native credential storage (pure bash, no binary)
+  mcp-bridge.sh, mcp-manifest.json, eval-cases.jsonl, eval-bridge.sh
+
+audit/             — Tamper-evident append-only log (pure bash, no binary)
+  mcp-bridge.sh, mcp-manifest.json, eval-cases.jsonl, eval-bridge.sh
+
+herd/              — GNAP-style multi-agent coordination (pure bash)
+  herd.sh, eval-herd.sh
 
 zero-ecosystem/
-  eval-harness/zeval.sh   — Universal eval runner for Zero binaries
+  eval-harness/zeval.sh           — Universal eval runner for Zero binaries
+  observability/otel-trace.sh     — Sourceable OpenTelemetry helper
+  json-schema/jsonschema_mini.0   — JSON Schema validator in Zero
 
 docs/
-  threat-model.md     — Full threat model (OWASP Agentic Top 10 + custom)
+  threat-model.md     — Threat model (OWASP Agentic Top 10 + custom); currently scoped to forge/ledger
   redteam-cycle1.md   — Red-team findings log
+  yc-application.md   — Canonical YC application (single source of truth)
 ```
 
 ## Security reporting

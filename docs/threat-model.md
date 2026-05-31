@@ -1,8 +1,10 @@
-# Threat Model: `ledger` — Agent-Native Accounting in Zero
+# Threat Model: `ledger` + `forge` — Core Binary Tools
 
-**Version 1.0 — 2026-05-17**
+**Version 1.1 — 2026-05-31** (updated from 1.0, 2026-05-17)
 **Classification:** Engineering — Share with build agent and operators
-**Scope:** `ledger` CLI v0.1.0 and planned v0.2+ (networked MCP/HTTP)
+**Scope:** `ledger` v0.1.11 and `forge` v0.1.4 binary + bash bridges
+
+> **Coverage gap:** This document covers `ledger` and `forge` only. `vault`, `guardian`, and `audit` have not yet been formally threat-modeled. `vault` in particular (handles actual secrets) represents the highest-sensitivity component in the HEROS stack — a full threat model for vault is the next priority. `herd` (git-native agent coordination), `squawk` integration, and `litestream` replication also introduce new attack surfaces not covered here. See the [CHANGELOG](../CHANGELOG.md) for a summary of what each component does.
 
 ---
 

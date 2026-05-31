@@ -1,10 +1,25 @@
 # HEROS Changelog
 
-All notable changes to forge and ledger. Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
+All notable changes to the HEROS agent operations stack (forge, ledger, guardian, vault, audit, and ecosystem integrations). Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
 ## [Unreleased]
+
+### Added (2026-05-31 — Platform expansion + YC research)
+- **`guardian` v0.1.0** — Universal operation safety oracle. Pre-execution risk gate (SAFE/NOTABLE/MEDIUM/HIGH/CRITICAL) for 6 operation categories: file system, shell commands, network requests, infrastructure changes, code execution, and data access. Same `decision_required` + `approval_nonce` protocol as forge. Pure bash bridge (no compiled binary required). 35 CI-gated eval cases (`guardian/eval-cases.jsonl`, `guardian/eval-bridge.sh`). MCP 2025-11-25 compliant; manifest ≤512 chars.
+- **`vault` v0.1.0** — Agent-native credential storage. `vault_secret_set/get/delete/list` with named secrets, base64-encoded on disk, flock-protected atomic writes, `.vault-audit` JSONL access log. `vault_secret_delete` requires human approval nonce (same V39 protocol as forge). 25 CI-gated eval cases (`vault/eval-cases.jsonl`, `vault/eval-bridge.sh`).
+- **`audit` v0.1.0** — Tamper-evident append-only compliance log. Chain-hashed JSONL: each entry hashes the previous entry using SHA-256 (genesis seed → latest entry). `audit_verify` re-derives the entire hash chain and returns `{valid: false, broken_at_entry: N}` on any deletion or modification — directly fixes V3 in `docs/threat-model.md`. 29 CI-gated eval cases (`audit/eval-cases.jsonl`, `audit/eval-bridge.sh`).
+- **`herd` coordination tool** — GNAP-style git-native multi-agent coordination. `herd init`, `register-agent`, `heartbeat`, `claim-task`, `complete-task`, `abandon-task`. File-locked JSON state, deadline-aware task claiming, idempotent registration. 30 CI-gated eval cases (`herd/eval-herd.sh`).
+- **forge Squawk integration** (`forge/squawk-bridge.sh`) — Second-pass Postgres lock-hazard detection via Squawk (Rust binary). Graceful `SQUAWK_NOT_AVAILABLE` when Squawk is absent; 27 stub-based eval cases (`forge/eval-squawk.sh`).
+- **ledger Litestream replication** (`ledger/litestream-replicate.sh`) — Wrapper for Litestream SQLite replication with S3/GCS/ABS replica URI validation, path traversal rejection, and `LITESTREAM_NOT_AVAILABLE` graceful degradation. 22 CI-gated stub-based eval cases (`ledger/eval-litestream.sh`); deployment guide in `docs/deployment-replication.md`.
+- **OpenTelemetry tracing** (`zero-ecosystem/observability/otel-trace.sh`) — Sourceable OTEL helper for bash bridges. `emit_span`, `trace_enabled`, `timer_start/timer_ms`. Strict stdout isolation (no bytes ever emitted on the MCP stdio channel). 7 CI-gated eval cases (`zero-ecosystem/observability/eval-otel.sh`).
+- **`docs/deep-research-report.md`** — 7-section adversarially-verified synthesis from 5 parallel research agents: YC RFS sourcing, verified real-world incidents (Replit July 2025, Moltbook Jan 2026), regulatory landscape (EU AI Act Aug 2, 2026), competitive landscape + absorption risk, market sizing (MarketsandMarkets $7.84B→$52.62B), OSS tool compatibility matrix, agent payments/identity standards.
+- **CI expanded**: 7 new pure-bash eval jobs (guardian, vault, audit, herd, squawk, otel, litestream); shellcheck now covers all 22 shell scripts (was 7); MCP manifest lint now checks all 5 manifests (was 2).
+
+### Changed (2026-05-31 — YC application update)
+- **`docs/yc-application.md`**: Replaced hypothetical incident with verified real incidents (Replit July 2025, Moltbook Jan 2026). Fixed EU AI Act language (Art. 12/14/26, high-risk systems only, Aug 2, 2026 deadline). Fixed YC RFS blockquote — removed unconfirmed sub-bullets; added secondary-source caveat. Updated eval count to 269 total (140 JSONL + 43 auth/bridge + 86 ecosystem). Added Aembit + Claude Code sandbox to competition table with absorption-risk framing.
+- **`docs/strategic-vision.md`**: Updated market comparables (Datadog $3.43B FY2025, Stripe $159B, HashiCorp $6.4B); detailed Claude Code sandbox + Aembit as verified absorption risk; added MarketsandMarkets CAGR data.
 
 ### Changed (2026-05-29 — YC application readiness pass)
 - **Canonical YC application**: `docs/yc-application.md` rewritten as the single source of truth, structured around YC's actual application questions with every claim cited to a repo file, an explicit pre-revenue/pre-users traction statement, and a "RFS: Software for Agents" mapping. `forge/yc_application_draft.md` and `forge/yc_scorecard.md` re-labeled as forge-specific supporting material that link to it.

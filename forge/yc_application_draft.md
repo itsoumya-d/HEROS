@@ -6,7 +6,7 @@
 
 ## Batch: [Current] | Category: Software for Agents (RFS)
 
-**Company:** HEROS (forge is one of two tools)
+**Company:** HEROS (forge is one of five tools — see `docs/yc-application.md`)
 **Founder:** Soumya Debnath
 **Email:** soumyadebnath1619@gmail.com
 
@@ -30,13 +30,13 @@ AI coding agents (Claude, Cursor, Devin) are increasingly given database credent
 
 ## What have you built? (150 words max)
 
-Working forge binary (ELF64 linux-musl-x64, ~15.6 KiB) built in Zero lang v0.1.1. The binary:
+Working forge binary (ELF64 linux-musl-x64, sub-100 KiB — passes CI binary-size gate) built in Zero lang. The binary:
 
 - `forge --describe` returns a complete machine-readable schema of all commands, input formats, output shapes, and error codes in a single JSON call — including `output_schema` and `migop_schema` blocks so a cold LLM knows exact field names, types, and semantics with no external documentation
 - `forge analyze` returns structured risk reports: `risk_tier`, `risk_score`, `has_data_loss`, `decision_required` (explicit halt signal — agents MUST NOT auto-proceed when true), per-operation `agent_guidance`; supports `--request-id` for idempotent retried calls
 - `forge --version` returns stable JSON with a `schema_version` field that allows agents to detect breaking output changes independently of the semver string
 
-All output paths emit JSON. Errors go to stdout (not stderr) so agents always get a parseable response. Cold-start agent eval (Test 7): a fresh LLM given only `--describe` output correctly constructed the invocation, identified the right gate fields, and classified the migration risk — with no prior documentation. YC scorecard: 40/40. The MCP manifest allows forge to be used as a native tool by Claude, Cursor, and any MCP-compatible agent.
+All output paths emit JSON. Errors go to stdout (not stderr) so agents always get a parseable response. Cold-start agent eval (Test 7): a fresh LLM given only `--describe` output correctly constructed the invocation, identified the right gate fields, and classified the migration risk — with no prior documentation. YC scorecard: 40/40 (see `forge/yc_scorecard.md`). The MCP manifest allows forge to be used as a native tool by Claude, Cursor, and any MCP-compatible agent.
 
 ---
 
@@ -68,7 +68,7 @@ Forge eliminates all three: no prompts, JSON-only stdout, and errors encoded in 
 
 ### Why the binary size matters
 
-At ~18.6 KiB, forge is small enough to be embedded directly in agent scaffolding containers, included in CI images without layer bloat, and distributed as a tool artifact alongside agent-generated migration files. Agent infrastructure has different economics than human infrastructure — tools are invoked many times per session, cold-start time compounds, and binary footprint is a first-class constraint.
+At sub-100 KiB, forge is small enough to be embedded directly in agent scaffolding containers, included in CI images without layer bloat, and distributed as a tool artifact alongside agent-generated migration files. Agent infrastructure has different economics than human infrastructure — tools are invoked many times per session, cold-start time compounds, and binary footprint is a first-class constraint.
 
 ### The `schema_version` contract
 
@@ -81,7 +81,7 @@ Every forge response includes `"schema_version": 1`. This single field solves a 
 | Flyway | Partial | No | No | No | ~50 MB JVM |
 | Liquibase | Partial | No | No | No | ~40 MB JVM |
 | sqitch | No | No | No | No | Perl runtime |
-| **forge** | **Yes (all paths)** | **Yes** | **Yes** | **Yes (`--describe`)** | **~18.6 KiB** |
+| **forge** | **Yes (all paths)** | **Yes** | **Yes** | **Yes (`--describe`)** | **sub-100 KiB** |
 
 The JVM-based tools have an additional problem: cold-start latency of 2–5 seconds per invocation. In an agentic loop running 20 migrations, this is 40–100 seconds of JVM startup overhead. forge starts in under 1 millisecond (no libc startup, no dynamic linker, direct ELF64 entry point).
 

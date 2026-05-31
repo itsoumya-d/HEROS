@@ -6,6 +6,9 @@
 |---|---|
 | forge v0.1.4 | ✓ |
 | ledger v0.1.11 | ✓ |
+| guardian v0.1.0 | ✓ |
+| vault v0.1.0 | ✓ |
+| audit v0.1.0 | ✓ |
 | All prior versions | ✗ |
 
 ## Reporting a Vulnerability
@@ -33,7 +36,8 @@ HEROS tools are designed with the following trust boundaries:
 
 - **Untrusted input:** All fields provided by agents (`org_name`, `to`, `memo`, `idempotency_key`, `from_schema`, `to_schema`, `request_id`) are treated as untrusted and validated at both binary and bridge layers.
 - **Trusted:** `HEROS_DATA_DIR`, `HEROS_API_KEY`, `HEROS_HMAC_SEED`, `HEROS_FORGE_*` rate limit env vars — operator-controlled, not agent-controlled.
-- **Binary isolation:** Zero lang's capability model means the compiled binary (`forge`, `ledger`) has no network access and no file I/O. All I/O flows through the bridge.
+- **Binary isolation (forge, ledger):** Zero lang's capability model means the compiled binary (`forge`, `ledger`) has no network access and no file I/O. All I/O flows through the bridge.
+- **Pure bash tools (guardian, vault, audit):** These tools have no compiled binary — the bridge script itself owns all logic, I/O, auth, and state. The same security constraints apply: no `eval`, all user input via `jq --arg`, flock-protected state files, and atomic writes. The `vault` bridge handles actual secrets and is the highest-sensitivity component in the stack.
 
 ## Security Hardening Summary
 

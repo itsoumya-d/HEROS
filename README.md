@@ -25,7 +25,7 @@ Infrastructure rebuilt for autonomous agents. Pre-execution risk gates. Idempote
 
 ```bash
 # Install: download the binary (Linux x86-64)
-curl -L https://github.com/itsoumya-d/HEROS/releases/latest/download/forge -o forge && chmod +x forge
+curl -L https://github.com/itsoumya-d/HEROS/releases/latest/download/forge-linux-x64.bin -o forge && chmod +x forge
 
 # Analyze migration risk
 forge analyze \
@@ -51,13 +51,11 @@ Output:
 
 ```bash
 # Install: download the binary (Linux x86-64)
-curl -L https://github.com/itsoumya-d/HEROS/releases/latest/download/ledger -o ledger && chmod +x ledger
+curl -L https://github.com/itsoumya-d/HEROS/releases/latest/download/ledger-linux-x64.bin -o ledger && chmod +x ledger
 
-# Register your org (idempotent)
-ledger register --org-name "MyOrg"
-
-# Create an invoice
-ledger invoice create --to "Vendor Inc" --amount "1000.00" --currency USD --idempotency-key "uuid-v4"
+# Use via the MCP bridge (recommended) — bridge supplies required --entropy / --timestamp
+# Direct binary: ledger register --org-name "MyOrg" --entropy $(openssl rand -hex 4) --timestamp $(date +%s)
+# See docs/getting-started.md for the MCP bridge setup
 ```
 
 > See [`docs/demo-transcript.md`](docs/demo-transcript.md) for a full 60-second walkthrough with
@@ -142,10 +140,13 @@ The bridge owns I/O and session state. The binary owns business logic. This sepa
 
 | Component | Tests | Security | Zero Version |
 |---|---|---|---|
-| forge v0.1.4 | 38 eval_log tests; 33 binary cases in CI | OWASP Agentic Top-10 audited; P0–P2 findings resolved | v0.1.3 |
-| ledger v0.1.11 | 25 binary cases in CI | HMAC auth + OWASP audit; P0–P2 findings resolved | v0.1.3 |
+| forge v0.1.4 | 33 binary JSONL + 13 bridge (BE) + 10 auth (FA) = 56 cases | OWASP Agentic Top-10 audited; P0–P2 findings resolved | v0.1.3 |
+| ledger v0.1.11 | 25 binary JSONL + 11 auth (BA) + 9 bridge-auth (AE) = 45 cases | HMAC auth + OWASP audit; P0–P2 findings resolved | v0.1.3 |
+| guardian v0.1.0 | 35 CI-gated eval cases | Same approval-nonce protocol as forge | pure bash |
+| vault v0.1.0 | 25 CI-gated eval cases | V39 approval nonce for delete; scoped access log | pure bash |
+| audit v0.1.0 | 29 CI-gated eval cases | Chain-hashed tamper detection; flock-protected appends | pure bash |
 
-Security process is documented in [`docs/threat-model.md`](docs/threat-model.md) and [`docs/redteam-cycle1.md`](docs/redteam-cycle1.md). Zero `eval` in any shell path.
+Security process is documented in [`docs/threat-model.md`](docs/threat-model.md) and [`docs/redteam-cycle1.md`](docs/redteam-cycle1.md). No `eval` in any shell path.
 
 Binary compilation requires Linux x86-64 (Zero ELF64 backend). Source compiles with the Zero compiler at [zero.vercel.app](https://zero.vercel.app).
 

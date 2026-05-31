@@ -7,8 +7,8 @@ released binary emits byte-for-byte on the shown inputs.
 
 > Install the released binaries (Linux x86-64):
 > ```bash
-> curl -L https://github.com/itsoumya-d/HEROS/releases/latest/download/forge -o forge && chmod +x forge
-> curl -L https://github.com/itsoumya-d/HEROS/releases/latest/download/ledger -o ledger && chmod +x ledger
+> curl -L https://github.com/itsoumya-d/HEROS/releases/latest/download/forge-linux-x64.bin -o forge && chmod +x forge
+> curl -L https://github.com/itsoumya-d/HEROS/releases/latest/download/ledger-linux-x64.bin -o ledger && chmod +x ledger
 > ```
 > The `ledger` write commands run through `ledger/mcp-bridge.sh` (the bridge owns persistence,
 > auth, and idempotency; it strips internal `_new_*` fields before returning to the agent).

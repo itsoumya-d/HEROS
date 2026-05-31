@@ -85,10 +85,10 @@ Self-hosting requires the Zero compiler toolchain. Binaries are pre-compiled and
 - Custom rate limits
 - SAML SSO
 - Private deployment (VPC, on-prem)
-- SOC 2 Type II report on request
+- SOC 2 Type II (planned, 12–18 months post-launch; not yet available)
 - Custom data retention policy
 - Dedicated support channel (Slack)
-- SLA: 99.9% uptime
+- SLA: 99.9% uptime target (when available — service not yet deployed)
 
 Contact: [soumyadebnath1619@gmail.com](mailto:soumyadebnath1619@gmail.com)
 

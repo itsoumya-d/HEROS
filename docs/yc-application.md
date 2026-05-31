@@ -171,11 +171,13 @@ constraints apply.
 
 **Pre-revenue, pre-users.** What exists is evidence of execution quality, not market demand:
 
-- Core MCP tools: forge 33, ledger 25, guardian 35, vault 25, audit 22 — 140 JSONL eval cases,
+- Core MCP tools: forge 33, ledger 25, guardian 35, vault 25, audit 22 — **140 JSONL eval cases**,
   all CI-gated and passing.
-- Ecosystem bridges: Squawk integration (27 cases), herd coordination (30 cases), Litestream
-  replication (22 cases), OpenTelemetry tracing (7 cases), ledger auth suites (20 cases) —
-  226 total eval cases across all tools and integrations.
+- Auth/bridge suites: forge bridge V39 (13), forge auth FA series (10), ledger auth BA series (11),
+  ledger bridge-auth AE series (9) — **43 auth and bridge eval cases**.
+- Ecosystem bridges: Squawk integration (27), herd coordination (30), Litestream replication (22),
+  OpenTelemetry tracing (7) — **86 ecosystem eval cases**.
+- **269 total eval cases** across all tools, integrations, and security suites.
 - Documented adversarial security process: red-team report (`docs/redteam-cycle1.md`), threat
   model with OWASP Agentic Top-10 mapping (`docs/threat-model.md`), fix log of P0–P2 findings
   resolved (JSON-injection, TOCTOU race, non-atomic write, table-name injection, non-ASCII bypass).
