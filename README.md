@@ -1,8 +1,9 @@
-# HEROS — Agent-Native Infrastructure Toolkit
+# HEROS — Agent Operations Stack
 
-Infrastructure primitives rebuilt for autonomous agents. JSON-only output. Machine-readable errors. Idempotent operations. MCP-native.
+Infrastructure rebuilt for autonomous agents. Pre-execution risk gates. Idempotent writes. Tamper-evident audit trails. MCP-native.
 
-Built in [Zero lang](https://github.com/vercel-labs/zero) — deterministic latency, static binaries, no runtime dependencies.
+> *"Rebuild every major software category for a world where the next trillion users are not people but AI agents."*
+> — YC Requests for Startups, Summer 2026
 
 ---
 
@@ -10,8 +11,11 @@ Built in [Zero lang](https://github.com/vercel-labs/zero) — deterministic late
 
 | Tool | What it does | Status |
 |---|---|---|
-| [forge](forge/README.md) | Database schema migration engine — risk-scores schema changes before they run | v0.1.4 |
-| [ledger](ledger/README.md) | Agent accounting — idempotent invoices and org registration with stable JSON error codes | v0.1.11 |
+| [forge](forge/README.md) | Database migration safety — risk-scores any schema change before it runs; blocks data-loss ops without human approval | v0.1.4 |
+| [ledger](ledger/README.md) | Agent accounting — idempotent invoices and org registration, HMAC auth, stable JSON error codes | v0.1.11 |
+| [guardian](guardian/) | Universal safety oracle — pre-execution risk gate for file system, shell, network, infra, code execution, and data access | v0.1.0 |
+| [vault](vault/) | Agent-native credential storage — named secrets with scoped access and access audit log | v0.1.0 |
+| [audit](audit/) | Tamper-evident compliance log — append-only chain-hashed JSONL; `audit_verify` detects any alteration | v0.1.0 |
 
 ---
 
@@ -64,27 +68,22 @@ ledger invoice create --to "Vendor Inc" --amount "1000.00" --currency USD --idem
 
 ## MCP Integration
 
-Both tools ship as MCP servers (stdio transport). Add to Claude Code or any MCP-compatible orchestrator:
+All tools ship as MCP servers (stdio transport). Add to Claude Code or any MCP-compatible orchestrator:
 
 **`~/.claude/settings.json`:**
 ```json
 {
   "mcpServers": {
-    "forge": {
-      "command": "/path/to/forge/mcp-bridge.sh",
-      "args": [],
-      "transport": "stdio"
-    },
-    "ledger": {
-      "command": "/path/to/ledger/mcp-bridge.sh",
-      "args": [],
-      "transport": "stdio"
-    }
+    "forge":    { "command": "/path/to/forge/mcp-bridge.sh",    "args": [], "transport": "stdio" },
+    "ledger":   { "command": "/path/to/ledger/mcp-bridge.sh",   "args": [], "transport": "stdio" },
+    "guardian": { "command": "/path/to/guardian/mcp-bridge.sh", "args": [], "transport": "stdio" },
+    "vault":    { "command": "/path/to/vault/mcp-bridge.sh",    "args": [], "transport": "stdio" },
+    "audit":    { "command": "/path/to/audit/mcp-bridge.sh",    "args": [], "transport": "stdio" }
   }
 }
 ```
 
-Both bridges implement the MCP 2025-11-25 protocol. Run `--describe` on either binary for the full self-describing API schema — no documentation fetch needed.
+All bridges implement MCP 2025-11-25. Run `--describe` on forge or ledger for the full self-describing API schema — no documentation fetch needed.
 
 ---
 

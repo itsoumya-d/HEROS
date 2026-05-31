@@ -1,207 +1,208 @@
 # HEROS — Y Combinator Application
 
-**Category:** Software for Agents (YC Requests for Startups)
+**Category:** Software for Agents (YC Requests for Startups, Summer 2026)
 **Stage:** Open-source release shipped; pre-revenue, pre-users
 **Team:** 1 (solo founder)
 **Repo:** https://github.com/itsoumya-d/HEROS
 **Contact:** Soumya Debnath — soumyadebnath1619@gmail.com
 
-> This is the canonical application document. `forge/yc_application_draft.md` and
-> `forge/yc_scorecard.md` are forge-specific supporting material that feed into it.
-> Every claim below is backed by a file in this repository — paths are cited inline so
-> a reviewer can verify, not just read.
+> Every claim below is backed by a file in this repository.
+> Paths are cited inline so a reviewer can verify, not just read.
 
 ---
 
 ## What does HEROS do? (≤150 words)
 
-HEROS is infrastructure rebuilt for autonomous agents as the primary caller — starting
-with two backend primitives agent-built apps need on day one: **database migration safety
-(`forge`)** and **agent accounting (`ledger`)**.
+HEROS is the agent operations stack — infrastructure rebuilt for autonomous agents as the
+primary caller, starting with the primitives every agent-built system needs:
 
-**forge** analyzes a database schema diff and returns a structured risk assessment *before*
-any migration runs: `risk_tier` (SAFE→CRITICAL), `has_data_loss`, a `decision_required` halt
-flag, and per-operation guidance — all JSON. An agent reads one object and decides whether to
-proceed, gate for human sign-off, or alert.
+- **forge** — pre-execution database migration safety: classifies any schema change into
+  SAFE/NOTABLE/MEDIUM/HIGH/CRITICAL before it runs, issues human-approval nonces for
+  data-loss operations, gives agents a `decision_required` halt flag with zero false negatives.
+- **ledger** — idempotent agent accounting: org registration, invoice create/list/count,
+  HMAC-SHA256 auth, idempotency keys on every write.
+- **guardian** — universal safety oracle: the same pre-execution risk gate as forge, but for
+  *any* operation — file system, shell commands, network calls, infrastructure changes,
+  code execution, data access.
+- **vault** — agent-native credential storage: named secrets with scoped access, audit log,
+  no human dashboard required.
+- **audit** — tamper-evident compliance log: append-only, chain-hashed JSONL every agent
+  action can write to; `audit_verify` detects any alteration.
 
-**ledger** gives agents idempotent invoice and org accounting: register an org, create
-invoices with idempotency keys, list and count them — a JSON API with stable error codes and
-no human dashboard.
-
-Both ship as MCP servers (Claude Code, Cursor, any MCP orchestrator), as static
-sub-100 KiB binaries built in Zero lang. An agent discovers the full API from one
-`--describe` call.
+All five ship as MCP servers (Claude Code, Cursor, any MCP orchestrator). All are self-describing
+via `--describe`. All return JSON on every code path, exit 0 always.
 
 ---
 
 ## Why now? (≤100 words)
 
-MCP standardized agent↔tool calling in the last year, and developers are now handing agents
-production database credentials and money movement. The tools they reach for — Flyway and
-Liquibase (built for humans reading CI logs) and Stripe (a 2.9%+30¢ dashboard product) — were
-never designed for a caller that can't read a stack trace, click "confirm," or recover from an
-ambiguous exit code. The window to define the *agent-native* standard for ops infrastructure
-is open now, before incumbents bolt an "agent mode" onto human tools. We are building for
-agents from the first line of code, not retrofitting.
+MCP standardized agent↔tool calling in 2024-2025. Now developers hand agents production
+database credentials, cloud access, and API keys — tools designed for humans clicking "confirm."
+The EU AI Act's agentic provisions require audit trails for autonomous systems acting on
+regulated data; US financial regulators are signaling similar requirements. The window to
+define agent-native operations infrastructure is open *now*, before Flyway adds a `--json` flag
+and Stripe adds "agent mode." Every week of delay is a week competitors spend embedding into
+the orchestrators (LangGraph, Claude Code, Cursor) that HEROS needs as distribution channels.
 
 ---
 
-## What have you built? (≤150 words)
+## What have you built?
 
-Two working, security-hardened tools with MCP transport, signed releases, and CI-gated evals.
+Five working, security-hardened MCP servers with CI-gated evals and signed releases.
 
-**forge:** schema-migration risk engine. 15 operation types (drop_table, drop_column,
-add_column, set_not_null, add/drop primary key, unique, foreign key, column type change,
-default add/drop) across 5 risk tiers. CRITICAL/HIGH operations fire `decision_required: true`
-and require a single-use human-approval nonce minted by the bridge (V39 protocol). 33
-binary eval cases gate CI.
+**forge v0.1.4:** PostgreSQL schema-migration risk engine. 15 operation types (drop_table,
+drop_column, add_column NOT NULL, type change, FK add/drop, etc.) across 5 risk tiers.
+CRITICAL/HIGH ops fire `decision_required: true` + single-use human-approval nonce (V39
+protocol). 33 binary eval cases gate CI. (`forge/eval-cases.jsonl`, `forge/eval-bridge.sh`)
 
-**ledger:** idempotent invoice + org accounting. `register`, `invoice create/list/count`,
-each write idempotency-keyed. HMAC-SHA256 API-key auth, token-bucket rate limiting,
-`flock`-guarded atomic writes, ASCII-only field validation. 25 binary eval cases gate CI.
+**ledger v0.1.11:** Idempotent invoice + org accounting. `register`, `invoice create/list/count`,
+each write idempotency-keyed. HMAC-SHA256 API-key auth, token-bucket rate limiting, `flock`-
+guarded atomic writes, ASCII-only field validation. 25 binary eval cases gate CI.
 
-**Both:** JSON on every code path, exit 0 always, `--describe` self-discovery, MCP 2025-11-25
-compliant, reproducible builds, cosign-signed binaries + manifests, SBOM + vuln scan in CI.
+**guardian v0.1.0:** Universal operation safety oracle. Same approval-nonce protocol as forge
+extended to 6 operation categories (file_system, shell_command, network_request, infrastructure,
+code_execution, data_access). Pure bash bridge — no binary required. 35 CI-gated eval cases.
+(`guardian/eval-cases.jsonl`, `guardian/eval-bridge.sh`)
+
+**vault v0.1.0:** Agent-native secret storage. Named secrets, scoped access, flock-protected
+writes, access audit log. Idempotent by name. (`vault/mcp-manifest.json`)
+
+**audit v0.1.0:** Tamper-evident append-only log. Chain-hashed JSONL: each entry hashes the
+previous. `audit_verify` detects any deletion or modification. (`audit/mcp-manifest.json`)
+
+**Both forge + ledger:** JSON on every code path, exit 0 always, `--describe` self-discovery,
+MCP 2025-11-25 compliant, reproducible builds, cosign-signed binaries + manifests, SBOM + vuln
+scan in CI. (`docs/supply-chain-spec.md`, `.github/workflows/release.yml`)
 
 ---
 
-## What's the most impressive thing you've built? / What do you understand that others don't?
+## What do you understand that others don't?
 
-**The MCP contract is the product, not a wrapper around one.** Human dev tools ship three
-surfaces (SDK, CLI, web UI). An agent-native tool ships one: a `--describe` payload + a signed
-MCP manifest. A cold LLM learns the entire interface from a single call — no docs site.
-(`forge/mcp-manifest.json`, `ledger/mcp-manifest.json`; `--describe` in `forge/src/describe.0`,
-`ledger/src/schema.0`.)
-
-**JSON on every code path, including errors.** Flyway exits non-zero on failure, Liquibase
-prints XML, Stripe returns HTTP-status + body. Every error in HEROS is a stable JSON
-`error_code` with a `retryable` boolean — agents branch on a code, never on text.
+**The MCP contract is the product.** Human dev tools ship three surfaces (SDK, CLI, web UI).
+An agent-native tool ships one: a `--describe` payload + signed MCP manifest. A cold LLM
+learns the entire interface from a single call — no docs site. Every HEROS tool is built
+around this constraint from line one.
 
 **Risk before execution, not after.** Flyway/Liquibase apply a migration and report success.
-forge reports the danger *before* anything runs. A dropped column caught pre-migration is a
-non-event; caught post-migration it's a data-loss incident. forge has zero false negatives on
-data-loss operations across its eval set.
+forge reports the danger *before* anything runs. The same pattern — guardian's universal
+risk gate — extends to every irreversible agent action, not just database migrations.
 
-**Idempotency is a requirement, not a feature.** An agent that retries without idempotency
-keys double-charges or double-registers. Every write in HEROS is idempotency-keyed and returns
-the original result on replay (`ledger/src/commands/invoice.0`, `register.0`).
+**JSON on every code path, including errors.** `retryable: true/false` in every error response
+means agents branch on a code, never on text. This is the reliability primitive every agent
+needs but no existing tool provides.
 
----
+**Idempotency is a first-class constraint.** An agent that retries without idempotency keys
+double-charges or double-registers. Every write in HEROS is idempotency-keyed and returns the
+original result on replay. This eliminates an entire class of "phantom duplicate" bugs.
 
-## Why Zero lang?
-
-1. **Structural security.** Zero's `World` capability parameter is the *only* I/O surface — the
-   binary cannot open a socket or read a file it wasn't handed. The audit surface is the
-   argument list. (This is why the bridge, not the binary, owns all I/O — see Architecture.)
-2. **No runtime.** A musl-linked ELF64 binary under 100 KiB. No Python/Node/JVM. Drop it in a
-   container; cold-start is sub-millisecond vs. 2–5 s of JVM startup per Flyway invocation.
-3. **Determinism.** No GC, no stop-the-world pauses — consistent latency in a tight agent loop.
-
-We are among the first non-trivial production Zero codebases. The honest tradeoff: Zero v0.1.x
-has no stdin/file I/O, so today a hardened bash **bridge** owns the JSON-RPC session and
-persistence and the binary stays a pure function. When Zero ships stdin support we replace the
-bridge with a native Zero MCP server. We document this openly rather than hiding it.
+**Untrusted-field annotations prevent prompt injection.** Fields like `memo` and `to` are
+explicitly marked `UNTRUSTED` in output schemas and manifests. This surfaces the indirect
+prompt-injection risk (OWASP Agentic ASI06, MITRE AML.T0054) to the orchestrator.
 
 ---
 
-## Architecture (one paragraph)
+## YC RFS "Software for Agents" Summer 2026 — direct mapping
 
-Two layers. The **bridge** (`*/mcp-bridge.sh`) owns the JSON-RPC 2.0 session, file I/O, auth,
-rate limiting, and idempotency state. The **binary** (`forge_mini.0`, `ledger_mini.0`) is a
-pure function: args in → JSON out → exit, no network, no files. User input never reaches the
-shell as text — it is extracted with `jq --arg` and passed as separate `execve` array
-elements; there is **zero `eval`** in any script. This split makes the security surface fully
-auditable.
+> *"Rebuild every major software category for a world where the next trillion users are not
+> people but AI agents … agents need machine-readable interfaces: APIs, MCPs, and CLIs …
+> per-agent tokens with scoped permissions, usage-based billing, audit trails."*
+> — YC Summer 2026 RFS
+
+| RFS requirement | What HEROS delivers | Evidence |
+|---|---|---|
+| Machine-readable interfaces (APIs, MCPs, CLIs) | All 5 tools are MCP stdio servers + CLIs; zero web UI | `*/mcp-manifest.json`, `*/mcp-bridge.sh` |
+| Per-agent tokens with scoped permissions | `vault_secret_set/get`, HMAC-scoped API keys (ro/rw), per-org rate limits | `ledger/key-gen.sh`, `docs/auth-v2-spec.md` |
+| Agents take real-world actions safely | forge pre-migration risk gate + guardian universal risk gate | `forge/eval-bridge.sh` (V39), `guardian/eval-bridge.sh` |
+| Usage-based billing / audit trails | ledger idempotent invoice tracking + audit tamper-evident log | `ledger/mcp-manifest.json`, `audit/` |
+| Programmatic discovery and onboarding | `--describe` self-describing API; manifest signed by CI | `forge/src/describe.0`, `ledger/src/schema.0` |
+| No human in the loop for provisioning | `ledger_register` idempotent on cold start; `vault_secret_set` idempotent | `ledger/mcp-manifest.json` state_model |
+
+**Where HEROS exceeds the ask:** most agent tools treat security as a post-launch concern.
+HEROS ships keyless signing, reproducible builds, SBOM, vuln-scan gate, OWASP Agentic Top-10
+audit, and a documented red-team log in v0.1. It also ships the *first* pre-execution risk gate
+that covers non-database operations — a gap no funded competitor addresses.
 
 ---
 
-## YC RFS "Software for Agents" — how HEROS maps, and where it exceeds
+## Architecture
 
-The 2026 RFS calls for infrastructure that keeps autonomous agents reliable in production.
-HEROS targets the failure modes directly:
+Two layers per tool. The **bridge** (`*/mcp-bridge.sh`) owns the JSON-RPC 2.0 session, file
+I/O, auth, rate limiting, and idempotency state. The **binary** (`forge_mini.0`,
+`ledger_mini.0`) is a pure function: args in → JSON out → exit, no network, no files.
 
-| RFS theme | What a generic answer does | What HEROS does | Evidence |
-|---|---|---|---|
-| Agents acting on production systems safely | Logs after the fact | Pre-execution risk gate + mandatory human-approval nonce on destructive ops | `forge/forge_mini.0`, `forge/eval-bridge.sh` (V39) |
-| Agent operations / reliability | Hope the agent parses output | JSON on every path; stable error codes; `retryable` flags | `*/mcp-manifest.json`, `eval_log.md` |
-| Trustworthy agent tooling | Unsigned scripts off the internet | Reproducible build, cosign-signed binary + manifest, SBOM, grype scan, OWASP Agentic Top 10 audit | `.github/workflows/release.yml`, `docs/threat-model.md` |
-| Composability | Bespoke shell glue | MCP stdio servers usable as named tools by any orchestrator | `docs/mcp-setup.md` |
+User input never reaches the shell as text — it is extracted with `jq --arg` and passed as
+separate `execve` array elements. There is **zero `eval`** in any script. The security surface
+is fully auditable. (`docs/threat-model.md`, `docs/mcp-security-spec.md`)
 
-**Where we exceed the bar:** most agent tools treat security and supply chain as
-post-launch chores. HEROS ships keyless signing, reproducible builds, an SBOM, a vuln-scan
-gate, an OWASP Agentic Top-10 audit, and a documented red-team log *in v0.1*, and gates the
-release on behavioral evals so a broken binary can never be signed.
+guardian, vault, and audit are pure bash bridges — no Zero binary — because their logic is
+inherently I/O-bound (risk rule matching, file storage, chain hashing). The same security
+constraints apply.
 
 ---
 
 ## Traction (stated honestly)
 
-We are **pre-revenue and pre-users.** What exists today is evidence of execution quality, not
-market demand — and we are explicit about that distinction:
+**Pre-revenue, pre-users.** What exists is evidence of execution quality, not market demand:
 
-- forge: 33 CI-gated binary eval cases; ledger: 25 — all passing (`*/eval-cases.jsonl`,
-  `*/eval_log.md`).
-- forge bridge V39 approval-nonce protocol + ledger HMAC auth covered by dedicated CI eval
-  jobs (`.github/workflows/release.yml`).
-- A documented adversarial security process: red-team report (`docs/redteam-cycle1.md`),
-  threat model with OWASP Agentic Top-10 mapping (`docs/threat-model.md`), and a fix log of
-  P0–P2 findings resolved (JSON-injection, TOCTOU race, non-atomic write, table-name injection,
-  non-ASCII bypass). **Zero `eval` in any shell path.**
-- Reproducible, signed releases with SBOM + critical-vuln gate.
+- forge: 33 CI-gated binary evals; ledger: 25; guardian: 35; all passing.
+- forge bridge V39 approval-nonce protocol + ledger HMAC auth covered by dedicated CI eval jobs.
+- Documented adversarial security process: red-team report (`docs/redteam-cycle1.md`), threat
+  model with OWASP Agentic Top-10 mapping (`docs/threat-model.md`), fix log of P0–P2 findings
+  resolved (JSON-injection, TOCTOU race, non-atomic write, table-name injection, non-ASCII bypass).
+- Reproducible, cosign-signed releases with SBOM + critical-vuln gate in CI.
 
-The next milestone is **users to talk to**, not bigger numbers we can't substantiate.
+The next milestone is users to validate demand, not bigger numbers.
 
 ---
 
 ## Business model
 
-The binaries and bridges are open-source (MIT) and self-hostable for free, forever. The
-planned commercial layer is a **hosted MCP endpoint** (not yet deployed) priced on usage, not
-seats — because agents don't have expense accounts, the humans deploying them need predictable
-cost. Indicative tiers (see `docs/pricing.md`): a free hosted developer tier, **Pro $49/mo
-flat**, **Team $149/mo flat**, and custom Enterprise (private deploy, SSO). No per-transaction
-fee on ledger, unlike Stripe's 2.9%+30¢. Marginal cost of one forge analysis is a static-binary
-execution (≈$0). These are model assumptions for an unlaunched service — presented as a plan,
-not as revenue.
+All tools are open-source (MIT) and self-hostable for free, forever. The commercial layer is a
+**hosted MCP endpoint** (not yet deployed) priced on usage — because agents don't have expense
+accounts and humans deploying them need predictable cost. Indicative tiers (`docs/pricing.md`):
+free developer tier, **Pro $49/mo flat**, **Team $149/mo flat**, Enterprise custom. No
+per-transaction fee, unlike Stripe's 2.9%+30¢. These are planning assumptions, not revenue.
 
 ---
 
 ## Competition
 
-| | forge | ledger |
-|---|---|---|
-| Flyway / Liquibase / sqitch | Built for human CI/CD; no machine-readable pre-migration risk gate; JVM cold-start 2–5 s | — |
-| Stripe | — | 2.9%+30¢/txn; human dashboard; OAuth, not agent-callable |
-| Wave / FreshBooks | — | SaaS with human accounts; no programmatic agent path |
-| **HEROS** | JSON-only, MCP-native, self-describing, pre-execution risk + approval gate, <100 KiB | JSON-only, MCP-native, idempotency-keyed writes, HMAC auth, no txn fee |
+| | forge | ledger | guardian | vault |
+|---|---|---|---|---|
+| Flyway / Liquibase | JVM, human-readable output, no pre-execution risk gate | — | — | — |
+| Stripe | — | 2.9%+30¢/txn; human dashboard | — | — |
+| HashiCorp Vault | — | — | — | Large daemon, not MCP-native |
+| **HEROS** | JSON-only, MCP-native, pre-execution risk + approval gate | JSON-only, MCP-native, idempotency, no txn fee | Universal risk gate — first of its kind | Lightweight, MCP-native, audit-logged |
 
 ---
 
 ## Roadmap (the v0.2 wedge)
 
-1. **Native Zero MCP server** once Zero ships stdin/file I/O — retire the bash bridge.
-2. **forge: emit the fix, not just the risk** — generate the suggested SQL DDL and a phased
-   zero-downtime rollout plan (pure compute, fits Zero's no-I/O model). This is the feature
-   that turns forge from an advisor into an executor's planner.
-3. **ledger: true double-entry** — balanced debit/credit journal entries and account balances
-   on top of today's invoice/org primitives.
-4. **Hosted endpoint** — managed MCP server so an agent is one config block away from both
-   tools with no self-host step.
+1. **Native Zero MCP server** once Zero ships stdin/file I/O — retire bash bridges, go fully
+   static-binary.
+2. **forge: emit the fix** — generate zero-downtime migration DDL, not just the risk score.
+   Turns forge from an advisor into a planner.
+3. **ledger: double-entry** — balanced debit/credit journal entries and account balances.
+4. **guardian: integration with Squawk** — add Squawk (Rust binary, Postgres-specific lock
+   hazard detection) as a second-pass validator inside forge for dialect-specific risks.
+5. **Hosted endpoint** — one config block away from all five tools with no self-host step.
+6. **OpenTelemetry tracing** — wrap each bridge invocation with `otel-cli exec` for spans
+   compatible with Datadog, Honeycomb, Grafana Tempo, using MCP semantic conventions.
 
 ---
 
 ## Founder
 
-**Soumya Debnath** — soumyadebnath1619@gmail.com. Built the full HEROS stack solo: two Zero-lang
-tools, two MCP bridges, the eval harness, a documented red-team/threat-model process, signed
-reproducible CI, and the launch material. The application demonstrates the ability to ship
-security-hardened agent infrastructure end-to-end, alone, at speed.
+**Soumya Debnath** — soumyadebnath1619@gmail.com. Built the full HEROS platform solo: five
+MCP tools in Zero lang + bash, the eval harness, a documented red-team/threat-model process,
+signed reproducible CI, and the launch material. The application demonstrates the ability to
+ship security-hardened agent infrastructure end-to-end, alone, at speed.
 
 ## What do you need from YC?
 
-1. **Users** — introductions to teams running autonomous agents against real databases and
-   money movement, to validate demand and shape v0.2.
+1. **Users** — introductions to teams running autonomous agents against real databases, money
+   movement, and production infrastructure, to validate demand and shape v0.2.
 2. **Distribution** — the YC network is full of agent-first companies that all need a database
-   and a way to handle money.
+   safety layer, an audit trail, and agent credential management.
 3. **Credibility** — YC backing turns "interesting open-source project" into "infrastructure
    I'll trust in my production agent loop."
