@@ -11,6 +11,21 @@
 
 ---
 
+## The problem, in one incident
+
+An autonomous coding agent is told to "clean up the staging database." It writes a migration
+that drops a column still read by a background job, runs it, and reports success. The data is
+gone. No human saw a confirmation prompt, because agents don't read confirmation prompts — they
+parse exit codes and move on. The same week, a billing agent retries a failed request without an
+idempotency key and charges a customer twice.
+
+Neither failure is exotic. Both happen because agents are driving tools built for humans who
+read stack traces and click "confirm." HEROS is the operations layer that assumes the caller is
+an agent: it returns a machine-readable risk verdict *before* the destructive action runs, and
+makes idempotency a requirement, not an option.
+
+---
+
 ## What does HEROS do? (≤150 words)
 
 HEROS is the agent operations stack — infrastructure rebuilt for autonomous agents as the
@@ -65,10 +80,12 @@ code_execution, data_access). Pure bash bridge — no binary required. 35 CI-gat
 (`guardian/eval-cases.jsonl`, `guardian/eval-bridge.sh`)
 
 **vault v0.1.0:** Agent-native secret storage. Named secrets, scoped access, flock-protected
-writes, access audit log. Idempotent by name. (`vault/mcp-manifest.json`)
+writes, access audit log. Idempotent by name; delete requires a human-approval nonce. 25
+CI-gated eval cases. (`vault/eval-cases.jsonl`, `vault/eval-bridge.sh`)
 
 **audit v0.1.0:** Tamper-evident append-only log. Chain-hashed JSONL: each entry hashes the
-previous. `audit_verify` detects any deletion or modification. (`audit/mcp-manifest.json`)
+previous. `audit_verify` detects any deletion or modification (fixes V3 in the threat model). 22
+CI-gated eval cases. (`audit/eval-cases.jsonl`, `audit/eval-bridge.sh`)
 
 **Both forge + ledger:** JSON on every code path, exit 0 always, `--describe` self-discovery,
 MCP 2025-11-25 compliant, reproducible builds, cosign-signed binaries + manifests, SBOM + vuln
@@ -144,7 +161,8 @@ constraints apply.
 
 **Pre-revenue, pre-users.** What exists is evidence of execution quality, not market demand:
 
-- forge: 33 CI-gated binary evals; ledger: 25; guardian: 35; all passing.
+- forge: 33 CI-gated evals; ledger: 25; guardian: 35; vault: 25; audit: 22 — all passing
+  (140 total across the five tools).
 - forge bridge V39 approval-nonce protocol + ledger HMAC auth covered by dedicated CI eval jobs.
 - Documented adversarial security process: red-team report (`docs/redteam-cycle1.md`), threat
   model with OWASP Agentic Top-10 mapping (`docs/threat-model.md`), fix log of P0–P2 findings
@@ -197,6 +215,11 @@ per-transaction fee, unlike Stripe's 2.9%+30¢. These are planning assumptions, 
 MCP tools in Zero lang + bash, the eval harness, a documented red-team/threat-model process,
 signed reproducible CI, and the launch material. The application demonstrates the ability to
 ship security-hardened agent infrastructure end-to-end, alone, at speed.
+
+**First hire (planned):** a developer-relations / design-partner engineer — not another backend
+builder. The engineering is the part I can do alone; the gap is getting forge into ten real
+agent pipelines and turning that feedback into v0.2. The first dollar of YC funding goes to the
+person who closes the loop between the code and the users, while I keep shipping the binary.
 
 ## What do you need from YC?
 
