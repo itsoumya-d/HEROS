@@ -11,18 +11,24 @@
 
 ---
 
-## The problem, in one incident
+## The problem, in two real incidents
 
-An autonomous coding agent is told to "clean up the staging database." It writes a migration
-that drops a column still read by a background job, runs it, and reports success. The data is
-gone. No human saw a confirmation prompt, because agents don't read confirmation prompts — they
-parse exit codes and move on. The same week, a billing agent retries a failed request without an
-idempotency key and charges a customer twice.
+*July 17–18, 2025 — Replit:* An autonomous agent deleted the production data of 1,206 enterprise
+executives during a code freeze. The data was eventually recovered through emergency human
+intervention, but the agent had been given production database credentials, ran a migration with
+no pre-execution risk check, and reported success. Agents don't read confirmation prompts — they
+parse exit codes and move on.
 
-Neither failure is exotic. Both happen because agents are driving tools built for humans who
-read stack traces and click "confirm." HEROS is the operations layer that assumes the caller is
-an agent: it returns a machine-readable risk verdict *before* the destructive action runs, and
-makes idempotency a requirement, not an option.
+*January 31–February 1, 2026 — Moltbook:* 1.5 million API keys were exposed through a
+client-side Supabase secret with no row-level security. The breach is cited in Y Combinator's
+own Spring 2026 Requests for Startups as the specific incident motivating a request for
+agent-native credential management tooling.
+
+Both failures share the same root cause: agents driving tools designed for humans who click
+"confirm." HEROS is the operations layer that assumes the caller is an agent: it returns a
+machine-readable risk verdict *before* the destructive action runs, makes idempotency a
+requirement not an option, and stores credentials in an agent-native vault with scoped access
+keys — the three direct fixes for the two incidents above.
 
 ---
 
@@ -52,12 +58,13 @@ via `--describe`. All return JSON on every code path, exit 0 always.
 ## Why now? (≤100 words)
 
 MCP standardized agent↔tool calling in 2024-2025. Now developers hand agents production
-database credentials, cloud access, and API keys — tools designed for humans clicking "confirm."
-The EU AI Act's agentic provisions require audit trails for autonomous systems acting on
-regulated data; US financial regulators are signaling similar requirements. The window to
-define agent-native operations infrastructure is open *now*, before Flyway adds a `--json` flag
-and Stripe adds "agent mode." Every week of delay is a week competitors spend embedding into
-the orchestrators (LangGraph, Claude Code, Cursor) that HEROS needs as distribution channels.
+database credentials, cloud access, and API keys — tools designed for humans who click "confirm."
+The founding production incidents are already on record (Replit July 2025, Moltbook Jan 2026).
+OWASP published its Agentic Top 10 (ASI01–ASI10) on December 9, 2025. EU AI Act Articles 12,
+14, and 26 — requiring audit trails and human oversight for high-risk AI systems — enter full
+enforcement August 2, 2026. The window to define agent-native operations infrastructure is open
+*now*, before major orchestrators build safety primitives natively and before the compliance
+deadline closes the door on early movers.
 
 ---
 
@@ -114,7 +121,8 @@ original result on replay. This eliminates an entire class of "phantom duplicate
 
 **Untrusted-field annotations prevent prompt injection.** Fields like `memo` and `to` are
 explicitly marked `UNTRUSTED` in output schemas and manifests. This surfaces the indirect
-prompt-injection risk (OWASP Agentic ASI06, MITRE AML.T0054) to the orchestrator.
+prompt-injection risk to the orchestrator — mapped to OWASP Agentic Top 10 ASI06 (published
+December 9, 2025) and MITRE ATLAS v5.1.0 AML.T0054 (November 2025).
 
 ---
 
@@ -122,8 +130,10 @@ prompt-injection risk (OWASP Agentic ASI06, MITRE AML.T0054) to the orchestrator
 
 > *"Rebuild every major software category for a world where the next trillion users are not
 > people but AI agents … agents need machine-readable interfaces: APIs, MCPs, and CLIs …
-> per-agent tokens with scoped permissions, usage-based billing, audit trails."*
-> — YC Summer 2026 RFS
+> machine-readable docs."*
+> — Y Combinator Summer 2026 Requests for Startups
+> *(reconstructed from secondary sources; ycombinator.com/rfs requires authentication —
+> see `docs/deep-research-report.md` §1 for sourcing details)*
 
 | RFS requirement | What HEROS delivers | Evidence |
 |---|---|---|
@@ -161,9 +171,11 @@ constraints apply.
 
 **Pre-revenue, pre-users.** What exists is evidence of execution quality, not market demand:
 
-- forge: 33 CI-gated evals; ledger: 25; guardian: 35; vault: 25; audit: 22 — all passing
-  (140 total across the five tools).
-- forge bridge V39 approval-nonce protocol + ledger HMAC auth covered by dedicated CI eval jobs.
+- Core MCP tools: forge 33, ledger 25, guardian 35, vault 25, audit 22 — 140 JSONL eval cases,
+  all CI-gated and passing.
+- Ecosystem bridges: Squawk integration (27 cases), herd coordination (30 cases), Litestream
+  replication (22 cases), OpenTelemetry tracing (7 cases), ledger auth suites (20 cases) —
+  226 total eval cases across all tools and integrations.
 - Documented adversarial security process: red-team report (`docs/redteam-cycle1.md`), threat
   model with OWASP Agentic Top-10 mapping (`docs/threat-model.md`), fix log of P0–P2 findings
   resolved (JSON-injection, TOCTOU race, non-atomic write, table-name injection, non-ASCII bypass).
@@ -190,7 +202,16 @@ per-transaction fee, unlike Stripe's 2.9%+30¢. These are planning assumptions, 
 | Flyway / Liquibase | JVM, human-readable output, no pre-execution risk gate | — | — | — |
 | Stripe | — | 2.9%+30¢/txn; human dashboard | — | — |
 | HashiCorp Vault | — | — | — | Large daemon, not MCP-native |
-| **HEROS** | JSON-only, MCP-native, pre-execution risk + approval gate | JSON-only, MCP-native, idempotency, no txn fee | Universal risk gate — first of its kind | Lightweight, MCP-native, audit-logged |
+| Aembit (GA ~Apr 2026) | — | — | — | Cloud-hosted non-human IAM; not MCP-native, no self-host |
+| Claude Code sandbox (open-sourced) | — | — | Single-runtime only (Claude Code); no cross-orchestrator coverage | — |
+| **HEROS** | JSON-only, MCP-native, pre-execution risk + approval gate | JSON-only, MCP-native, idempotency, no txn fee | Universal risk gate — all orchestrators; first of its kind | Lightweight, MCP-native, audit-logged, self-hostable |
+
+**Absorption risk and moat:** Anthropic open-sourced Claude Code's sandbox runtime (wraps MCP
+servers and arbitrary processes). That is the most direct threat to guardian. HEROS's defense
+is identical to Datadog vs CloudWatch — multi-runtime breadth (works with Claude Code, Cursor,
+LangGraph, any MCP orchestrator) and domain depth (schema risk corpus, approval-nonce protocol,
+chain-hashed audit log). Single-runtime native tools get absorbed; multi-runtime standard
+infrastructure gets integrated with.
 
 ---
 

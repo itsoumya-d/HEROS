@@ -32,15 +32,18 @@ Before MCP, every agent framework had a different tool-calling convention. After
 a universal interface. This is analogous to HTTP/1.1 standardizing web protocols in 1997 — it
 created the foundation for a generation of web infrastructure companies.
 
-**The first production incidents are happening now.** Agents with production database
-credentials are being deployed. Table drops happen. Duplicate invoices get issued. Unauthorized
-API calls run in loops. These are not hypothetical risks — they are the founding incidents that
-create regulatory and organizational demand for agent safety infrastructure.
+**The first production incidents are on record.** The Replit data-deletion incident (July
+17–18, 2025 — 1,206 executives' production data deleted and recovered) and the Moltbook API-key
+breach (January 31–February 1, 2026 — 1.5M keys exposed, cited in YC Spring 2026 RFS) are the
+founding incidents of agent operations as a category. OWASP published its Agentic Top 10
+(ASI01–ASI10) on December 9, 2025. These are not hypothetical risks — they are the incidents
+that create regulatory and organizational demand for agent safety infrastructure.
 
-**The EU AI Act's agentic provisions are entering force.** High-risk AI systems acting on
-regulated data (financial records, health data, infrastructure) must maintain audit trails and
-human oversight mechanisms. HEROS's `decision_required` flag and tamper-evident `audit` log
-are direct implementations of these requirements — before they are mandated.
+**EU AI Act Articles 12, 14, and 26 enter full enforcement August 2, 2026.** High-risk AI
+systems (those acting on regulated data — financial records, health data, critical infrastructure)
+must auto-log events (Art. 12), maintain human oversight mechanisms (Art. 14), and retain logs
+≥6 months (Art. 26). HEROS's `decision_required` flag and tamper-evident `audit` log are
+direct implementations of these requirements — before they become mandated.
 
 **The orchestration layer is consolidating.** Claude Code, Cursor, LangGraph, and a handful of
 others will become the dominant agent orchestration platforms. The window to become the standard
@@ -136,10 +139,11 @@ every action is logged in the tamper-evident audit, every budget constraint is e
 
 ## Realistic Market Sizing
 
-**Comparable infrastructure companies:**
-- Datadog: ~$2.5B ARR, ~10,000 paying enterprise customers
-- Stripe: ~$14B ARR, ~millions of developers
-- HashiCorp Vault: acquired at ~$6.9B
+**Comparable infrastructure companies (verified figures, May 2026):**
+- Datadog: $3.43B ARR (FY2025), ~10,000+ paying enterprise customers
+- Stripe: $159B valuation (February 2026 tender), millions of developers
+- HashiCorp Vault: acquired by IBM for $6.4B (completed February 2025)
+- AI agent security market: $7.84B (2025) → $52.62B by 2030 (MarketsandMarkets, 46.1% CAGR)
 
 **The agent safety infrastructure TAM:**
 
@@ -162,15 +166,19 @@ The trillion-dollar framing requires assumptions about agent volume that aren't 
 
 ## The Most Important Strategic Risk
 
-**Absorption into runtimes.** Anthropic, OpenAI, or Google could decide that agent safety is
-a platform responsibility and build forge/guardian-equivalent functionality into the agent
-runtime. If Claude Code ships native schema migration risk classification, HEROS has no
-distribution channel to Claude Code users.
+**Absorption into runtimes.** This is not hypothetical — it is already happening. Anthropic
+open-sourced Claude Code's sandbox runtime (bubblewrap/seatbelt, "explicitly wraps MCP servers
+and arbitrary processes"). OpenAI shipped AgentKit with 4 built-in guardrails (October 2025).
+Three guardrail companies were acquired: Invariant→Snyk (June 2025), Lakera→Check Point
+(~$300M, September 2025), Protect AI→Palo Alto Networks (>$500M, July 2025). Generic
+single-runtime operation safety gates are the highest-absorption-risk category.
 
-**Mitigation:** Build deep integrations across all major orchestrators simultaneously. Become
-the reference implementation that orchestrators *point to* rather than compete with. Publish
-open standards (the `--describe` self-description format, the approval-nonce protocol) that
-other tool builders adopt — making HEROS the standard rather than a single product.
+**Mitigation:** The Datadog playbook. Datadog outlived CloudWatch not by being better on AWS
+but by being the standard across AWS, GCP, Azure, and on-prem. HEROS's defense is
+multi-orchestrator breadth (Claude Code, Cursor, LangGraph, any MCP client) plus domain depth
+(schema risk corpus, approval-nonce protocol, chain-hashed audit). Publish the `--describe`
+self-description format and approval-nonce protocol as open standards — make HEROS the reference
+implementation other tools point to rather than a product they duplicate.
 
 **The deeper moat:** The risk classification *corpus*. If HEROS accumulates data about which
 operations caused production incidents (anonymized, aggregate), that data improves risk
