@@ -423,21 +423,38 @@ invoke_forge() {
 handle_message() {
     local line="$1"
 
-    # Validate JSON
-    if ! jq -e . >/dev/null 2>&1 <<< "$line"; then
+    local parsed arr
+    # Combine JSON validation and field extraction into a single jq invocation to reduce
+    # subprocess spawning overhead. Parses to an array mapped through @sh for safe eval.
+    if ! parsed=$(jq -re '
+        if type != "object" then
+            "invalid_type" | @sh
+        else
+            [
+                (.id // null | tojson),
+                (.method // "" | if type == "string" then . else tojson end),
+                (has("id") | tostring),
+                (.jsonrpc == "2.0" | tostring),
+                (.method | type == "string" | tostring)
+            ] | @sh
+        end
+    ' <<< "$line" 2>/dev/null); then
         rpc_err "null" -32700 "Parse error: message is not valid JSON"
         return
     fi
 
     # RT-38: reject non-object JSON-RPC (arrays and primitives are invalid)
-    if ! jq -e 'type == "object"' >/dev/null 2>&1 <<< "$line"; then
+    if [[ "$parsed" == "'invalid_type'" ]]; then
         rpc_err "null" -32600 "Invalid Request: message must be a JSON object, not an array or primitive"
         return
     fi
 
-    local id method
-    id=$(jq -c '.id // null' <<< "$line")
-    method=$(jq -r '.method // ""' <<< "$line")
+    eval "arr=($parsed)"
+    local id="${arr[0]}"
+    local method="${arr[1]}"
+    local has_id="${arr[2]}"
+    local is_jsonrpc_2="${arr[3]}"
+    local is_method_string="${arr[4]}"
 
     # RT-431: guard oversized id values — jq's --argjson passes id as an execve argv string;
     # Linux MAX_ARG_STRLEN = 131072 bytes; a >4KB id cannot be a legitimate MCP id (UUIDs are
@@ -448,20 +465,20 @@ handle_message() {
     fi
 
     # Notifications: absent "id" key means no response expected
-    if ! jq -e 'has("id")' >/dev/null 2>&1 <<< "$line"; then
+    if [[ "$has_id" == "false" ]]; then
         # V119 port: only accept notifications/initialized after initialize was processed
         [[ "$method" == "notifications/initialized" && "$INIT_REQUESTED" == "true" ]] && INITIALIZED=true
         return
     fi
 
     # RT-292 port: reject requests with missing or wrong jsonrpc version field
-    if ! jq -e '.jsonrpc == "2.0"' >/dev/null 2>&1 <<< "$line"; then
+    if [[ "$is_jsonrpc_2" == "false" ]]; then
         rpc_err "$id" -32600 "Invalid Request: jsonrpc field must be \"2.0\""
         return
     fi
 
     # V154 port: non-string method must return -32600 (Invalid Request), not -32601 (Method not found)
-    if ! jq -e '.method | type == "string"' >/dev/null 2>&1 <<< "$line"; then
+    if [[ "$is_method_string" == "false" ]]; then
         rpc_err "$id" -32600 "Invalid Request: method must be a string"
         return
     fi
@@ -500,8 +517,40 @@ handle_message() {
                 return
             fi
             local tool_name tool_args forge_out first_line is_error content_json
-            tool_name=$(jq -r '.params.name // ""' <<< "$line")
-            tool_args=$(jq -c '.params.arguments // {}' <<< "$line")
+
+            local parsed_tools arr_tools
+            if ! parsed_tools=$(jq -re '
+                [
+                    (try (.params | . == null or type == "object") catch false | tostring),
+                    (try (.params.arguments | . == null or type == "object") catch false | tostring),
+                    (try (.params.name | . == null or type == "string") catch false | tostring),
+                    (try (.params.name | if type == "string" then . else "" end) catch ""),
+                    (try (.params.arguments | if type == "object" then . else {} end | tojson) catch "{}")
+                ] | @sh
+            ' <<< "$line" 2>/dev/null); then
+                rpc_err "$id" -32603 "Internal bridge error — parameter extraction failed"
+                return
+            fi
+
+            eval "arr_tools=($parsed_tools)"
+            local is_params_obj="${arr_tools[0]}"
+            local is_args_obj="${arr_tools[1]}"
+            local is_name_str="${arr_tools[2]}"
+            tool_name="${arr_tools[3]}"
+            tool_args="${arr_tools[4]}"
+
+            if [[ "$is_params_obj" == "false" ]]; then
+                rpc_err "$id" -32602 "Invalid params: params must be an object"
+                return
+            fi
+            if [[ "$is_args_obj" == "false" ]]; then
+                rpc_err "$id" -32602 "Invalid params: params.arguments must be an object"
+                return
+            fi
+            if [[ "$is_name_str" == "false" ]]; then
+                rpc_err "$id" -32602 "Invalid params: params.name must be a string"
+                return
+            fi
 
             if [[ -z "$tool_name" ]]; then
                 rpc_err "$id" -32602 "Invalid params: missing tool name in params.name"

@@ -806,22 +806,38 @@ invoke_ledger() {
 handle_message() {
     local line="$1"
 
-    # Validate JSON (also catches empty lines)
-    if ! jq -e . >/dev/null 2>&1 <<< "$line"; then
+    local parsed arr
+    # Combine JSON validation and field extraction into a single jq invocation to reduce
+    # subprocess spawning overhead. Parses to an array mapped through @sh for safe eval.
+    if ! parsed=$(jq -re '
+        if type != "object" then
+            "invalid_type" | @sh
+        else
+            [
+                (.id // null | tojson),
+                (.method // "" | if type == "string" then . else tojson end),
+                (has("id") | tostring),
+                (.jsonrpc == "2.0" | tostring),
+                (.method | type == "string" | tostring)
+            ] | @sh
+        end
+    ' <<< "$line" 2>/dev/null); then
         rpc_err "null" -32700 "Parse error: message is not valid JSON"
         return
     fi
 
     # RT-38: reject non-object JSON-RPC (arrays and primitives are not valid requests/notifications)
-    if ! jq -e 'type == "object"' >/dev/null 2>&1 <<< "$line"; then
+    if [[ "$parsed" == "'invalid_type'" ]]; then
         rpc_err "null" -32600 "Invalid Request: message must be a JSON object, not an array or primitive"
         return
     fi
 
-    # Extract id as raw JSON (preserves type: null, number, string)
-    local id method
-    id=$(jq -c '.id // null' <<< "$line")
-    method=$(jq -r '.method // ""' <<< "$line")
+    eval "arr=($parsed)"
+    local id="${arr[0]}"
+    local method="${arr[1]}"
+    local has_id="${arr[2]}"
+    local is_jsonrpc_2="${arr[3]}"
+    local is_method_string="${arr[4]}"
 
     # RT-389: guard oversized id values — jq's --argjson passes id as an execve argv string;
     # Linux MAX_ARG_STRLEN = 131072 bytes; a >4KB id cannot be a legitimate MCP id (UUIDs are
@@ -832,7 +848,7 @@ handle_message() {
     fi
 
     # Notifications: absent "id" key means no response expected
-    if ! jq -e 'has("id")' >/dev/null 2>&1 <<< "$line"; then
+    if [[ "$has_id" == "false" ]]; then
         # V119 fix: only accept notifications/initialized after initialize was processed
         # to prevent bypassing the initialize handshake via notification spoofing
         [[ "$method" == "notifications/initialized" && "$INIT_REQUESTED" == "true" ]] && INITIALIZED=true
@@ -840,14 +856,14 @@ handle_message() {
     fi
 
     # RT-292: reject requests missing or mismatching jsonrpc version (mcp-security-spec.md §5.2)
-    if ! jq -e '.jsonrpc == "2.0"' >/dev/null 2>&1 <<< "$line"; then
+    if [[ "$is_jsonrpc_2" == "false" ]]; then
         rpc_err "$id" -32600 "Invalid Request: jsonrpc field must be \"2.0\""
         return
     fi
 
     # V154: method must be a non-null string — null/number/object method is an invalid request,
     # not "method not found". Correct code is -32600 (Invalid Request), not -32601 (Method not found).
-    if ! jq -e '.method | type == "string"' >/dev/null 2>&1 <<< "$line"; then
+    if [[ "$is_method_string" == "false" ]]; then
         rpc_err "$id" -32600 "Invalid Request: method must be a string"
         return
     fi
@@ -931,28 +947,50 @@ handle_message() {
                 rpc_err "$id" -32002 "Server not initialized — send initialize first"
                 return
             fi
+            local tool_name tool_args ledger_out content_json
+
+            local parsed_tools arr_tools
+            # Combine parameter validation and extraction into a single jq invocation to reduce
+            # subprocess spawning overhead. Parses to an array mapped through @sh for safe eval.
+            if ! parsed_tools=$(jq -re '
+                [
+                    (try (.params | . == null or type == "object") catch false | tostring),
+                    (try (.params.arguments | . == null or type == "object") catch false | tostring),
+                    (try (.params.name | . == null or type == "string") catch false | tostring),
+                    (try (.params.name | if type == "string" then . else "" end) catch ""),
+                    (try (.params.arguments | if type == "object" then . else {} end | tojson) catch "{}")
+                ] | @sh
+            ' <<< "$line" 2>/dev/null); then
+                rpc_err "$id" -32603 "Internal bridge error — parameter extraction failed"
+                return
+            fi
+
+            eval "arr_tools=($parsed_tools)"
+            local is_params_obj="${arr_tools[0]}"
+            local is_args_obj="${arr_tools[1]}"
+            local is_name_str="${arr_tools[2]}"
+            tool_name="${arr_tools[3]}"
+            tool_args="${arr_tools[4]}"
+
             # RT-345: validate params type before field extraction — non-object params (e.g., array)
             # cause jq to exit non-zero on .params.name/.params.arguments access, triggering set -e
             # and producing -32603 (internal error) instead of -32602 (invalid params).
-            if ! jq -e '.params | . == null or type == "object"' >/dev/null 2>&1 <<< "$line"; then
+            if [[ "$is_params_obj" == "false" ]]; then
                 rpc_err "$id" -32602 "Invalid params: params must be an object"
                 return
             fi
             # RT-349: validate arguments type before extraction — non-object arguments (e.g., number,
             # array) pass jq's '// {}' coercion (truthy values skip the default) and reach
             # invoke_ledger where field extraction produces MISSING_FLAG instead of -32602.
-            if ! jq -e '.params.arguments | . == null or type == "object"' >/dev/null 2>&1 <<< "$line"; then
+            if [[ "$is_args_obj" == "false" ]]; then
                 rpc_err "$id" -32602 "Invalid params: params.arguments must be an object"
                 return
             fi
             # V339: reject non-string params.name (e.g. array) — consistent with RT-349 for params.arguments.
-            if ! jq -e '.params.name | . == null or type == "string"' >/dev/null 2>&1 <<< "$line"; then
+            if [[ "$is_name_str" == "false" ]]; then
                 rpc_err "$id" -32602 "Invalid params: params.name must be a string"
                 return
             fi
-            local tool_name tool_args ledger_out content_json
-            tool_name=$(jq -r '.params.name // ""' <<< "$line")
-            tool_args=$(jq -c '.params.arguments // {}' <<< "$line")
 
             if [[ -z "$tool_name" ]]; then
                 rpc_err "$id" -32602 "Invalid params: missing tool name in params.name"
