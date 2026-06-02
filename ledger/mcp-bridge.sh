@@ -615,8 +615,28 @@ invoke_ledger() {
 
         ledger_invoice_create)
             local to amount currency idem memo
-            # RT-452: type guard on all string-only fields.
-            if ! to=$(jq -re '.to | if type == "string" then . else error end' <<< "$args_json" 2>/dev/null); then
+            # RT-452/Bolt: Optimize repeated JSON parsing by combining operations into a single jq call.
+            # Using @sh safely quotes extracted values for eval, avoiding subprocess overhead.
+            local _parsed_args
+            if _parsed_args=$(jq -re '
+                [
+                    (try (.to | if type == "string" then . else "__ERR__" end) catch "__ERR__"),
+                    (try (.amount | if type == "number" then tostring else "__ERR__" end) catch "__ERR__"),
+                    (try (.currency | if type == "string" then . else "__ERR__" end) catch "__ERR__"),
+                    (try (.idempotency_key | if type == "string" then . else "__ERR__" end) catch "__ERR__"),
+                    (try (.memo | if type == "string" then . else "" end) catch "")
+                ] | @sh' <<< "$args_json" 2>/dev/null); then
+                eval "local _arr=($_parsed_args)"
+                to="${_arr[0]}"
+                amount="${_arr[1]}"
+                currency="${_arr[2]}"
+                idem="${_arr[3]}"
+                memo="${_arr[4]}"
+            else
+                to="__ERR__"; amount="__ERR__"; currency="__ERR__"; idem="__ERR__"; memo=""
+            fi
+
+            if [[ "$to" == "__ERR__" ]]; then
                 echo '{"error_code":"MISSING_FLAG","flag":"to","retryable":true,"error":"to is required and must be a string"}'; return
             fi
             # V261: length caps prevent CLI E2BIG and invoice store bloat.
@@ -624,16 +644,16 @@ invoke_ledger() {
                 echo '{"error_code":"INVALID_PARAM","flag":"to","retryable":false,"error":"to exceeds 256 characters"}'; return
             fi
             # RT-547: require JSON number type — string "true"/arrays/objects must not reach the binary.
-            if ! amount=$(jq -re '.amount | if type == "number" then . else error end' <<< "$args_json" 2>/dev/null); then
+            if [[ "$amount" == "__ERR__" ]]; then
                 echo '{"error_code":"MISSING_FLAG","flag":"amount","retryable":true,"error":"amount is required and must be a number"}'; return
             fi
-            if ! currency=$(jq -re '.currency | if type == "string" then . else error end' <<< "$args_json" 2>/dev/null); then
+            if [[ "$currency" == "__ERR__" ]]; then
                 echo '{"error_code":"MISSING_FLAG","flag":"currency","retryable":true,"error":"currency is required and must be a string"}'; return
             fi
             if (( ${#currency} > 8 )); then
                 echo '{"error_code":"INVALID_PARAM","flag":"currency","retryable":false,"error":"currency exceeds 8 characters"}'; return
             fi
-            if ! idem=$(jq -re '.idempotency_key | if type == "string" then . else error end' <<< "$args_json" 2>/dev/null); then
+            if [[ "$idem" == "__ERR__" ]]; then
                 echo '{"error_code":"MISSING_FLAG","flag":"idempotency_key","retryable":true,"error":"idempotency_key is required and must be a string"}'; return
             fi
             if (( ${#idem} > 128 )); then
