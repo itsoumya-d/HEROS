@@ -37,7 +37,7 @@ That rule is the lens for every row below.
 | **300+ model providers (OpenRouter/OpenAI/Anthropic/…)** | **Out of scope.** Documented integration point: the agent calls its own model; it calls HEROS for safety. | Provider calls are network I/O — categorically not expressible in a Zero pure-compute binary. |
 | **Messaging gateways (Telegram/Discord/Slack/WhatsApp/Signal)** | **Out of scope.** | Long-lived async network services. Belong to the agent runtime, not the ops layer; not Zero-expressible. |
 | **Execution backends (Docker/SSH/Modal/Daytona)** | **Out of scope** (gate them via `guardian` `code_execution`/`infrastructure`). | Orchestration I/O. HEROS gates the *decision* to run; it does not run the sandbox. |
-| **Web + TUI UIs** | **Roadmap** (see below). | Needs an app toolchain not present in this environment. |
+| **Web + TUI UIs** | **Shipped** as the `app/` HEROS Console (cross-platform Go desktop app driving the bridges). | A real local UI; cross-compiles to Linux/macOS/Windows (see below). |
 
 ## "Rewrite the whole codebase in Zero" — the honest answer
 
@@ -51,20 +51,31 @@ representative kernel — the skill confidence score — as `evolve/spec/skill_s
 a parity contract that activates when a Zero compiler is available in CI. The rest
 stays bridge-side **by design**, exactly as `forge` and `ledger` are structured.
 
-## "Native apps for iOS / Android / macOS / Windows / Linux" — roadmap, not this PR
+## "Native apps for iOS / Android / macOS / Windows / Linux"
 
-Not buildable in the current Linux container: no Swift/Xcode (iOS and macOS
-*require* a Mac to build), no Android SDK, no Zero compiler. Shipping five native
-apps is also a multi-quarter effort independent of environment. The realistic path:
+**Desktop is shipped; mobile is a separate track.**
 
-1. **One cross-platform desktop shell** (Tauri/Rust — `cargo` is present) that
-   wraps the HEROS MCP tools behind a local UI. Builds for **Linux** today;
-   Windows via cross-compile; macOS/iOS require a Mac runner; Android per the
-   existing `docs/aosp-zero-integration.md` plan (Zero-as-WASM-in-app).
-2. The MCP bridges already are the cross-platform contract — any MCP client
-   (Claude Code, Cursor, a Tauri shell) consumes them unchanged.
+`app/` is the **HEROS Console** — a real, dependency-free **Go** desktop app
+(stdlib only) that drives the MCP bridges from a local UI. Because it is pure Go,
+it **cross-compiles to Linux, macOS, and Windows from this Linux box — no Mac
+required for the macOS build.** All three desktop OSes are delivered as actual
+binaries (built + verified in the `desktop-app` CI job; the Linux build is also
+run-tested end-to-end against guardian + evolve). See `app/README.md`.
 
-This sequencing is recorded so the public repo promises only what it can ship.
+| Target | Status |
+|---|---|
+| Linux (amd64/arm64) | ✅ built + run-tested |
+| macOS (amd64/arm64) | ✅ cross-compiled (Mach-O) |
+| Windows (amd64) | ✅ cross-compiled (PE32+); bridges need Git Bash/WSL |
+| Android | Designed (`docs/aosp-zero-integration.md`, Zero-as-WASM-in-app); not built here |
+| iOS | Requires a Mac + Xcode; genuinely cannot be produced in a Linux container |
+
+The app owns no risk logic — it is a thin client that spawns the bash bridges and
+renders their JSON, so every safety gate still lives in the bridges. Its runtime
+caveat is honest: the bridges are bash + jq, so Windows needs Git Bash/WSL until
+native bridge ports exist. iOS is the one target that is not deliverable here at
+all (Apple's toolchain requires a Mac); Android has a documented design but is a
+separate build track.
 
 ## What actually landed in this change
 
@@ -72,6 +83,8 @@ This sequencing is recorded so the public repo promises only what it can ship.
   shellcheck clean, manifest lint clean.
 - `evolve/spec/skill_score.0` (+ README) — the Zero-portable kernel, specced with
   a parity contract.
-- CI: a `evolve-eval` job; evolve scripts added to shellcheck; manifest added to
-  the lint set.
+- `app/` — **HEROS Console**, a cross-platform Go desktop app driving the bridges;
+  cross-compiles to Linux/macOS/Windows; Linux build run-tested end-to-end.
+- CI: an `evolve-eval` job and a `desktop-app` job (vet + 5-target cross-compile);
+  evolve scripts added to shellcheck; manifest added to the lint set.
 - This document.

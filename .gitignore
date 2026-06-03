@@ -23,6 +23,19 @@ forge/forge-analyze
 .heros-audit
 .heros-audit-failed
 .forge-nonce*
+# evolve / vault runtime state
+.evolve-skills.json
+.evolve-audit
+.evolve-audit-state
+.evolve-approvals
+.evolve-lock
+.evolve-*.XXXXXX*
+.vault-secrets
+.vault-audit
+# Go desktop app build outputs
+app/dist/
+heros-console
+heros-console-*
 
 # Temporary files
 *.tmp
