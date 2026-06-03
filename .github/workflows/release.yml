@@ -1,6 +1,9 @@
 # Release pipeline for ledger + forge (Zero ELF64 linux-musl-x64)
 # Implements V6 (supply chain signing) and V15 (MCP manifest signing).
-# Triggered on semver tags (v*.*.*). Also runs checks on push to main (no upload).
+# Triggered on releases (build/sign/upload) and on push to main / pull requests
+# to main (checks only — the Zero-compiler, secret, and signing jobs self-guard
+# with `if: github.event_name == 'release' || vars.ZERO_RELEASE_URL != ''`, so
+# pure-bash evals, lints, and the app builds run on PRs without needing secrets).
 #
 # Prerequisites (set in repo Settings → Secrets & Actions → Variables):
 #   ZERO_RELEASE_URL — download URL for the Zero compiler binary
@@ -10,6 +13,8 @@ name: Release
 
 on:
   push:
+    branches: [main]
+  pull_request:
     branches: [main]
   release:
     types: [published]
