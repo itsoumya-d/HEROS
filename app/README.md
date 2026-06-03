@@ -65,9 +65,11 @@ bridges it spawns need a POSIX shell.
 | Linux (amd64, arm64) | ✅ built + run-tested |
 | macOS (amd64, arm64) | ✅ cross-compiled (Mach-O); run on a Mac |
 | Windows (amd64) | ✅ cross-compiled (PE32+); needs Git Bash/WSL for the bridges |
-| Android | Tracked separately via `docs/aosp-zero-integration.md` (Zero-as-WASM-in-app) |
-| iOS | Requires a Mac + Xcode toolchain; not produced here |
+| Android (arm64) | ✅ cross-compiled (`GOOS=android`); runs under **Termux** (which provides bash+jq). Not a packaged Play Store APK — that path is the Zero-as-WASM-in-app design in `docs/aosp-zero-integration.md`. |
+| iOS | Requires a Mac + Xcode toolchain; genuinely not producible in a Linux container |
 
-Desktop (Linux/macOS/Windows) is delivered as real cross-compiled artifacts.
-Mobile (Android/iOS) remains a separate track — Android has a documented design;
-iOS genuinely requires Apple's toolchain on a Mac.
+Desktop (Linux/macOS/Windows) **and** an Android arm64 binary are delivered as
+real cross-compiled artifacts from a single Linux host. The Android binary runs
+as a console/server under Termux; a sandboxed Play Store APK is a separate track
+(`docs/aosp-zero-integration.md`). iOS is the one target that genuinely requires
+Apple's toolchain on a Mac.

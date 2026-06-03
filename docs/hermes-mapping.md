@@ -67,7 +67,7 @@ run-tested end-to-end against guardian + evolve). See `app/README.md`.
 | Linux (amd64/arm64) | ✅ built + run-tested |
 | macOS (amd64/arm64) | ✅ cross-compiled (Mach-O) |
 | Windows (amd64) | ✅ cross-compiled (PE32+); bridges need Git Bash/WSL |
-| Android | Designed (`docs/aosp-zero-integration.md`, Zero-as-WASM-in-app); not built here |
+| Android (arm64) | ✅ cross-compiled (`GOOS=android`) — runs under Termux; packaged-APK path is the WASM-in-app design in `docs/aosp-zero-integration.md` |
 | iOS | Requires a Mac + Xcode; genuinely cannot be produced in a Linux container |
 
 The app owns no risk logic — it is a thin client that spawns the bash bridges and
