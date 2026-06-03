@@ -147,6 +147,28 @@
       "rate_limits": {"per_session": "600/hour", "burst": 20}
     },
     {
+      "name": "evolve_skill_recommend",
+      "title": "Recommend Skills",
+      "description": "Rank active skills for the current situation by confidence score (then successes, then name). Pure-compute selection — read-only and SAFE. Returns the ranked list and the top pick; the agent still gates any action it takes via guardian.",
+      "annotations": {
+        "readOnly": true,
+        "destructive": false,
+        "idempotent": true,
+        "decision_required": false,
+        "untrusted_fields": ["trigger"],
+        "side_effects": []
+      },
+      "input_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "trigger": {"type": "string", "description": "Optional context hint. ASCII printable, max 256 chars.", "maxLength": 256}
+        }
+      },
+      "rate_limits": {"per_session": "600/hour", "burst": 20}
+    },
+    {
       "name": "evolve_skill_get",
       "title": "Get a Skill",
       "description": "Fetch a single skill by name, including its steps, state, counts, and score. Read-only and SAFE.",

@@ -451,6 +451,24 @@ _handle_list() {
     fi
 }
 
+# ── Tool: evolve_skill_recommend ───────────────────────────────────────────
+# Pure-compute selection: rank ACTIVE skills by confidence score (desc), then
+# successes (desc), then name (asc). Mirrors spec/skill_rank.0. Read-only, SAFE.
+_handle_recommend() {
+    local params="$1"
+    local trigger
+    trigger=$(jq -r '.trigger // ""' <<< "$params" 2>/dev/null)
+    if [[ ${#trigger} -gt 256 ]] || ! _is_ascii_printable "$trigger"; then
+        jq -cn '{"error_code":"INVALID_INPUT","retryable":true,"error":"trigger must be ASCII printable, max 256 chars"}'; return; fi
+    local reg; reg=$(_load_registry)
+    # Sort active skills by (score desc, successes desc, name asc).
+    jq -c '
+        [ .skills[] | select(.state=="active") ]
+        | sort_by([ (-.score), (-(.successes)), .name ])
+        | { "skills": ., "top": (if length>0 then .[0].name else null end), "count": length, "status": "ok" }
+    ' <<< "$reg"
+}
+
 # ── Tool: evolve_skill_get ──────────────────────────────────────────────────
 _handle_get() {
     local params="$1"
@@ -608,11 +626,12 @@ while IFS= read -r line || [[ -n "$line" ]]; do
                 evolve_skill_retire)         tool_result=$(_handle_gated_transition "$params" "retire") ;;
                 evolve_skill_record_outcome) tool_result=$(_handle_record_outcome "$params") ;;
                 evolve_skill_list)           tool_result=$(_handle_list "$params") ;;
+                evolve_skill_recommend)      tool_result=$(_handle_recommend "$params") ;;
                 evolve_skill_get)            tool_result=$(_handle_get "$params") ;;
                 evolve_memory_note)          tool_result=$(_handle_memory_note "$params") ;;
                 evolve_history)              tool_result=$(_handle_history "$params") ;;
                 *)
-                    tool_result=$(jq -cn '{"error_code":"UNKNOWN_TOOL","retryable":false,"error":"Unknown tool. Use evolve_skill_propose, evolve_skill_promote, evolve_skill_retire, evolve_skill_record_outcome, evolve_skill_list, evolve_skill_get, evolve_memory_note, or evolve_history."}')
+                    tool_result=$(jq -cn '{"error_code":"UNKNOWN_TOOL","retryable":false,"error":"Unknown tool. Use evolve_skill_propose, evolve_skill_promote, evolve_skill_retire, evolve_skill_record_outcome, evolve_skill_list, evolve_skill_recommend, evolve_skill_get, evolve_memory_note, or evolve_history."}')
                     ;;
             esac
 

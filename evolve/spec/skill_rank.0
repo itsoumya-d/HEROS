@@ -1,0 +1,39 @@
+// skill_rank.0 — pure-compute kernel for ranking active skills (skill selection).
+//
+// STATUS: SPEC-ONLY (no Zero compiler in this build/CI image). The TESTED
+// reference is the jq sort in `_handle_recommend` in evolve/mcp-bridge.sh,
+// exercised by evolve/eval-cases.jsonl (EV-24, EV-25).
+//
+// This is the second pure-compute kernel of evolve (alongside skill_score.0):
+// "given the active skills, which applies now?" — a real agent-planning step,
+// expressed as a deterministic ordering with no I/O. It complements scoring:
+// skill_score.0 produces each skill's confidence; skill_rank.0 orders them.
+//
+// Ordering (matches the bridge's jq sort_by):
+//   1. confidence score, descending   (skill_score.0 output, scaled 1e6)
+//   2. successes, descending          (tiebreak: more confirmed uses wins)
+//   3. name, ascending                (final deterministic tiebreak)
+//
+// rankKey() collapses (score, successes) into a single u64 sort key so a host
+// can order skills with a plain numeric sort; ties on the key fall back to the
+// name comparison, exactly as the jq sort does.
+
+let SCORE_SCALE: u64 = 1000000   // score is confidence * 1e6 (from skill_score.0)
+let SUCC_CAP:    u64 = 99999     // successes contribution is capped so score dominates
+
+// Higher key = higher priority. score occupies the high digits; successes the low.
+pub fun rankKey(score_milli: u64, successes: u64) -> u64 {
+    var s: u64 = successes
+    if s > SUCC_CAP { s = SUCC_CAP }
+    // score_milli in [0, 1e6]; multiply so it dominates, then add capped successes.
+    return score_milli * (SUCC_CAP + 1) + s
+}
+
+// Comparator: returns true if A should rank before B (A has higher priority).
+// Name tiebreak is handled by the host when keys are equal.
+pub fun ranksBefore(scoreA: u64, succA: u64, scoreB: u64, succB: u64) -> Bool {
+    let ka: u64 = rankKey(scoreA, succA)
+    let kb: u64 = rankKey(scoreB, succB)
+    if ka > kb { return true }
+    return false
+}

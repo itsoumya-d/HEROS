@@ -21,3 +21,5 @@
 {"id": "EV-21", "desc": "history returns ok and valid chain", "tool": "evolve_history", "input": {"limit": 10}, "expect": {"status": "ok", "valid": true}}
 {"id": "EV-22", "desc": "unknown tool returns UNKNOWN_TOOL", "tool": "evolve_nonexistent", "input": {}, "expect": {"error_code": "UNKNOWN_TOOL"}}
 {"id": "EV-23", "desc": "propose name colliding with active skill is rejected", "tool": "evolve_skill_propose", "input": {"name": "seed_active", "trigger": "again", "steps": ["x"]}, "expect": {"error_code": "INVALID_INPUT"}}
+{"id": "EV-24", "desc": "recommend returns ok", "tool": "evolve_skill_recommend", "input": {}, "expect": {"status": "ok"}}
+{"id": "EV-25", "desc": "recommend top is the active seeded skill", "tool": "evolve_skill_recommend", "input": {}, "expect": {"top": "seed_active"}}
