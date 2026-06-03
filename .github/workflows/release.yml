@@ -484,6 +484,12 @@ jobs:
             audit/mcp-bridge.sh \
             audit/eval-bridge.sh
 
+      - name: Lint evolve scripts
+        run: |
+          shellcheck -S warning \
+            evolve/mcp-bridge.sh \
+            evolve/eval-bridge.sh
+
       - name: Lint herd scripts
         run: |
           shellcheck -S warning \
@@ -506,7 +512,7 @@ jobs:
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
-      - name: Check tool description lengths (≤ 512 chars) — all 5 manifests
+      - name: Check tool description lengths (≤ 512 chars) — all 6 manifests
         run: |
           python3 - <<'EOF'
           import json, sys
@@ -516,6 +522,7 @@ jobs:
               "guardian/mcp-manifest.json",
               "vault/mcp-manifest.json",
               "audit/mcp-manifest.json",
+              "evolve/mcp-manifest.json",
           ]
           failed = False
           for path in MANIFESTS:
@@ -548,6 +555,7 @@ jobs:
               "guardian/mcp-manifest.json",
               "vault/mcp-manifest.json",
               "audit/mcp-manifest.json",
+              "evolve/mcp-manifest.json",
           ]
           for path in MANIFESTS:
               with open(path) as f:
@@ -559,7 +567,7 @@ jobs:
                   if m:
                       print(f"WARN {path}: tool '{tool.get('name')}' description contains suspicious phrase: '{m.group()}'")
                       # Warn only — don't block. Some verbs are legitimate.
-          print("MCP lint complete (5 manifests)")
+          print("MCP lint complete (6 manifests)")
           EOF
 
   # ── Pure-bash eval jobs (no Zero compiler required) ─────────────────────
@@ -604,6 +612,19 @@ jobs:
         run: |
           chmod +x audit/mcp-bridge.sh audit/eval-bridge.sh
           bash audit/eval-bridge.sh
+
+  evolve-eval:
+    name: evolve self-improvement eval (38 cases)
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - name: Install jq
+        run: sudo apt-get install -y jq
+      - name: Run evolve eval
+        run: |
+          chmod +x evolve/mcp-bridge.sh evolve/eval-bridge.sh
+          bash evolve/eval-bridge.sh
 
   herd-eval:
     name: herd coordination eval (30 cases)

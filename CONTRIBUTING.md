@@ -21,6 +21,7 @@ Install [gstack](https://github.com/garrytan/gstack) to enable the full team.
 bash guardian/eval-bridge.sh
 bash vault/eval-bridge.sh
 bash audit/eval-bridge.sh
+bash evolve/eval-bridge.sh
 bash herd/eval-herd.sh
 bash forge/eval-squawk.sh
 bash zero-ecosystem/observability/eval-otel.sh
@@ -42,6 +43,7 @@ shellcheck -S warning forge/mcp-bridge.sh forge/eval-bridge.sh forge/eval-auth.s
   guardian/mcp-bridge.sh guardian/eval-bridge.sh \
   vault/mcp-bridge.sh vault/eval-bridge.sh \
   audit/mcp-bridge.sh audit/eval-bridge.sh \
+  evolve/mcp-bridge.sh evolve/eval-bridge.sh \
   herd/herd.sh herd/eval-herd.sh \
   zero-ecosystem/observability/otel-trace.sh zero-ecosystem/observability/eval-otel.sh
 ```
@@ -84,6 +86,10 @@ vault/             — Agent-native credential storage (pure bash, no binary)
 
 audit/             — Tamper-evident append-only log (pure bash, no binary)
   mcp-bridge.sh, mcp-manifest.json, eval-cases.jsonl, eval-bridge.sh
+
+evolve/            — Safe, audited agent self-improvement (pure bash + Zero kernel spec)
+  mcp-bridge.sh, mcp-manifest.json, eval-cases.jsonl, eval-bridge.sh
+  spec/skill_score.0 — pure-compute confidence-score kernel (Zero, spec-only)
 
 herd/              — GNAP-style multi-agent coordination (pure bash)
   herd.sh, eval-herd.sh

@@ -1,0 +1,243 @@
+{
+  "schema_version": "1",
+  "mcp_protocol_version": "2025-11-25",
+  "name": "evolve",
+  "display_name": "Evolve — Safe Agent Self-Improvement",
+  "description": "Agent procedural-memory and self-improvement primitive. Agents learn reusable skills and improve them from recorded outcomes, but every behaviour-changing self-modification (promote/retire) is risk-gated with a single-use human-approval nonce and recorded in a tamper-evident chain-hashed change log.",
+  "version": "0.1.0",
+  "transport": "stdio",
+  "invocation": {
+    "command": "evolve/mcp-bridge.sh",
+    "args": [],
+    "requires": ["jq >= 1.6", "sha256sum", "flock", "awk"],
+    "bridge_note": "Pure bash — no separate binary. Reuses guardian's approval-nonce protocol and audit's chain-hash. The one pure-compute kernel (skill scoring, Wilson lower bound) is specified for Zero in spec/skill_score.0; this bridge holds the reference implementation."
+  },
+  "capabilities": {
+    "tools": true,
+    "prompts": false,
+    "resources": false
+  },
+  "signing": {
+    "manifest_sha256": "UNSIGNED in source — cosign sign-blob runs in CI at publish time",
+    "verify_cmd": "cosign verify-blob --certificate-identity-regexp https://github.com/itsoumya-d/HEROS --certificate-oidc-issuer https://token.actions.githubusercontent.com --signature evolve/mcp-manifest.json.sig evolve/mcp-manifest.json"
+  },
+  "tools": [
+    {
+      "name": "evolve_skill_propose",
+      "title": "Propose a Skill",
+      "description": "Propose a new reusable skill (a named, triggered procedure the agent learned). Stored in pending state — no behaviour change yet, so this is SAFE. An active skill of the same name must be retired first; active behaviour never changes without the approval gate.",
+      "annotations": {
+        "readOnly": false,
+        "destructive": false,
+        "idempotent": false,
+        "decision_required": false,
+        "untrusted_fields": ["name", "trigger", "steps", "rationale", "actor"],
+        "side_effects": ["writes pending skill to registry", "appends audit entry"]
+      },
+      "input_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "name": {"type": "string", "description": "Skill name. Pattern [a-z][a-z0-9_]*, max 64 chars.", "maxLength": 64},
+          "trigger": {"type": "string", "description": "UNTRUSTED. When this skill applies. ASCII printable, max 256 chars.", "maxLength": 256},
+          "steps": {"type": "array", "description": "UNTRUSTED. 1-32 procedure steps, each an ASCII-printable string up to 512 chars.", "items": {"type": "string", "maxLength": 512}, "minItems": 1, "maxItems": 32},
+          "rationale": {"type": "string", "description": "UNTRUSTED. Why the agent learned this. ASCII printable, max 512 chars.", "maxLength": 512},
+          "actor": {"type": "string", "description": "Who is proposing (agent/user id). ASCII printable, max 256 chars.", "maxLength": 256}
+        },
+        "required": ["name", "trigger", "steps"]
+      },
+      "rate_limits": {"per_session": "300/hour", "burst": 15}
+    },
+    {
+      "name": "evolve_skill_promote",
+      "title": "Promote a Skill (gated self-modification)",
+      "description": "Activate a pending skill. This changes the agent's active behaviour, so it is classified HIGH: the first call returns decision_required:true plus a single-use approval_nonce. Call again with the nonce as human_acknowledgment_token after human sign-off to activate. The transition is appended to the tamper-evident change log.",
+      "annotations": {
+        "readOnly": false,
+        "destructive": false,
+        "idempotent": false,
+        "decision_required": true,
+        "untrusted_fields": ["name", "actor"],
+        "side_effects": ["activates skill on approval", "appends audit entry", "issues approval nonce"]
+      },
+      "input_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "name": {"type": "string", "description": "Name of the pending skill to activate.", "maxLength": 64},
+          "actor": {"type": "string", "description": "Who is promoting. ASCII printable, max 256 chars.", "maxLength": 256},
+          "human_acknowledgment_token": {"type": "string", "description": "Nonce from a prior promote response, after human sign-off. Single-use, 5-min TTL, bound to this action+skill.", "maxLength": 64}
+        },
+        "required": ["name"]
+      },
+      "rate_limits": {"per_session": "120/hour", "burst": 10}
+    },
+    {
+      "name": "evolve_skill_retire",
+      "title": "Retire a Skill (gated self-modification)",
+      "description": "Deactivate an active skill. Like promote, this changes active behaviour and is gated: first call returns decision_required:true and an approval_nonce; call again with the nonce as human_acknowledgment_token to retire. Recorded in the tamper-evident change log.",
+      "annotations": {
+        "readOnly": false,
+        "destructive": false,
+        "idempotent": false,
+        "decision_required": true,
+        "untrusted_fields": ["name", "actor"],
+        "side_effects": ["retires skill on approval", "appends audit entry", "issues approval nonce"]
+      },
+      "input_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "name": {"type": "string", "description": "Name of the active skill to retire.", "maxLength": 64},
+          "actor": {"type": "string", "description": "Who is retiring. ASCII printable, max 256 chars.", "maxLength": 256},
+          "human_acknowledgment_token": {"type": "string", "description": "Nonce from a prior retire response, after human sign-off. Single-use, 5-min TTL, bound to this action+skill.", "maxLength": 64}
+        },
+        "required": ["name"]
+      },
+      "rate_limits": {"per_session": "120/hour", "burst": 10}
+    },
+    {
+      "name": "evolve_skill_record_outcome",
+      "title": "Record a Skill Outcome",
+      "description": "Record a success or failure for a skill use. Updates the skill's success/failure counts and recomputes its confidence score (Wilson lower bound). This is the improve-during-use signal; it never changes a skill's state, so it is SAFE.",
+      "annotations": {
+        "readOnly": false,
+        "destructive": false,
+        "idempotent": false,
+        "decision_required": false,
+        "untrusted_fields": ["name", "actor"],
+        "side_effects": ["updates skill score", "appends audit entry"]
+      },
+      "input_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "name": {"type": "string", "description": "Name of the skill the outcome is for.", "maxLength": 64},
+          "outcome": {"type": "string", "description": "Exactly success or failure.", "enum": ["success", "failure"]},
+          "actor": {"type": "string", "description": "Who is reporting. ASCII printable, max 256 chars.", "maxLength": 256}
+        },
+        "required": ["name", "outcome"]
+      },
+      "rate_limits": {"per_session": "2000/hour", "burst": 50}
+    },
+    {
+      "name": "evolve_skill_list",
+      "title": "List Skills",
+      "description": "List skills in the registry, optionally filtered by state. Read-only and SAFE. Returns each skill with its state, success/failure counts, and confidence score.",
+      "annotations": {
+        "readOnly": true,
+        "destructive": false,
+        "idempotent": true,
+        "decision_required": false,
+        "untrusted_fields": ["state"],
+        "side_effects": []
+      },
+      "input_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "state": {"type": "string", "description": "Optional filter: pending, active, or retired.", "enum": ["pending", "active", "retired"]}
+        }
+      },
+      "rate_limits": {"per_session": "600/hour", "burst": 20}
+    },
+    {
+      "name": "evolve_skill_get",
+      "title": "Get a Skill",
+      "description": "Fetch a single skill by name, including its steps, state, counts, and score. Read-only and SAFE.",
+      "annotations": {
+        "readOnly": true,
+        "destructive": false,
+        "idempotent": true,
+        "decision_required": false,
+        "untrusted_fields": ["name"],
+        "side_effects": []
+      },
+      "input_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "name": {"type": "string", "description": "Skill name to fetch.", "maxLength": 64}
+        },
+        "required": ["name"]
+      },
+      "rate_limits": {"per_session": "600/hour", "burst": 20}
+    },
+    {
+      "name": "evolve_memory_note",
+      "title": "Record a Memory Note",
+      "description": "Persist a learning note (a model of the user/context that deepens across sessions). Notes are data only — never auto-executed — and are stored in the tamper-evident change log. SAFE.",
+      "annotations": {
+        "readOnly": false,
+        "destructive": false,
+        "idempotent": false,
+        "decision_required": false,
+        "untrusted_fields": ["note", "topic", "actor"],
+        "side_effects": ["appends audit entry"]
+      },
+      "input_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "note": {"type": "string", "description": "UNTRUSTED. The note text. ASCII printable, max 1024 chars.", "maxLength": 1024},
+          "topic": {"type": "string", "description": "Topic key. Pattern [a-z][a-z0-9_]*, max 64 chars.", "maxLength": 64},
+          "actor": {"type": "string", "description": "Who is noting. ASCII printable, max 256 chars.", "maxLength": 256}
+        },
+        "required": ["note"]
+      },
+      "rate_limits": {"per_session": "1000/hour", "burst": 30}
+    },
+    {
+      "name": "evolve_history",
+      "title": "Read Change History",
+      "description": "Return the tamper-evident change log (newest first) and verify the chain. Returns valid:false with broken_at_entry:N if any entry was altered or deleted. Read-only and SAFE.",
+      "annotations": {
+        "readOnly": true,
+        "destructive": false,
+        "idempotent": true,
+        "decision_required": false,
+        "untrusted_fields": [],
+        "side_effects": []
+      },
+      "input_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "limit": {"type": "integer", "description": "Max entries to return (1-500, default 50).", "minimum": 1, "maximum": 500}
+        }
+      },
+      "rate_limits": {"per_session": "600/hour", "burst": 20}
+    }
+  ],
+  "error_codes": {
+    "MISSING_FLAG": {"retryable": true, "fix": "Provide the named required field."},
+    "INVALID_INPUT": {"retryable": true, "fix": "Check field values against schema constraints (charset, length, enum)."},
+    "SKILL_NOT_FOUND": {"retryable": false, "fix": "Propose the skill first, or check the name."},
+    "INVALID_ACKNOWLEDGMENT_TOKEN": {"retryable": true, "fix": "Re-run the gated tool without a token to obtain a fresh approval_nonce."},
+    "RATE_LIMITED": {"retryable": true, "fix": "Wait retry_after_seconds before retrying."},
+    "STORE_WRITE_FAILED": {"retryable": true, "fix": "Retry; check disk/permissions for the data dir."},
+    "UNKNOWN_TOOL": {"retryable": false, "fix": "Use one of the eight evolve_* tools."}
+  },
+  "security": {
+    "untrusted_input_fields": ["name", "trigger", "steps", "rationale", "note", "topic", "actor", "state"],
+    "content_policy": "Tool descriptions audited against mcp-security-spec.md. No instruction-format language. Every description <= 512 chars.",
+    "self_modification_gate": "promote and retire change active agent behaviour and require a single-use, action+skill-bound human-approval nonce (5-min TTL). Every transition is chain-hash logged.",
+    "data_charset": "All user-facing string fields are ASCII-printable-only (0x20-0x7E), length-bounded, and charset-validated — rejecting control chars and non-ASCII bytes."
+  },
+  "agent_quickstart": [
+    "1. evolve_skill_propose a skill learned from experience (stored pending — no behaviour change).",
+    "2. evolve_skill_promote it: the first call returns decision_required:true and an approval_nonce.",
+    "3. After human sign-off, call evolve_skill_promote again with human_acknowledgment_token:<nonce> to activate.",
+    "4. As the skill is used, evolve_skill_record_outcome success/failure; the confidence score updates automatically.",
+    "5. evolve_skill_retire (also gated) a skill that stops working; propose a revision and re-promote.",
+    "6. evolve_history any time to read and cryptographically verify the full self-improvement trail."
+  ]
+}

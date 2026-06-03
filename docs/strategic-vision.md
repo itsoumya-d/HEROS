@@ -101,6 +101,11 @@ What we have:
 - **guardian** — Universal operation safety oracle (6 categories, same approval protocol)
 - **vault** — Agent-native credential storage
 - **audit** — Tamper-evident compliance log
+- **evolve** — Safe, audited agent self-improvement: agents learn and improve skills
+  from outcomes, but every behaviour-changing self-modification is approval-nonce
+  gated and chain-hash logged. Adapts the Hermes self-improvement loop into the HEROS
+  safety model (see `docs/hermes-mapping.md`); the inversion of "unbounded
+  self-improvement" — which is precisely the agent risk the rest of the stack contains.
 
 ### Phase 2: Depth and Ecosystem (v0.2, ~6 months)
 Priority improvements:
