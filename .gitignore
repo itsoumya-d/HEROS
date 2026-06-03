@@ -32,10 +32,12 @@ forge/forge-analyze
 .evolve-*.XXXXXX*
 .vault-secrets
 .vault-audit
-# Go desktop app build outputs
+# Go desktop app build outputs (anchored so they don't match source dirs like
+# apple/Sources/heros-console-cli/)
 app/dist/
-heros-console
-heros-console-*
+/heros-console
+/app/heros-console
+/app/heros-console-*
 
 # Temporary files
 *.tmp
