@@ -717,3 +717,20 @@ jobs:
       - name: Build debug APK
         working-directory: android-app
         run: ./gradlew --no-daemon :app:assembleDebug
+
+  # ── Apple build: macOS (swift build) + iOS (xcodebuild compile) on a Mac runner ──
+  apple-build:
+    name: apple build (macOS + iOS compile)
+    runs-on: macos-14
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - name: swift build (macOS — client + UI + CLI)
+        working-directory: apple
+        run: swift build
+      - name: xcodebuild (iOS compile — no signing)
+        working-directory: apple
+        run: |
+          xcodebuild -scheme HEROSConsoleUI \
+            -destination 'generic/platform=iOS' \
+            CODE_SIGNING_ALLOWED=NO build
