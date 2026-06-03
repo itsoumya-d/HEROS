@@ -6,6 +6,10 @@ All notable changes to the HEROS agent operations stack (forge, ledger, guardian
 
 ## [Unreleased]
 
+### Added (2026-06-03 — mobile app tracks: Android APK + Apple macOS/iOS)
+- **`android-app/`** — minimal dependency-free Java + WebView Android app (AGP 8.6.0, Gradle 8.14.3 wrapper, compileSdk 34, JDK 17); the app shell for the Zero-as-WASM-in-app design. New `android-apk` CI job builds `:app:assembleDebug` on a runner with the Android SDK. Honest note: not buildable in the dev container (Google Maven 403, no SDK); YAML + Android XML validated locally. Distinct from the `android/arm64` console binary in `app/` (runs under Termux today) — a stock APK can't run the bash bridges, so the production path embeds the Zero kernels as a `wasm32-wasi` module.
+- **`apple/`** — Swift Package for macOS + iOS: `HEROSClient` (shared URLSession client, both platforms), `HEROSConsoleUI` (SwiftUI, both platforms), `heros-console-cli` (macOS). New `apple-build` CI job on a macOS runner compile-verifies macOS (`swift build`) and iOS (`xcodebuild -destination 'generic/platform=iOS'`). iOS genuinely cannot be built in the Linux container (Apple toolchain is macOS-only); a signed App Store `.ipa` additionally needs account-bound Apple signing certs.
+
 ### Added (2026-06-03 — HEROS Console desktop app)
 - **`app/` — HEROS Console** — a dependency-free **Go** (stdlib-only) cross-platform desktop app that drives the MCP bridges (guardian, evolve, audit, vault) from a local web UI. Owns no risk logic: it spawns the bash bridges as subprocesses and renders their JSON, so every safety gate stays in the bridges. Binds to loopback only; UI embedded via `go:embed`. Cross-compiles to **Linux (amd64/arm64), macOS (amd64/arm64), and Windows (amd64)** from a Linux host — no Mac required for the macOS build. Linux build run-tested end-to-end against guardian (CRITICAL + nonce) and evolve (propose → gated promote → list). New `desktop-app` CI job (vet + 5-target cross-compile). Honest caveat: bridges are bash+jq, so Windows needs Git Bash/WSL; iOS requires a Mac toolchain (not produced here); Android tracked via `docs/aosp-zero-integration.md`.
 
