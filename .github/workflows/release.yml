@@ -501,6 +501,12 @@ jobs:
             herd/herd.sh \
             herd/eval-herd.sh
 
+      - name: Lint remix scripts
+        run: |
+          shellcheck -S warning \
+            remix/mcp-bridge.sh \
+            remix/eval-bridge.sh
+
       - name: Lint observability scripts
         run: |
           shellcheck -S warning \
@@ -517,7 +523,7 @@ jobs:
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
-      - name: Check tool description lengths (≤ 512 chars) — all 6 manifests
+      - name: Check tool description lengths (≤ 512 chars) — all 7 manifests
         run: |
           python3 - <<'EOF'
           import json, sys
@@ -528,6 +534,7 @@ jobs:
               "vault/mcp-manifest.json",
               "audit/mcp-manifest.json",
               "evolve/mcp-manifest.json",
+              "remix/mcp-manifest.json",
           ]
           failed = False
           for path in MANIFESTS:
@@ -561,6 +568,7 @@ jobs:
               "vault/mcp-manifest.json",
               "audit/mcp-manifest.json",
               "evolve/mcp-manifest.json",
+              "remix/mcp-manifest.json",
           ]
           for path in MANIFESTS:
               with open(path) as f:
@@ -572,7 +580,7 @@ jobs:
                   if m:
                       print(f"WARN {path}: tool '{tool.get('name')}' description contains suspicious phrase: '{m.group()}'")
                       # Warn only — don't block. Some verbs are legitimate.
-          print("MCP lint complete (6 manifests)")
+          print("MCP lint complete (7 manifests)")
           EOF
 
   # ── Pure-bash eval jobs (no Zero compiler required) ─────────────────────
@@ -643,6 +651,19 @@ jobs:
         run: |
           chmod +x herd/herd.sh herd/eval-herd.sh
           bash herd/eval-herd.sh
+
+  remix-eval:
+    name: remix companion-UI eval (17 cases)
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - name: Install jq
+        run: sudo apt-get install -y jq
+      - name: Run remix eval
+        run: |
+          chmod +x remix/mcp-bridge.sh remix/eval-bridge.sh
+          bash remix/eval-bridge.sh
 
   squawk-eval:
     name: forge Squawk integration eval (27 cases)

@@ -23,6 +23,7 @@ bash vault/eval-bridge.sh
 bash audit/eval-bridge.sh
 bash evolve/eval-bridge.sh
 bash herd/eval-herd.sh
+bash remix/eval-bridge.sh
 bash forge/eval-squawk.sh
 bash zero-ecosystem/observability/eval-otel.sh
 bash ledger/eval-litestream.sh
@@ -45,6 +46,7 @@ shellcheck -S warning forge/mcp-bridge.sh forge/eval-bridge.sh forge/eval-auth.s
   audit/mcp-bridge.sh audit/eval-bridge.sh \
   evolve/mcp-bridge.sh evolve/eval-bridge.sh \
   herd/herd.sh herd/eval-herd.sh \
+  remix/mcp-bridge.sh remix/eval-bridge.sh \
   zero-ecosystem/observability/otel-trace.sh zero-ecosystem/observability/eval-otel.sh
 ```
 
@@ -93,6 +95,12 @@ evolve/            — Safe, audited agent self-improvement (pure bash + Zero ke
 
 herd/              — GNAP-style multi-agent coordination (pure bash)
   herd.sh, eval-herd.sh
+
+remix/             — Agent-generated, user-tweakable companion UIs (pure bash, no binary)
+  mcp-bridge.sh    — heros.ui/v1 validator/normalizer (pure jq: closed catalog,
+                     string sanitization, token validation, action whitelist)
+  mcp-manifest.json, eval-cases.jsonl, eval-bridge.sh
+  (spec: docs/remix-spec.md)
 
 zero-ecosystem/
   eval-harness/zeval.sh           — Universal eval runner for Zero binaries
