@@ -499,6 +499,25 @@ handle_message() {
                 rpc_err "$id" -32002 "Server not initialized — send initialize first"
                 return
             fi
+            # RT-345 port: validate params type before field extraction — non-object params (e.g., array)
+            # cause jq to exit non-zero on .params.name/.params.arguments access, triggering set -e
+            # and producing -32603 (internal error) instead of -32602 (invalid params).
+            if ! jq -e '.params | . == null or type == "object"' >/dev/null 2>&1 <<< "$line"; then
+                rpc_err "$id" -32602 "Invalid params: params must be an object"
+                return
+            fi
+            # RT-349 port: validate arguments type before extraction — non-object arguments (e.g., number,
+            # array) pass jq's '// {}' coercion (truthy values skip the default) and reach
+            # invoke_forge where field extraction produces MISSING_FLAG instead of -32602.
+            if ! jq -e '.params.arguments | . == null or type == "object"' >/dev/null 2>&1 <<< "$line"; then
+                rpc_err "$id" -32602 "Invalid params: params.arguments must be an object"
+                return
+            fi
+            # V339 port: reject non-string params.name (e.g. array) — consistent with RT-349 for params.arguments.
+            if ! jq -e '.params.name | . == null or type == "string"' >/dev/null 2>&1 <<< "$line"; then
+                rpc_err "$id" -32602 "Invalid params: params.name must be a string"
+                return
+            fi
             local tool_name tool_args forge_out first_line is_error content_json
             tool_name=$(jq -r '.params.name // ""' <<< "$line")
             tool_args=$(jq -c '.params.arguments // {}' <<< "$line")

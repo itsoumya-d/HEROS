@@ -1,0 +1,5 @@
+
+## 2026-06-04 - Prevent JSON-RPC Validation Bypass in Bridge Servers
+**Vulnerability:** The `forge/mcp-bridge.sh` failed to validate `.params`, `.params.name`, and `.params.arguments` types. Under `set -e`, unhandled JSON indexing on arrays (e.g. `{"params": []}`) triggered `jq` to return a non-zero exit code, crashing the bridge and returning an internal error (`-32603`). This vulnerability (RT-345) was patched in `ledger/mcp-bridge.sh` but missed in `forge`.
+**Learning:** Security fixes applied to one component (e.g., `ledger/mcp-bridge.sh`) must be systematically audited and ported to parallel architectural components (e.g., `forge/mcp-bridge.sh`) that process identical protocols, such as JSON-RPC, to avoid fragmented security postures.
+**Prevention:** Always verify if a discovered vulnerability pattern exists in sibling projects or components sharing the same design or architectural model. Validate all nested JSON-RPC structures explicitly before indexing into them with tools like `jq`.
