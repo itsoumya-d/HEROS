@@ -418,15 +418,21 @@ _handle_guardian_assess() {
         return
     }
 
-    # Validate operation_type is string, max 64 chars, ASCII printable
-    if [[ ${#op_type} -gt 64 ]] || ! printf '%s' "$op_type" | grep -qP '^[\x20-\x7E]+$' 2>/dev/null; then
+    # Validate operation_type is string, max 64 chars, ASCII printable.
+    # Pure-bash check (no grep -P, which is unavailable on macOS/BSD): strip every
+    # printable-ASCII byte and require nothing to remain.
+    local op_type_residue="${op_type//[$'\x20'-$'\x7e']/}"
+    if [[ ${#op_type} -gt 64 ]] || [[ -n "$op_type_residue" ]]; then
         jq -cn '{"error_code":"INVALID_INPUT","retryable":true,"error":"operation_type must be ASCII printable, max 64 chars"}'
         return
     fi
 
-    # Extract operation object (required) — jq -e exits 1 on null/absent
+    # Extract operation object (required, must be a JSON object) — jq -e exits
+    # non-zero on null/absent, and `select(type == "object")` rejects strings,
+    # arrays, and numbers that would otherwise crash the _assess_* helpers under
+    # `set -euo pipefail`.
     local op_json
-    op_json=$(jq -ce '.operation' <<< "$params" 2>/dev/null) || {
+    op_json=$(jq -ce '.operation | select(type == "object")' <<< "$params" 2>/dev/null) || {
         jq -cn '{"error_code":"MISSING_FLAG","flag":"operation","retryable":true,"error":"Required field: operation (JSON object describing the operation)"}'
         return
     }

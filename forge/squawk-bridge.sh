@@ -220,7 +220,10 @@ run_squawk() {
     elem="$(printf '%s' "$raw" | jq -c --argjson i "$i" '.[$i]')"
     rule="$(printf '%s'  "$elem" | jq -r '.rule_name // "" | tostring')"
     level="$(printf '%s' "$elem" | jq -r '.level // "" | tostring')"
-    line="$(printf '%s'  "$elem" | jq -r '.line // 0 | tostring')"
+    # Coerce to a number here: squawk's .line is usually an integer, but a
+    # non-numeric value would make the later `--argjson line` call abort jq with
+    # "invalid JSON text". Anything non-numeric becomes 0.
+    line="$(printf '%s'  "$elem" | jq -r 'if (.line? | type) == "number" then .line else 0 end')"
     # squawk puts human text inside messages[].Note (and similar keys).
     message="$(printf '%s' "$elem" | jq -r '
       if (.messages? | type) == "array" then

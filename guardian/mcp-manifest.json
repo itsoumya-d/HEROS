@@ -76,9 +76,9 @@
           "decision_required": {"type": "boolean"},
           "proceed_ok": {"type": "boolean", "description": "True when a valid human_acknowledgment_token was verified"},
           "guidance": {"type": "string", "description": "Agent-readable explanation and recommended action"},
-          "approval_nonce": {"type": "string", "description": "Present when decision_required:true. Single-use, 5-min TTL"},
-          "approval_prompt": {"type": "string"},
-          "request_id": {"type": "string"},
+          "approval_nonce": {"type": ["string", "null"], "description": "Present (non-null) when decision_required:true. Single-use, 5-min TTL"},
+          "approval_prompt": {"type": ["string", "null"]},
+          "request_id": {"type": ["string", "null"]},
           "_rate_limit": {
             "type": "object",
             "properties": {

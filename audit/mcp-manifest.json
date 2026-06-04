@@ -10,7 +10,7 @@
     "command": "audit/mcp-bridge.sh",
     "args": [],
     "requires": ["jq >= 1.6", "sha256sum", "flock"],
-    "bridge_note": "Pure bash implementation. Storage at ${HEROS_DATA_DIR:-.}/.audit-log. flock-protected writes ensure concurrent-safe appends."
+    "bridge_note": "Pure bash implementation. Storage at ${HEROS_DATA_DIR:-<bridge script dir>}/.audit-log. flock-protected writes ensure concurrent-safe appends."
   },
   "capabilities": {
     "tools": true,

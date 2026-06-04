@@ -19,7 +19,7 @@ pub fun writeDescribe(world: World) -> Void raises {
     check world.out.write("      \"name\": \"analyze\",\n")
     check world.out.write("      \"description\": \"Analyze the risk of migrating from one schema to another. Returns a structured risk report with per-operation risk scores and agent guidance. Call this before executing any schema change. Does NOT modify any database - read-only analysis.\",\n")
     check world.out.write("      \"when_to_use\": \"Before running any database migration. Input is two .forge schema files describing the current and desired state.\",\n")
-    check world.out.write("      \"when_not_to_use\": \"Do not use to execute migrations - use execute command for that (not yet implemented in v0.1.x).\",\n")
+    check world.out.write("      \"when_not_to_use\": \"Do not use for migration execution. Forge v0.1.x performs read-only analysis only and does not execute migrations.\",\n")
     check world.out.write("      \"flags\": [\n")
     check world.out.write("        {\n")
     check world.out.write("          \"name\": \"--from\",\n")
