@@ -56,6 +56,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
 
       # ── Install Zero compiler ────────────────────────────────────────────
       - name: Download Zero compiler
@@ -303,6 +305,8 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
 
       - name: Install jq
         run: sudo apt-get install -y jq
@@ -343,6 +347,8 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
 
       - name: Install dependencies
         run: sudo apt-get install -y jq xxd openssl python3
@@ -371,6 +377,8 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
 
       - name: Install dependencies
         run: sudo apt-get install -y jq xxd openssl python3
@@ -398,6 +406,8 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
 
       - name: Install dependencies
         run: sudo apt-get install -y jq xxd openssl python3
@@ -418,6 +428,8 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
 
       - name: Install dependencies
         run: sudo apt-get install -y jq
@@ -448,6 +460,8 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
 
       - name: Install shellcheck
         run: sudo apt-get install -y shellcheck
@@ -522,6 +536,8 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
 
       - name: Check tool description lengths (≤ 512 chars) — all 7 manifests
         run: |
@@ -593,6 +609,8 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
       - name: Install jq
         run: sudo apt-get install -y jq
       - name: Run guardian eval
@@ -606,6 +624,8 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
       - name: Install jq
         run: sudo apt-get install -y jq
       - name: Run vault eval
@@ -619,6 +639,8 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
       - name: Install jq
         run: sudo apt-get install -y jq
       - name: Run audit eval
@@ -632,6 +654,8 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
       - name: Install jq
         run: sudo apt-get install -y jq
       - name: Run evolve eval
@@ -645,6 +669,8 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
       - name: Install jq
         run: sudo apt-get install -y jq
       - name: Run herd eval
@@ -658,6 +684,8 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
       - name: Install jq
         run: sudo apt-get install -y jq
       - name: Run remix eval
@@ -671,6 +699,8 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
       - name: Install jq
         run: sudo apt-get install -y jq
       - name: Run squawk eval (stub-based)
@@ -684,6 +714,8 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
       - name: Run otel eval
         run: |
           chmod +x zero-ecosystem/observability/otel-trace.sh \
@@ -696,6 +728,8 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
       - name: Install jq
         run: sudo apt-get install -y jq
       - name: Run litestream eval (stub-based)
@@ -710,7 +744,13 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-      # TODO: pin to an immutable SHA to match the repo convention once verified.
+        with:
+          persist-credentials: false
+      # SUPPLY-CHAIN TODO: pin to an immutable commit SHA to match the rest of
+      # this workflow (checkout/cosign/syft/grype are SHA-pinned). Resolve with:
+      #   gh api repos/actions/setup-go/git/refs/tags/v5 --jq .object.sha
+      # then use: actions/setup-go@<sha> # v5  (must be done where the GitHub API
+      # is reachable — do not guess the SHA).
       - uses: actions/setup-go@v5
         with:
           go-version: '1.21'
@@ -735,11 +775,17 @@ jobs:
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-      - uses: actions/setup-java@v4   # TODO: pin to immutable SHA
+        with:
+          persist-credentials: false
+      # SUPPLY-CHAIN TODO: pin to an immutable SHA (resolve where GitHub API is
+      # reachable): gh api repos/actions/setup-java/git/refs/tags/v4 --jq .object.sha
+      - uses: actions/setup-java@v4   # v4 (tag) — replace with @<sha> # v4
         with:
           distribution: temurin
           java-version: '17'
-      - uses: android-actions/setup-android@v3   # TODO: pin to immutable SHA
+      # SUPPLY-CHAIN TODO: pin to an immutable SHA (resolve where GitHub API is
+      # reachable): gh api repos/android-actions/setup-android/git/refs/tags/v3 --jq .object.sha
+      - uses: android-actions/setup-android@v3   # v3 (tag) — replace with @<sha> # v3
       - name: Build debug APK
         working-directory: android-app
         run: ./gradlew --no-daemon :app:assembleDebug
@@ -751,6 +797,8 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
       - name: swift build (macOS — client + UI + CLI)
         working-directory: apple
         run: swift build
