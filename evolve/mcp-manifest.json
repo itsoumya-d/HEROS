@@ -39,7 +39,7 @@
         "type": "object",
         "additionalProperties": false,
         "properties": {
-          "name": {"type": "string", "description": "Skill name. Pattern [a-z][a-z0-9_]*, max 64 chars.", "maxLength": 64},
+          "name": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$", "description": "Skill name. Pattern [a-z][a-z0-9_]*, max 64 chars.", "maxLength": 64},
           "trigger": {"type": "string", "description": "UNTRUSTED. When this skill applies. ASCII printable, max 256 chars.", "maxLength": 256},
           "steps": {"type": "array", "description": "UNTRUSTED. 1-32 procedure steps, each an ASCII-printable string up to 512 chars.", "items": {"type": "string", "maxLength": 512}, "minItems": 1, "maxItems": 32},
           "rationale": {"type": "string", "description": "UNTRUSTED. Why the agent learned this. ASCII printable, max 512 chars.", "maxLength": 512},
@@ -66,7 +66,7 @@
         "type": "object",
         "additionalProperties": false,
         "properties": {
-          "name": {"type": "string", "description": "Name of the pending skill to activate.", "maxLength": 64},
+          "name": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$", "description": "Name of the pending skill to activate.", "maxLength": 64},
           "actor": {"type": "string", "description": "Who is promoting. ASCII printable, max 256 chars.", "maxLength": 256},
           "human_acknowledgment_token": {"type": "string", "description": "Nonce from a prior promote response, after human sign-off. Single-use, 5-min TTL, bound to this action+skill.", "maxLength": 64}
         },
@@ -91,7 +91,7 @@
         "type": "object",
         "additionalProperties": false,
         "properties": {
-          "name": {"type": "string", "description": "Name of the active skill to retire.", "maxLength": 64},
+          "name": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$", "description": "Name of the active skill to retire.", "maxLength": 64},
           "actor": {"type": "string", "description": "Who is retiring. ASCII printable, max 256 chars.", "maxLength": 256},
           "human_acknowledgment_token": {"type": "string", "description": "Nonce from a prior retire response, after human sign-off. Single-use, 5-min TTL, bound to this action+skill.", "maxLength": 64}
         },
@@ -116,7 +116,7 @@
         "type": "object",
         "additionalProperties": false,
         "properties": {
-          "name": {"type": "string", "description": "Name of the skill the outcome is for.", "maxLength": 64},
+          "name": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$", "description": "Name of the skill the outcome is for.", "maxLength": 64},
           "outcome": {"type": "string", "description": "Exactly success or failure.", "enum": ["success", "failure"]},
           "actor": {"type": "string", "description": "Who is reporting. ASCII printable, max 256 chars.", "maxLength": 256}
         },
@@ -185,7 +185,7 @@
         "type": "object",
         "additionalProperties": false,
         "properties": {
-          "name": {"type": "string", "description": "Skill name to fetch.", "maxLength": 64}
+          "name": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$", "description": "Skill name to fetch.", "maxLength": 64}
         },
         "required": ["name"]
       },
@@ -209,7 +209,7 @@
         "additionalProperties": false,
         "properties": {
           "note": {"type": "string", "description": "UNTRUSTED. The note text. ASCII printable, max 1024 chars.", "maxLength": 1024},
-          "topic": {"type": "string", "description": "Topic key. Pattern [a-z][a-z0-9_]*, max 64 chars.", "maxLength": 64},
+          "topic": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$", "description": "Topic key. Pattern [a-z][a-z0-9_]*, max 64 chars.", "maxLength": 64},
           "actor": {"type": "string", "description": "Who is noting. ASCII printable, max 256 chars.", "maxLength": 256}
         },
         "required": ["note"]

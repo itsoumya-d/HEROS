@@ -60,21 +60,36 @@ Until the SQLite backend lands, replicate the flat files on a schedule with a
 plain object-storage sync. This is periodic (not continuous), so your recovery
 point is bounded by the sync interval.
 
-With the AWS CLI:
+> **Encrypt secret backups.** `.vault-secrets` is a secret store. Copying it
+> to object storage as-is turns the backup bucket into a second plaintext
+> secret store. Require encryption-at-rest (SSE-KMS or client-side encryption)
+> and give the backup target its own least-privilege access policy — separate
+> from the credentials the running service uses.
+
+With the AWS CLI (server-side encryption via a dedicated KMS key):
 
 ```bash
 # One-shot or via cron / systemd timer (e.g. every 5 minutes).
 aws s3 sync /var/lib/heros/ s3://my-bucket/heros-state/ \
+  --sse aws:kms \
+  --sse-kms-key-id "$HEROS_BACKUP_KMS_KEY_ID" \
   --exclude "*" \
   --include ".ledger-invoices" \
   --include ".vault-secrets" \
   --include ".audit-log"
 ```
 
-With [rclone](https://rclone.org) (supports S3, GCS, Azure, SFTP, and more):
+Scope the backup bucket with its own IAM policy (least privilege, write-only
+where possible) rather than reusing the replica's runtime credentials.
+
+With [rclone](https://rclone.org) (supports S3, GCS, Azure, SFTP, and more) —
+wrap the remote in rclone's `crypt` backend (client-side encryption) or enable
+the provider's server-side encryption so `.vault-secrets` is never stored in
+the clear:
 
 ```bash
-rclone sync /var/lib/heros/ remote:my-bucket/heros-state \
+# `remote-crypt` is an rclone crypt remote layered over your object store.
+rclone sync /var/lib/heros/ remote-crypt:heros-state \
   --include ".ledger-invoices" \
   --include ".vault-secrets" \
   --include ".audit-log"

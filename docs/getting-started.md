@@ -19,23 +19,30 @@ Get forge and ledger running in Claude Code in under 5 minutes.
 # Create a directory for HEROS
 mkdir -p ~/heros && cd ~/heros
 
+# Pin everything to ONE release tag so the signed binaries and the
+# bridge/manifest glue come from the same published version (avoids pairing a
+# released binary with newer, never-published JSON-RPC glue or schema contracts).
+# Find the latest tag at https://github.com/itsoumya-d/HEROS/releases
+RELEASE_TAG=v0.1.8
+
 # Download forge (schema migration engine)
-curl -L https://github.com/itsoumya-d/HEROS/releases/latest/download/forge-linux-x64.bin \
+curl -L "https://github.com/itsoumya-d/HEROS/releases/download/${RELEASE_TAG}/forge-linux-x64.bin" \
   -o forge && chmod +x forge
 
 # Download ledger (agent accounting)
-curl -L https://github.com/itsoumya-d/HEROS/releases/latest/download/ledger-linux-x64.bin \
+curl -L "https://github.com/itsoumya-d/HEROS/releases/download/${RELEASE_TAG}/ledger-linux-x64.bin" \
   -o ledger && chmod +x ledger
 
-# Download MCP bridges and manifests
-curl -L https://raw.githubusercontent.com/itsoumya-d/HEROS/main/forge/mcp-bridge.sh \
+# Download MCP bridges and manifests from the SAME tag (raw.githubusercontent
+# resolves a git tag ref, so these match the release commit, not moving main)
+curl -L "https://raw.githubusercontent.com/itsoumya-d/HEROS/${RELEASE_TAG}/forge/mcp-bridge.sh" \
   -o forge-bridge.sh && chmod +x forge-bridge.sh
-curl -L https://raw.githubusercontent.com/itsoumya-d/HEROS/main/forge/mcp-manifest.json \
+curl -L "https://raw.githubusercontent.com/itsoumya-d/HEROS/${RELEASE_TAG}/forge/mcp-manifest.json" \
   -o forge-manifest.json
 
-curl -L https://raw.githubusercontent.com/itsoumya-d/HEROS/main/ledger/mcp-bridge.sh \
+curl -L "https://raw.githubusercontent.com/itsoumya-d/HEROS/${RELEASE_TAG}/ledger/mcp-bridge.sh" \
   -o ledger-bridge.sh && chmod +x ledger-bridge.sh
-curl -L https://raw.githubusercontent.com/itsoumya-d/HEROS/main/ledger/mcp-manifest.json \
+curl -L "https://raw.githubusercontent.com/itsoumya-d/HEROS/${RELEASE_TAG}/ledger/mcp-manifest.json" \
   -o ledger-manifest.json
 ```
 

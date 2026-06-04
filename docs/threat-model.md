@@ -590,7 +590,7 @@ This is a fundamental language constraint, not a configuration choice. It means 
 
 **Full fix:** When Zero adds `world.in.readLine()` or equivalent, replace `mcp-bridge.sh` with a native Zero MCP server that eliminates the bash + jq dependency. Track: [github.com/vercel-labs/zero](https://github.com/vercel-labs/zero) releases and issues.
 
-**forge gap:** `forge/mcp-bridge.sh` not yet written (Cycle 21). The `forge/mcp-manifest.json` still incorrectly points to the bare `forge` binary.
+**forge bridge (implemented):** `forge/mcp-bridge.sh` is now written and mirrors the ledger bridge — it owns the JSON-RPC 2.0 stdio session loop and delegates each `tools/call` to the `forge` binary. `forge/mcp-manifest.json`'s `invocation.command` points to `forge/mcp-bridge.sh` (no longer the bare `forge` binary).
 
 ---
 
