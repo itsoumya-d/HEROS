@@ -80,7 +80,8 @@ if [[ -n "${HEROS_API_KEY:-}" ]]; then
         printf '{"jsonrpc":"2.0","id":null,"error":{"code":-32603,"message":"HEROS_DATA_DIR does not exist or is not a directory — check operator configuration"}}\n'
         exit 1
     fi
-    if [[ ${#HEROS_HMAC_SEED} -lt 32 ]]; then
+    seed="${HEROS_HMAC_SEED:-}"
+    if [[ ${#seed} -lt 32 ]]; then
         printf '{"jsonrpc":"2.0","id":null,"error":{"code":-32603,"message":"HEROS_HMAC_SEED is too short (minimum 32 characters required). Generate with: openssl rand -hex 32"}}\n'
         exit 1
     fi
@@ -285,7 +286,7 @@ _audit_fail() {
 }
 
 # ── Approval nonce state (decision_required flow for vault_secret_delete) ─
-declare -A _PENDING_APPROVALS  # nonce → expires_at (SECONDS + 300 TTL)
+declare -A _PENDING_APPROVALS  # nonce → "secret_name:expires_at" (SECONDS + 300 TTL)
 
 _generate_nonce() {
     local ent=""
@@ -603,13 +604,24 @@ _handle_vault_secret_delete() {
             echo '{"error_code":"INVALID_ACKNOWLEDGMENT_TOKEN","retryable":true,"error":"Token not recognized or already used. Re-run vault_secret_delete (no token) to obtain a fresh approval_nonce."}'
             return
         fi
-        local hat_expires="${_PENDING_APPROVALS[$hat]}"
+        local pending="${_PENDING_APPROVALS[$hat]}"
+        # Stored as "secret_name:expires_at"; name is validated [a-zA-Z0-9_.-]
+        # (no colon), so split on the last colon to recover the expiry.
+        local hat_name="${pending%:*}"
+        local hat_expires="${pending##*:}"
         if (( SECONDS > hat_expires )); then
             unset "_PENDING_APPROVALS[$hat]"
             echo '{"error_code":"INVALID_ACKNOWLEDGMENT_TOKEN","retryable":true,"error":"Approval token expired (5-min TTL). Re-run vault_secret_delete (no token) to obtain a fresh approval_nonce."}'
             return
         fi
-        # Valid token — single-use: consume and proceed with deletion.
+        # Bind the token to the exact secret it was issued for. A nonce minted to
+        # approve deleting one secret must not be replayable to delete another
+        # within the TTL — otherwise the gate degrades to "approve any deletion".
+        if [[ "$hat_name" != "$name" ]]; then
+            echo '{"error_code":"INVALID_ACKNOWLEDGMENT_TOKEN","retryable":true,"error":"Approval token does not match this secret. Re-run vault_secret_delete (no token) for the exact secret you want deleted."}'
+            return
+        fi
+        # Valid token bound to this secret — single-use: consume and proceed.
         unset "_PENDING_APPROVALS[$hat]"
 
         # Perform the deletion under lock
@@ -648,7 +660,7 @@ _handle_vault_secret_delete() {
         return
     fi
     expires_at=$(( SECONDS + 300 ))
-    _PENDING_APPROVALS[$nonce]="$expires_at"
+    _PENDING_APPROVALS[$nonce]="${name}:${expires_at}"
 
     jq -cn \
         --arg name "$name" \

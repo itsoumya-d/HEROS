@@ -102,7 +102,7 @@ def check_token($path; $tok):
       ( if ($v|type)=="string" and ($v|test("^(#[0-9a-fA-F]{3,8}|\\{[a-zA-Z0-9_.]+\\})$")) then []
         else ["token \($path): color must be hex or {alias}, got \($v|tojson)"] end )
     elif ($tok["$type"]) == "dimension" then
-      ( if ($v|type)=="object" and (($v.value|type)=="number") and ($v.value>=0) and ($v.value<=4096) then []
+      ( if ($v|type)=="object" and (($v.value|type)=="number") and ($v.value>=0) and ($v.value<=4096) and (($v.unit|type)=="string") and (($v.unit|length)>0) then []
         elif ($v|type)=="string" and ($v|test("^\\{[a-zA-Z0-9_.]+\\}$")) then []
         else ["token \($path): dimension must be {value,unit} (0..4096) or {alias}"] end )
     else [] end;
@@ -133,7 +133,9 @@ def walk($catalog; $actionids):
     end;
 
 def count_nodes:
-  if type=="object" then 1 + (((.children // []) | if type=="array" then map(count_nodes)|add else 0 end) // 0)
+  if type=="object" then 1
+    + (((.children // []) | if type=="array" then map(count_nodes)|add else 0 end) // 0)
+    + (((.itemTemplate // empty) | count_nodes) // 0)
   else 0 end;
 
 # --- main ---

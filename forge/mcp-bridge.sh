@@ -66,7 +66,8 @@ if [[ -n "${HEROS_API_KEY:-}" ]]; then
         printf '{"jsonrpc":"2.0","id":null,"error":{"code":-32603,"message":"HEROS_DATA_DIR does not exist or is not a directory — check operator configuration"}}\n'
         exit 1
     fi
-    if [[ ${#HEROS_HMAC_SEED} -lt 32 ]]; then
+    seed="${HEROS_HMAC_SEED:-}"
+    if [[ ${#seed} -lt 32 ]]; then
         printf '{"jsonrpc":"2.0","id":null,"error":{"code":-32603,"message":"HEROS_HMAC_SEED is too short (minimum 32 characters required). Generate with: openssl rand -hex 32"}}\n'
         exit 1
     fi

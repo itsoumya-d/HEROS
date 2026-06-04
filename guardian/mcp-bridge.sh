@@ -474,7 +474,7 @@ _handle_guardian_assess() {
             return
         fi
         local pending="${_PENDING_APPROVALS[$hat]}"
-        local stored_hash; stored_hash="${pending%%:*}"; : "$stored_hash"
+        local stored_hash; stored_hash="${pending%%:*}"
         local expires_at; expires_at="${pending##*:}"
         local now; now=$(date +%s 2>/dev/null || echo "0")
         if [[ $now -gt $expires_at ]]; then
@@ -482,7 +482,16 @@ _handle_guardian_assess() {
             jq -cn '{"error_code":"INVALID_ACKNOWLEDGMENT_TOKEN","retryable":true,"error":"Approval token expired (5-min TTL). Re-run guardian_assess (no token) to obtain a fresh approval_nonce."}'
             return
         fi
-        # Token valid — consume and return proceed_ok
+        # Bind the token to the exact operation it was issued for. A nonce minted
+        # for one HIGH/CRITICAL request must not be replayable against a different
+        # operation within the TTL — otherwise the human-approval gate degrades
+        # from "approve this action" to "approve any action".
+        local current_hash; current_hash=$(_nonce_hash "${op_type}:${op_json}")
+        if [[ "$stored_hash" != "$current_hash" ]]; then
+            jq -cn '{"error_code":"INVALID_ACKNOWLEDGMENT_TOKEN","retryable":true,"error":"Approval token does not match this operation. Re-run guardian_assess (no token) for the exact action you want approved."}'
+            return
+        fi
+        # Token valid and bound to this operation — consume and return proceed_ok
         unset "_PENDING_APPROVALS[$hat]"
 
         local assessment_result
