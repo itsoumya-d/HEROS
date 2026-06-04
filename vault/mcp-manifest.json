@@ -25,7 +25,7 @@
     {
       "name": "vault_secret_set",
       "title": "Store Secret",
-      "description": "Create or update a named secret. Value can be any string (arbitrary bytes). Idempotent by name — same name overwrites. Returns secret_id, version, timestamps. Secret names: [a-zA-Z0-9_.-], max 128 chars, no path traversal. Values stored base64-encoded on disk. Requires rw scope when auth is enabled.",
+      "description": "Create or update a named secret. Value is any UTF-8 text string (binary payloads with NUL bytes are unsupported — base64-encode them yourself first). Idempotent by name — same name overwrites. Returns secret_id, version, timestamps. Secret names: [a-zA-Z0-9_.-], max 128 chars, no path traversal. Values stored base64-encoded on disk. Requires rw scope when auth is enabled.",
       "annotations": {
         "readOnly": false,
         "destructive": false,

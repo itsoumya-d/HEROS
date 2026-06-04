@@ -127,13 +127,17 @@ async function call(server, tool, args) {
   return r.json();
 }
 function tierBadge(t){ return t ? `<span class="tier t-${t}">${t}</span>` : ''; }
-function show(el, obj){ $(el).innerHTML = `<pre>${JSON.stringify(obj,null,2)}</pre>`; }
+// Render bridge data as TEXT, never HTML: bridge fields (skill triggers/steps,
+// echoed operation JSON, etc.) can contain markup, so innerHTML would be a
+// stored-XSS vector in the console origin (which can call /api/call).
+function appendJson(node, obj){ const p = document.createElement('pre'); p.textContent = JSON.stringify(obj, null, 2); node.appendChild(p); }
+function show(el, obj){ const n = $(el); n.replaceChildren(); appendJson(n, obj); }
 
 async function guardianAssess(){
   let op; try { op = JSON.parse($('#g-op').value); } catch { return show('#g-out',{error:'operation must be valid JSON'}); }
   const res = await call('guardian','guardian_assess',{operation_type:$('#g-type').value, operation:op});
   const head = res.risk_tier ? `<p>${tierBadge(res.risk_tier)} score ${res.risk_score} · decision_required: <b>${res.decision_required}</b></p>` : '';
-  $('#g-out').innerHTML = head + `<pre>${JSON.stringify(res,null,2)}</pre>`;
+  const n = $('#g-out'); n.innerHTML = head; appendJson(n, res);
 }
 async function evolvePropose(){
   const steps = $('#e-steps').value.split('\n').map(s=>s.trim()).filter(Boolean);
@@ -148,21 +152,35 @@ async function evolvePromote(){
   if (res.state === 'active'){ $('#e-nonce').value = ''; }
   const head = res.decision_required ? `<p>${tierBadge(res.risk_tier)} approval required — nonce captured, click Promote again to confirm.</p>`
              : res.state === 'active' ? `<p>${tierBadge('SAFE')} skill is now <b>active</b>.</p>` : '';
-  $('#e-prom-out').innerHTML = head + `<pre>${JSON.stringify(res,null,2)}</pre>`;
+  const n = $('#e-prom-out'); n.innerHTML = head; appendJson(n, res);
   evolveList();
 }
 async function evolveList(){
   const res = await call('evolve','evolve_skill_list',{});
-  const rows = (res.skills||[]).map(s=>`<tr><td>${s.name}</td><td><span class="pill">${s.state}</span></td>
-    <td>${s.successes}/${s.successes+s.failures}</td><td>${s.score}</td></tr>`).join('');
-  $('#e-list').innerHTML = rows ? `<table><tr><th>name</th><th>state</th><th>succ/total</th><th>score</th></tr>${rows}</table>`
-                                : '<p class="muted">no skills yet</p>';
+  const list = res.skills || [];
+  const n = $('#e-list'); n.replaceChildren();
+  if (!list.length){ const p = document.createElement('p'); p.className = 'muted'; p.textContent = 'no skills yet'; n.appendChild(p); return; }
+  const table = document.createElement('table');
+  const cell = (parent, text, tag) => { const c = document.createElement(tag || 'td'); c.textContent = text; parent.appendChild(c); return c; };
+  const hdr = document.createElement('tr');
+  ['name','state','succ/total','score'].forEach(h => cell(hdr, h, 'th'));
+  table.appendChild(hdr);
+  for (const s of list){
+    const tr = document.createElement('tr');
+    cell(tr, s.name);
+    const td = document.createElement('td'); const pill = document.createElement('span');
+    pill.className = 'pill'; pill.textContent = s.state; td.appendChild(pill); tr.appendChild(td);
+    cell(tr, `${s.successes}/${s.successes + s.failures}`);
+    cell(tr, s.score);
+    table.appendChild(tr);
+  }
+  n.appendChild(table);
 }
 async function evolveHistory(){
   const res = await call('evolve','evolve_history',{limit:50});
   const ok = res.valid ? `<p>${tierBadge('SAFE')} chain valid · ${res.total_count||0} entries</p>`
                        : `<p>${tierBadge('CRITICAL')} chain BROKEN at entry ${res.broken_at_entry}</p>`;
-  $('#a-out').innerHTML = ok + `<pre>${JSON.stringify(res,null,2)}</pre>`;
+  const n = $('#a-out'); n.innerHTML = ok; appendJson(n, res);
 }
 guardianAssess();
 </script>

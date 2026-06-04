@@ -60,6 +60,14 @@ func main() {
 	root := flag.String("root", os.Getenv("HEROS_ROOT"), "path to the HEROS repo root (defaults to autodetect)")
 	flag.Parse()
 
+	// Fail fast unless the listen address is loopback-only. The console exposes
+	// /api/call (which spawns bridges), so it must never bind a routable
+	// interface — the localhostOnly RemoteAddr filter is not equivalent once the
+	// app sits behind a local proxy or port-forward.
+	if err := validateLoopbackAddr(*addr); err != nil {
+		log.Fatal(err)
+	}
+
 	herosRoot = resolveRoot(*root)
 	log.Printf("HEROS Console — repo root: %s", herosRoot)
 
@@ -80,6 +88,24 @@ func main() {
 	}
 	srv := &http.Server{Handler: localhostOnly(mux), ReadHeaderTimeout: 5 * time.Second}
 	log.Fatal(srv.Serve(ln))
+}
+
+// validateLoopbackAddr rejects any listen address that is not loopback-only
+// (127.0.0.0/8, ::1, or "localhost"). An empty/"0.0.0.0"/"::" host — which would
+// bind every interface — is rejected.
+func validateLoopbackAddr(addr string) error {
+	host, _, err := net.SplitHostPort(addr)
+	if err != nil {
+		return fmt.Errorf("invalid listen address %q (need host:port): %w", addr, err)
+	}
+	if host == "localhost" {
+		return nil
+	}
+	ip := net.ParseIP(host)
+	if ip == nil || !ip.IsLoopback() {
+		return fmt.Errorf("listen address must be loopback-only (127.0.0.0/8, ::1, or localhost), got %q", addr)
+	}
+	return nil
 }
 
 func envOr(k, def string) string {

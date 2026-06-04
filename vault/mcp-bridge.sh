@@ -374,7 +374,7 @@ _handle_vault_secret_set() {
         echo '{"error_code":"MISSING_FLAG","flag":"value","retryable":true,"error":"value is required and must be a string"}'
         return
     fi
-    # Value length cap: 64 KiB (arbitrary bytes encoded as base64 means real limit is ~48 KiB raw)
+    # Value length cap: 64 KiB (UTF-8 text encoded as base64 means real limit is ~48 KiB raw)
     if (( ${#value} > 65536 )); then
         echo '{"error_code":"INVALID_INPUT","field":"value","retryable":false,"error":"value exceeds 64 KiB limit"}'
         return
@@ -476,12 +476,16 @@ _handle_vault_secret_set() {
         local index_tmpfile
         if [[ -f "$VAULT_INDEX_FILE" ]]; then
             if index_tmpfile=$(mktemp "${VAULT_INDEX_FILE}.XXXXXX" 2>/dev/null); then
-                # Filter out the old entry for this name, then append new entry
-                if grep -v '"name":"'"$name"'"' "$VAULT_INDEX_FILE" > "$index_tmpfile" 2>/dev/null || true; then
+                # Filter out the old entry for this name by PARSED .name (not a raw
+                # substring — a substring match could drop unrelated entries whose
+                # description happens to contain the name), then append new entry.
+                if jq -c --arg n "$name" 'select(.name != $n)' "$VAULT_INDEX_FILE" > "$index_tmpfile" 2>/dev/null; then
                     printf '%s\n' "$index_entry" >> "$index_tmpfile" 2>/dev/null || true
                     mv -f "$index_tmpfile" "$VAULT_INDEX_FILE" 2>/dev/null || true
                 else
+                    # Malformed index line — don't clobber existing data; append only.
                     rm -f "$index_tmpfile" 2>/dev/null || true
+                    printf '%s\n' "$index_entry" >> "$VAULT_INDEX_FILE" 2>/dev/null || true
                 fi
             else
                 printf '%s\n' "$index_entry" >> "$VAULT_INDEX_FILE" 2>/dev/null || true
@@ -638,8 +642,13 @@ _handle_vault_secret_delete() {
             if [[ -f "$VAULT_INDEX_FILE" ]]; then
                 local idx_tmp
                 if idx_tmp=$(mktemp "${VAULT_INDEX_FILE}.XXXXXX" 2>/dev/null); then
-                    grep -v '"name":"'"$name"'"' "$VAULT_INDEX_FILE" > "$idx_tmp" 2>/dev/null || true
-                    mv -f "$idx_tmp" "$VAULT_INDEX_FILE" 2>/dev/null || rm -f "$idx_tmp" 2>/dev/null || true
+                    # Filter by parsed .name (not raw substring) so we only drop the
+                    # entry actually being deleted.
+                    if jq -c --arg n "$name" 'select(.name != $n)' "$VAULT_INDEX_FILE" > "$idx_tmp" 2>/dev/null; then
+                        mv -f "$idx_tmp" "$VAULT_INDEX_FILE" 2>/dev/null || rm -f "$idx_tmp" 2>/dev/null || true
+                    else
+                        rm -f "$idx_tmp" 2>/dev/null || true
+                    fi
                 fi
             fi
         } 200>"${VAULT_LOCK_FILE}" || {
