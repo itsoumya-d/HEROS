@@ -30,12 +30,18 @@ readonly MCP_PROTOCOL="2025-11-25"
 readonly MAX_MSG=1048576  # 1 MiB — per mcp-security-spec.md §5.1
 
 # ── Locate ledger binary ───────────────────────────────────────────────────
+# Discovery order: an explicit LEDGER_BIN env override (set by the plugin /
+# installer to a fetched binary under a writable data dir) → ledger on PATH →
+# a binary checked in alongside this script. The override must be executable.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-LEDGER_BIN=""
-if command -v ledger >/dev/null 2>&1; then
+if [[ -n "${LEDGER_BIN:-}" && -x "${LEDGER_BIN:-}" ]]; then
+    :  # honor the caller-provided LEDGER_BIN as-is
+elif command -v ledger >/dev/null 2>&1; then
     LEDGER_BIN="$(command -v ledger)"
 elif [[ -x "${SCRIPT_DIR}/ledger" ]]; then
     LEDGER_BIN="${SCRIPT_DIR}/ledger"
+else
+    LEDGER_BIN=""
 fi
 
 if [[ -z "$LEDGER_BIN" ]]; then

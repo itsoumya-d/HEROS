@@ -1,0 +1,45 @@
+{
+  "mcpServers": {
+    "heros-guardian": {
+      "command": "bash",
+      "args": ["${CLAUDE_PLUGIN_ROOT}/guardian/mcp-bridge.sh"],
+      "env": { "HEROS_DATA_DIR": "${CLAUDE_PLUGIN_DATA}" }
+    },
+    "heros-vault": {
+      "command": "bash",
+      "args": ["${CLAUDE_PLUGIN_ROOT}/vault/mcp-bridge.sh"],
+      "env": { "HEROS_DATA_DIR": "${CLAUDE_PLUGIN_DATA}" }
+    },
+    "heros-audit": {
+      "command": "bash",
+      "args": ["${CLAUDE_PLUGIN_ROOT}/audit/mcp-bridge.sh"],
+      "env": { "HEROS_DATA_DIR": "${CLAUDE_PLUGIN_DATA}" }
+    },
+    "heros-evolve": {
+      "command": "bash",
+      "args": ["${CLAUDE_PLUGIN_ROOT}/evolve/mcp-bridge.sh"],
+      "env": { "HEROS_DATA_DIR": "${CLAUDE_PLUGIN_DATA}" }
+    },
+    "heros-remix": {
+      "command": "bash",
+      "args": ["${CLAUDE_PLUGIN_ROOT}/remix/mcp-bridge.sh"],
+      "env": { "HEROS_DATA_DIR": "${CLAUDE_PLUGIN_DATA}" }
+    },
+    "heros-forge": {
+      "command": "bash",
+      "args": ["${CLAUDE_PLUGIN_ROOT}/forge/mcp-bridge.sh"],
+      "env": {
+        "HEROS_DATA_DIR": "${CLAUDE_PLUGIN_DATA}",
+        "FORGE_BIN": "${CLAUDE_PLUGIN_DATA}/bin/forge"
+      }
+    },
+    "heros-ledger": {
+      "command": "bash",
+      "args": ["${CLAUDE_PLUGIN_ROOT}/ledger/mcp-bridge.sh"],
+      "env": {
+        "HEROS_DATA_DIR": "${CLAUDE_PLUGIN_DATA}",
+        "LEDGER_BIN": "${CLAUDE_PLUGIN_DATA}/bin/ledger"
+      }
+    }
+  }
+}
