@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: MIT
 # ┌──────────────────────────────────────────────────────────────────────────┐
 # │ forge/mcp-bridge.sh — MCP stdio server for forge                        │
 # │                                                                          │
@@ -29,12 +30,18 @@ readonly MCP_PROTOCOL="2025-11-25"
 readonly MAX_MSG=1048576  # 1 MiB — mcp-security-spec.md §5.1
 
 # ── Locate forge binary ────────────────────────────────────────────────────
+# Discovery order: an explicit FORGE_BIN env override (set by the plugin /
+# installer to a fetched binary under a writable data dir) → forge on PATH →
+# a binary checked in alongside this script. The override must be executable.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-FORGE_BIN=""
-if command -v forge >/dev/null 2>&1; then
+if [[ -n "${FORGE_BIN:-}" && -x "${FORGE_BIN:-}" ]]; then
+    :  # honor the caller-provided FORGE_BIN as-is
+elif command -v forge >/dev/null 2>&1; then
     FORGE_BIN="$(command -v forge)"
 elif [[ -x "${SCRIPT_DIR}/forge" ]]; then
     FORGE_BIN="${SCRIPT_DIR}/forge"
+else
+    FORGE_BIN=""
 fi
 
 if [[ -z "$FORGE_BIN" ]]; then
@@ -65,7 +72,8 @@ if [[ -n "${HEROS_API_KEY:-}" ]]; then
         printf '{"jsonrpc":"2.0","id":null,"error":{"code":-32603,"message":"HEROS_DATA_DIR does not exist or is not a directory — check operator configuration"}}\n'
         exit 1
     fi
-    if [[ ${#HEROS_HMAC_SEED} -lt 32 ]]; then
+    seed="${HEROS_HMAC_SEED:-}"
+    if [[ ${#seed} -lt 32 ]]; then
         printf '{"jsonrpc":"2.0","id":null,"error":{"code":-32603,"message":"HEROS_HMAC_SEED is too short (minimum 32 characters required). Generate with: openssl rand -hex 32"}}\n'
         exit 1
     fi

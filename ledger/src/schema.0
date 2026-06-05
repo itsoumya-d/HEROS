@@ -5,7 +5,7 @@
 pub fun write(world: World) -> Void raises {
     check world.out.write("{")
     check world.out.write("\"tool\":\"ledger\",")
-    check world.out.write("\"version\":\"0.1.10\",")
+    check world.out.write("\"version\":\"0.1.11\",")
     check world.out.write("\"description\":\"Agent-native accounting operations. Double-entry bookkeeping rebuilt for autonomous agents. No GUI, no human approval, no browser OAuth. Every operation returns structured JSON with stable error codes.\",")
     check world.out.write("\"quickstart\":\"1. ledger register --org-name 'My Org'  2. ledger invoice create --to 'Vendor' --amount 10000 --currency USD --idempotency-key <uuid>  3. ledger invoice list\",")
     check world.out.write("\"authentication\":{\"no_human_required\":true,\"signup\":\"ledger register --org-name <name>\"},")

@@ -1,0 +1,267 @@
+{
+  "schema_version": "1",
+  "mcp_protocol_version": "2025-11-25",
+  "name": "vault",
+  "display_name": "HEROS Vault Secret Manager",
+  "description": "Agent-native secret and credential manager for HEROS. Store, retrieve, list, and delete named secrets with base64-encoded values, flock-protected writes, rate limiting, HMAC auth, and a human-approval gate on deletion.",
+  "version": "0.1.0",
+  "transport": "stdio",
+  "invocation": {
+    "command": "vault/mcp-bridge.sh",
+    "args": [],
+    "requires": ["jq >= 1.6", "flock (util-linux)", "base64 (coreutils or python3)"],
+    "bridge_note": "Pure bash implementation — no separate binary. All persistence (one JSON file per secret, JSONL index, JSONL audit log) is owned by this bridge. flock prevents concurrent write corruption."
+  },
+  "capabilities": {
+    "tools": true,
+    "prompts": false,
+    "resources": false
+  },
+  "signing": {
+    "manifest_sha256": "UNSIGNED in source — cosign sign-blob runs in CI at publish time",
+    "verify_cmd": "cosign verify-blob --certificate-identity-regexp https://github.com/itsoumya-d/HEROS --certificate-oidc-issuer https://token.actions.githubusercontent.com --signature vault/mcp-manifest.json.sig vault/mcp-manifest.json"
+  },
+  "tools": [
+    {
+      "name": "vault_secret_set",
+      "title": "Store Secret",
+      "description": "Create or update a named secret. Value is any UTF-8 text string (binary payloads with NUL bytes are unsupported — base64-encode them yourself first). Idempotent by name — same name overwrites. Returns secret_id, version, timestamps. Secret names: [a-zA-Z0-9_.-], max 128 chars, no path traversal. Values stored base64-encoded on disk. Requires rw scope when auth is enabled.",
+      "annotations": {
+        "readOnly": false,
+        "destructive": false,
+        "idempotent": true,
+        "cost_usd": 0.0,
+        "decision_required": false,
+        "untrusted_fields": ["name", "value", "description"],
+        "side_effects": ["writes .vault-secrets/<name>.json", "updates .vault-index"]
+      },
+      "input_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "UNTRUSTED. Secret name. Pattern: [a-zA-Z0-9_.-], max 128 chars. No path traversal (no .. or /).",
+            "maxLength": 128,
+            "pattern": "^[a-zA-Z0-9_.\\-]+$"
+          },
+          "value": {
+            "type": "string",
+            "description": "UNTRUSTED. Secret value. Arbitrary string up to 64 KiB. Stored base64-encoded.",
+            "maxLength": 65536
+          },
+          "description": {
+            "type": "string",
+            "description": "UNTRUSTED. Optional human-readable description. ASCII printable only, max 512 chars.",
+            "maxLength": 512
+          }
+        },
+        "required": ["name", "value"]
+      },
+      "output_schema": {
+        "type": "object",
+        "properties": {
+          "secret_id":  {"type": "string"},
+          "name":       {"type": "string"},
+          "created_at": {"type": "integer"},
+          "updated_at": {"type": "integer"},
+          "version":    {"type": "integer"},
+          "status":     {"type": "string"},
+          "_rate_limit": {"type": "object"},
+          "error_code": {"type": "string"},
+          "error":      {"type": "string"}
+        }
+      },
+      "error_codes": {
+        "MISSING_FLAG":     {"retryable": true,  "fix": "Provide name and value fields"},
+        "INVALID_INPUT":    {"retryable": false, "fix": "Check name charset/length and description charset/length"},
+        "STORE_READ_FAILED":{"retryable": false, "fix": "I/O error reading existing secret; check disk and permissions"},
+        "STORE_WRITE_FAILED":{"retryable": true, "fix": "I/O error writing secret; check disk space and permissions"},
+        "RATE_LIMITED":     {"retryable": true,  "fix": "Wait retry_after_seconds"},
+        "INVALID_API_KEY":  {"retryable": false, "fix": "Obtain a valid key via ledger key create"},
+        "API_KEY_REVOKED":  {"retryable": false, "fix": "Rotate key via ledger key rotate"},
+        "INSUFFICIENT_SCOPE":{"retryable": false,"fix": "Use an rw-scoped key"}
+      },
+      "rate_limits": {"per_session": "100/hour", "burst": 10}
+    },
+    {
+      "name": "vault_secret_get",
+      "title": "Retrieve Secret",
+      "description": "Retrieve a named secret's value and metadata. Returns secret_id, name, value (decoded), description, created_at, version. Access is logged to .vault-audit (ts/op/name only — value never logged). Requires ro scope when auth is enabled.",
+      "annotations": {
+        "readOnly": true,
+        "destructive": false,
+        "idempotent": true,
+        "cost_usd": 0.0,
+        "decision_required": false,
+        "untrusted_fields": ["name"],
+        "side_effects": ["appends to .vault-audit"]
+      },
+      "input_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "UNTRUSTED. Name of the secret to retrieve. Pattern: [a-zA-Z0-9_.-], max 128 chars.",
+            "maxLength": 128
+          }
+        },
+        "required": ["name"]
+      },
+      "output_schema": {
+        "type": "object",
+        "properties": {
+          "secret_id":   {"type": "string"},
+          "name":        {"type": "string"},
+          "value":       {"type": "string", "description": "Decoded secret value"},
+          "description": {"type": "string"},
+          "created_at":  {"type": "integer"},
+          "version":     {"type": "integer"},
+          "status":      {"type": "string"},
+          "_rate_limit": {"type": "object"},
+          "error_code":  {"type": "string"},
+          "error":       {"type": "string"}
+        }
+      },
+      "error_codes": {
+        "MISSING_FLAG":      {"retryable": true,  "fix": "Provide name field"},
+        "INVALID_INPUT":     {"retryable": false, "fix": "Check name charset and length"},
+        "SECRET_NOT_FOUND":  {"retryable": false, "fix": "Check name spelling; secret may not exist yet"},
+        "STORE_READ_FAILED": {"retryable": false, "fix": "I/O error or corrupt secret file"},
+        "RATE_LIMITED":      {"retryable": true,  "fix": "Wait retry_after_seconds"}
+      },
+      "rate_limits": {"per_session": "500/hour", "burst": 20}
+    },
+    {
+      "name": "vault_secret_delete",
+      "title": "Delete Secret",
+      "description": "Delete a named secret. Irreversible — requires human sign-off via approval_nonce flow. First call (no token) returns decision_required with approval_nonce. Second call with human_acknowledgment_token (5-min TTL, single-use) executes deletion. Requires rw scope when auth is enabled.",
+      "annotations": {
+        "readOnly": false,
+        "destructive": true,
+        "idempotent": false,
+        "cost_usd": 0.0,
+        "decision_required": true,
+        "untrusted_fields": ["name"],
+        "side_effects": ["deletes .vault-secrets/<name>.json", "updates .vault-index", "appends to .vault-audit"]
+      },
+      "input_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "UNTRUSTED. Name of the secret to delete. Pattern: [a-zA-Z0-9_.-], max 128 chars.",
+            "maxLength": 128
+          },
+          "human_acknowledgment_token": {
+            "type": "string",
+            "description": "Nonce from a prior approval_nonce response. Pass after human approves deletion. Single-use, 5-min TTL.",
+            "maxLength": 16,
+            "pattern": "^[0-9a-f]{16}$"
+          }
+        },
+        "required": ["name"]
+      },
+      "output_schema": {
+        "type": "object",
+        "properties": {
+          "status":          {"type": "string"},
+          "deleted":         {"type": "boolean"},
+          "decision_required":{"type": "boolean"},
+          "name":            {"type": "string"},
+          "approval_nonce":  {"type": "string"},
+          "approval_prompt": {"type": "string"},
+          "_rate_limit":     {"type": "object"},
+          "error_code":      {"type": "string"},
+          "error":           {"type": "string"}
+        }
+      },
+      "error_codes": {
+        "MISSING_FLAG":                  {"retryable": true,  "fix": "Provide name field"},
+        "INVALID_INPUT":                 {"retryable": false, "fix": "Check name charset and length"},
+        "SECRET_NOT_FOUND":              {"retryable": false, "fix": "Secret does not exist"},
+        "STORE_WRITE_FAILED":            {"retryable": true,  "fix": "I/O error; check disk and permissions"},
+        "RATE_LIMITED":                  {"retryable": true,  "fix": "Wait retry_after_seconds"},
+        "INVALID_ACKNOWLEDGMENT_TOKEN":  {"retryable": true,  "fix": "Re-run vault_secret_delete without token to get a fresh approval_nonce"}
+      },
+      "rate_limits": {"per_session": "50/hour", "burst": 5}
+    },
+    {
+      "name": "vault_secret_list",
+      "title": "List Secrets",
+      "description": "List all secret names and metadata. Returns name, description, created_at, version for each secret. Secret values are NEVER included in list output. Count is total number of stored secrets. Use vault_secret_get to retrieve a specific value.",
+      "annotations": {
+        "readOnly": true,
+        "destructive": false,
+        "idempotent": true,
+        "cost_usd": 0.0,
+        "decision_required": false,
+        "untrusted_fields": [],
+        "side_effects": []
+      },
+      "input_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {}
+      },
+      "output_schema": {
+        "type": "object",
+        "properties": {
+          "secrets": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name":        {"type": "string"},
+                "description": {"type": "string"},
+                "created_at":  {"type": "integer"},
+                "version":     {"type": "integer"}
+              }
+            }
+          },
+          "count":       {"type": "integer"},
+          "status":      {"type": "string"},
+          "_rate_limit": {"type": "object"},
+          "error_code":  {"type": "string"},
+          "error":       {"type": "string"}
+        }
+      },
+      "error_codes": {
+        "STORE_READ_FAILED": {"retryable": false, "fix": "Failed to read vault index; check permissions"},
+        "RATE_LIMITED":      {"retryable": true,  "fix": "Wait retry_after_seconds"}
+      },
+      "rate_limits": {"per_session": "1000/hour", "burst": 30}
+    }
+  ],
+  "rate_limit_spec": {
+    "algorithm": "token_bucket",
+    "state": "in-memory bridge process (resets on bridge restart)",
+    "error_code": "RATE_LIMITED",
+    "error_fields": ["retry_after_seconds", "limit_type", "limit_tool"],
+    "proactive_field": "_rate_limit (present in all success responses)"
+  },
+  "security": {
+    "untrusted_input_fields": ["name", "value", "description"],
+    "storage_model": "one JSON file per secret in .vault-secrets/, JSONL index in .vault-index, JSONL audit in .vault-audit",
+    "value_encoding": "base64 on disk — raw bytes never written as-is",
+    "path_traversal_mitigation": "name validated against ^[a-zA-Z0-9_.-]+$, rejects .., /",
+    "write_protection": "flock on .vault-lock for all writes",
+    "audit": ".vault-audit logs ts/op/name on every get and delete — value never logged",
+    "delete_gate": "decision_required approval_nonce flow — single-use 5-min TTL token required",
+    "content_policy": "Tool descriptions audited against mcp-security-spec.md §4.3. No instruction-format language. <= 512 chars."
+  },
+  "agent_quickstart": [
+    "1. Call vault_secret_set to store a credential: {name, value, description}.",
+    "2. Call vault_secret_get to retrieve a value by name.",
+    "3. Call vault_secret_list to enumerate stored secrets (names only, no values).",
+    "4. To delete: call vault_secret_delete without token — get approval_nonce — present to human.",
+    "5. After human approves, call vault_secret_delete again with human_acknowledgment_token.",
+    "6. Deletion is irreversible. When in doubt, list first to confirm the name before deleting."
+  ]
+}

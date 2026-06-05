@@ -1,0 +1,102 @@
+// skill_score.0 — pure-compute kernel for evolve skill confidence scoring.
+//
+// STATUS: SPEC-ONLY. There is no Zero compiler in the current build/CI image,
+// so this file is not yet compiled. The TESTED reference implementation is the
+// `_wilson_score` awk function in evolve/mcp-bridge.sh. When Zero ships in CI,
+// this kernel becomes the production scorer and a parity test (see spec/README.md)
+// asserts it matches the bash reference to +/-0.001 over a table of (s,f) pairs.
+//
+// This is the one piece of an agent self-improvement loop that is genuinely
+// pure compute (inputs -> number, no I/O, no time, deterministic) and therefore
+// the honest answer to "rewrite the compute core in Zero". Everything else in
+// evolve (storage, the approval gate, the audit chain) is I/O and stays in the
+// bash bridge per the HEROS architecture rule.
+//
+// Algorithm: Wilson score interval, lower bound at 95% confidence (z = 1.96),
+// of the success proportion p = successes / (successes + failures). The lower
+// bound rewards skills with many confirming outcomes and penalises small
+// samples, so a 1/1 skill scores well below a 50/50 skill. Computed in
+// fixed-point integer arithmetic (scale 1e6) because Zero v0.1.x targets
+// primitive integer math, not floats.
+
+use std.args
+
+// Fixed-point scale: all rationals are represented as value * SCALE.
+let SCALE: u64 = 1000000        // 1e6
+// z = 1.96 ; z^2 = 3.8416 ; in fixed point:
+let Z2: u64 = 3841600           // 3.8416 * 1e6
+
+// Integer square root of a fixed-point value x (which represents x/SCALE).
+// Returns sqrt(x/SCALE) * SCALE, i.e. fixed-point sqrt. Newton's method.
+fun fpSqrt(x: u64) -> u64 {
+    if x == 0 { return 0 }
+    // We want r = sqrt(x/SCALE)*SCALE  =>  r^2/SCALE ≈ x  =>  r = sqrt(x*SCALE).
+    let target: u64 = x * SCALE
+    var r: u64 = target
+    if r > 1 {
+        // Newton iterations for floor(sqrt(target)).
+        var g: u64 = target
+        var i: u64 = 0
+        while i < 64 {
+            let ng: u64 = (g + target / g) / 2
+            if ng >= g { break }
+            g = ng
+            i = i + 1
+        }
+        r = g
+    }
+    return r
+}
+
+// score(successes, failures) -> confidence in [0, SCALE].
+// Mirrors _wilson_score in mcp-bridge.sh.
+pub fun score(successes: u64, failures: u64) -> u64 {
+    let n: u64 = successes + failures
+    if n == 0 { return 0 }
+
+    // phat = successes / n           (fixed point)
+    let phat: u64 = (successes * SCALE) / n
+
+    // center = phat + Z2/(2n)
+    let center: u64 = phat + (Z2 / (2 * n))
+
+    // variance term = phat*(1-phat) + Z2/(4n), all fixed point
+    let oneMinus: u64 = SCALE - phat
+    let pq: u64 = (phat * oneMinus) / SCALE
+    let term: u64 = pq + (Z2 / (4 * n))
+
+    // inner = term / n   (still fixed point: divide a fp value by integer n)
+    let inner: u64 = term / n
+
+    // margin = z * sqrt(inner) = sqrt(Z2 * inner / SCALE) in fixed point
+    let radicand: u64 = (Z2 * inner) / SCALE
+    let margin: u64 = fpSqrt(radicand)
+
+    // denom = 1 + Z2/n   (fixed point: SCALE + Z2/n)
+    let denom: u64 = SCALE + (Z2 / n)
+
+    // lb = (center - margin) / denom   (fixed point divide by fixed point)
+    if margin >= center { return 0 }
+    let numer: u64 = (center - margin) * SCALE
+    let lb: u64 = numer / denom
+
+    if lb > SCALE { return SCALE }
+    return lb
+}
+
+// CLI harness so the kernel is exercisable once Zero builds:
+//   skill_score <successes> <failures>  ->  prints score scaled to 1e6
+pub fun main(world: World) -> Void raises {
+    let argc = std.args.len()
+    if argc < 3 {
+        check world.out.write("usage: skill_score <successes> <failures>\n")
+        return
+    }
+    // (arg parsing helpers omitted in spec; see std.args in the cheatsheet)
+    let s: u64 = 0
+    let f: u64 = 0
+    let result: u64 = score(s, f)
+    // result is the confidence * 1e6; the bridge divides by 1e6 for the JSON field.
+    check world.out.writeU64(result)
+    check world.out.write("\n")
+}

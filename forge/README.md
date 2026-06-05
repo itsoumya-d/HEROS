@@ -49,7 +49,7 @@ Zero is a systems programming language designed for agent-native software. Key p
 - **Capability model**: I/O only flows through an explicit `World` parameter, making forge's I/O surface completely inspectable and auditable
 - **Type-safe**: shapes, enums, and spans prevent silent data corruption that plagues Python migration scripts
 - **Static binary**: ships as a single ELF64 musl-linked binary with no runtime dependencies — drop it in a container and run it
-- **Small**: forge binary is ~35.1 KiB (under 19 KB) — security hardened: input validation, size limits, injection prevention
+- **Small**: forge binary is sub-100 KiB (CI binary-size gate enforces this) — security hardened: input validation, size limits, injection prevention
 
 Zero is to agent-native software what Rust was to systems software: a language that makes the right thing the default.
 
@@ -80,7 +80,7 @@ All forge commands return a single JSON object to stdout.
 
 **`forge --version`:**
 ```json
-{"name":"forge","version":"0.1.0","schema_version":1}
+{"name":"forge","version":"0.1.4","schema_version":1}
 ```
 
 **`forge analyze` (safe migration):**
@@ -142,7 +142,7 @@ All forge commands return a single JSON object to stdout.
 ```json
 {
   "name": "forge",
-  "version": "0.1.0",
+  "version": "0.1.4",
   "schema_version": 1,
   "description": "Agent-native database schema migration analyzer. Emits structured JSON on every code path.",
   "commands": [
@@ -200,7 +200,7 @@ The full implementation is structured across six Zero source files:
 | `src/describe.0` | Agent discovery schema emitter |
 | `src/main.0` | CLI dispatch — routes flags to commands, handles all error paths |
 
-**Note on v0.1.0 binary:** The shipped forge binary (`forge_mini.0`) is optimized for Zero v0.1.1's direct ELF64 backend, which currently supports programs with inline main-level logic. The full modular implementation (`schema.0`, `diff.0`, etc.) type-checks cleanly with `zero check .` and will be the production binary when Zero v0.2+ ships full backend support.
+**Note on v0.1.4 binary:** The shipped forge binary (`forge_mini.0`) is optimized for Zero v0.1.1's direct ELF64 backend, which currently supports programs with inline main-level logic. The full modular implementation (`schema.0`, `diff.0`, etc.) type-checks cleanly with `zero check .` and will be the production binary when Zero v0.2+ ships full backend support.
 
 ---
 
@@ -356,7 +356,7 @@ forge is designed with the assumption that every caller is untrusted and every o
 
 | Property | Value |
 |---|---|
-| Size | ~35.1 KiB (v0.1.2); v0.1.3 larger due to 4×256-element column hash arrays |
+| Size | sub-100 KiB (CI gate; v0.1.2 was ~35.1 KiB; subsequent versions larger due to security hardening) |
 | Format | ELF64 x86-64 |
 | ABI | musl (static, no dynamic deps) |
 | Built with | Zero lang v0.1.1 direct ELF64 backend |
@@ -368,4 +368,4 @@ forge is designed with the assumption that every caller is untrusted and every o
 
 Soumya Debnath — [soumyadebnath1619@gmail.com](mailto:soumyadebnath1619@gmail.com)
 
-forge v0.1.0 — Built for the YC RFS "Software for Agents" category.
+forge v0.1.4 — Built for the YC RFS "Software for Agents" category.

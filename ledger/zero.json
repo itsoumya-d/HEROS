@@ -1,5 +1,5 @@
 {
-  "package": { "name": "ledger", "version": "0.1.0" },
+  "package": { "name": "ledger", "version": "0.1.11" },
   "targets": {
     "cli": { "kind": "exe", "main": "src/main.0" }
   }

@@ -1,7 +1,11 @@
 # YC RFS "Software for Agents" Fit Scorecard
 
+> **Supporting material.** The canonical YC application is
+> [`../docs/yc-application.md`](../docs/yc-application.md). This is an internal self-assessment
+> of forge against the RFS criteria — useful for prep, not the submitted document.
+
 **Project:** forge — Zero-language agent-native database schema migration engine
-**Evaluated:** 2026-05-24 (re-scored after Cycles 5–7, 10–12, 20–28, 100–239; current version: v0.1.4 binary + forge bridge v0.1.4 / ledger bridge v0.1.11)
+**Evaluated:** 2026-05-24, updated 2026-05-31 (re-scored after Cycles 5–7, 10–12, 20–28; current version: v0.1.4 binary + forge bridge v0.1.4 / ledger bridge v0.1.11)
 **Evaluator:** Internal — against YC RFS "Software for Agents" criteria
 
 ---
@@ -74,7 +78,7 @@ Risk classification is the primary output of every `analyze` call, not an aftert
 
 **Score: 5 / 5**
 
-The entire API is two flags on one command (`analyze --from --to`) plus two meta-commands (`--version`, `--describe`). The forge schema format is four tokens (`TABLE`, `COLUMN`, type, nullability) with `|` as a separator — learnable in one sentence. The binary is ~35 KiB (security hardened: dual-hash dedup, charset validation, 64 KiB limits, per-table named output) with no configuration files, no environment variables, and no network dependencies. The full API fits in a single `--describe` JSON payload well under one context window.
+The entire API is two flags on one command (`analyze --from --to`) plus two meta-commands (`--version`, `--describe`). The forge schema format is four tokens (`TABLE`, `COLUMN`, type, nullability) with `|` as a separator — learnable in one sentence. The binary is sub-100 KiB (passes the CI binary-size gate) (security hardened: dual-hash dedup, charset validation, 64 KiB limits, per-table named output) with no configuration files, no environment variables, and no network dependencies. The full API fits in a single `--describe` JSON payload well under one context window.
 
 ---
 
@@ -94,7 +98,7 @@ forge exposes MCP stdio transport via `forge/mcp-bridge.sh` (manifest at `mcp-ma
 | 2 | Zero ambiguity | 5 / 5 |
 | 3 | Discovery mechanism | 5 / 5 |
 | 4 | No human-in-the-loop assumptions | 5 / 5 |
-| 5 | Idempotent and retryable | 4 / 5 |
+| 5 | Idempotent and retryable | 5 / 5 |
 | 6 | Risk-first design | 5 / 5 |
 | 7 | Minimal surface area | 5 / 5 |
 | 8 | Composable with other agents | 5 / 5 |
@@ -108,7 +112,7 @@ forge exposes MCP stdio transport via `forge/mcp-bridge.sh` (manifest at `mcp-ma
 
 forge scores 40/40 against the YC RFS criteria. It is the rare project where agent-native design is not a retrofit — the binary has no code path that produces human-readable output, no mode that assumes a terminal, and no operation that requires a human to approve before the agent can proceed.
 
-The ~35 KiB static binary (security hardened across 7 cycles), single-command API, `--describe` self-documentation (full `output_schema` and `migop_schema`), `--request-id` idempotency key, name-aware hash-set diff, and per-table named operations make forge a complete demonstration of the thesis that agent-native software is not about adding a JSON flag to an existing CLI — it requires designing the tool from the ground up for a caller that cannot read error messages, cannot click confirmation dialogs, and cannot recover from ambiguous output.
+The sub-100 KiB static binary (security hardened across Cycles 1–28), single-command API, `--describe` self-documentation (full `output_schema` and `migop_schema`), `--request-id` idempotency key, name-aware hash-set diff, and per-table named operations make forge a complete demonstration of the thesis that agent-native software is not about adding a JSON flag to an existing CLI — it requires designing the tool from the ground up for a caller that cannot read error messages, cannot click confirmation dialogs, and cannot recover from ambiguous output.
 
 ---
 

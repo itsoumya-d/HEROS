@@ -28,7 +28,7 @@ ledger invoice list
 
 ## What is ledger?
 
-Ledger is a double-entry accounting system built from the ground up for autonomous agents. Unlike traditional accounting software that requires human dashboards and approval workflows, ledger:
+Ledger is an agent-native accounting system built from the ground up for autonomous agents — idempotent org registration and invoice creation/listing/counting. (Balanced double-entry journals are on the v0.2 roadmap.) Unlike traditional accounting software that requires human dashboards and approval workflows, ledger:
 
 - Emits JSON on every code path (including errors)
 - Returns stable error codes agents can branch on without text parsing

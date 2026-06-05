@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<!-- SPDX-License-Identifier: MIT -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HEROS Console</title>
+<style>
+  :root { --bg:#0d1117; --panel:#161b22; --border:#30363d; --fg:#e6edf3; --muted:#8b949e;
+          --accent:#2f81f7; --safe:#3fb950; --high:#f97316; --crit:#f85149; }
+  * { box-sizing:border-box; }
+  body { margin:0; font:14px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace; background:var(--bg); color:var(--fg); }
+  header { padding:14px 20px; border-bottom:1px solid var(--border); display:flex; align-items:center; gap:12px; }
+  header h1 { font-size:16px; margin:0; }
+  header .tag { color:var(--muted); font-size:12px; }
+  nav { display:flex; gap:4px; padding:10px 20px 0; }
+  nav button { background:var(--panel); color:var(--muted); border:1px solid var(--border); border-bottom:none;
+               padding:8px 14px; cursor:pointer; border-radius:6px 6px 0 0; }
+  nav button.active { color:var(--fg); background:var(--bg); border-color:var(--accent); }
+  main { padding:18px 20px; }
+  .panel { background:var(--panel); border:1px solid var(--border); border-radius:8px; padding:16px; margin-bottom:16px; }
+  .panel h2 { font-size:14px; margin:0 0 10px; }
+  label { display:block; color:var(--muted); font-size:12px; margin:8px 0 3px; }
+  input, textarea, select { width:100%; background:var(--bg); color:var(--fg); border:1px solid var(--border);
+                            border-radius:6px; padding:7px 9px; font:inherit; }
+  textarea { min-height:60px; resize:vertical; }
+  button.go { background:var(--accent); color:#fff; border:none; border-radius:6px; padding:8px 16px;
+              cursor:pointer; margin-top:10px; font:inherit; }
+  pre { background:#010409; border:1px solid var(--border); border-radius:6px; padding:12px; overflow:auto;
+        white-space:pre-wrap; word-break:break-word; max-height:340px; }
+  .row { display:flex; gap:12px; flex-wrap:wrap; } .row > div { flex:1; min-width:220px; }
+  .tier { display:inline-block; padding:2px 8px; border-radius:4px; font-weight:bold; }
+  .t-SAFE,.t-NOTABLE { background:rgba(63,185,80,.15); color:var(--safe); }
+  .t-MEDIUM,.t-HIGH { background:rgba(249,115,22,.15); color:var(--high); }
+  .t-CRITICAL { background:rgba(248,81,73,.15); color:var(--crit); }
+  .hide { display:none; } .muted { color:var(--muted); }
+  table { width:100%; border-collapse:collapse; } th,td { text-align:left; padding:6px 8px; border-bottom:1px solid var(--border); }
+  .pill { font-size:11px; padding:1px 6px; border-radius:10px; border:1px solid var(--border); }
+</style>
+</head>
+<body>
+<header>
+  <h1>⬡ HEROS Console</h1>
+  <span class="tag">agent operations stack — guardian · evolve · audit · vault</span>
+</header>
+<nav>
+  <button data-tab="guardian" class="active">Guardian</button>
+  <button data-tab="evolve">Evolve</button>
+  <button data-tab="audit">Audit</button>
+</nav>
+<main>
+  <!-- Guardian -->
+  <section id="tab-guardian">
+    <div class="panel">
+      <h2>Assess an operation before it runs</h2>
+      <div class="row">
+        <div>
+          <label>operation_type</label>
+          <select id="g-type">
+            <option>file_system</option><option>shell_command</option><option>network_request</option>
+            <option>infrastructure</option><option>code_execution</option><option>data_access</option>
+          </select>
+        </div>
+        <div>
+          <label>operation (JSON)</label>
+          <input id="g-op" value='{"action":"delete_file","path":"/etc/hosts"}'>
+        </div>
+      </div>
+      <button class="go" onclick="guardianAssess()">Assess</button>
+      <div id="g-out"></div>
+    </div>
+  </section>
+
+  <!-- Evolve -->
+  <section id="tab-evolve" class="hide">
+    <div class="panel">
+      <h2>Propose a skill</h2>
+      <div class="row">
+        <div><label>name ([a-z][a-z0-9_]*)</label><input id="e-name" value="rollback_on_error"></div>
+        <div><label>trigger</label><input id="e-trigger" value="a deploy fails"></div>
+      </div>
+      <label>steps (one per line)</label>
+      <textarea id="e-steps">detect the failure
+run the rollback
+alert a human</textarea>
+      <button class="go" onclick="evolvePropose()">Propose (pending)</button>
+      <div id="e-prop-out"></div>
+    </div>
+    <div class="panel">
+      <h2>Promote a skill — gated self-modification</h2>
+      <p class="muted">Promoting changes active behaviour. The first click returns an approval nonce; click again to confirm (simulating human sign-off).</p>
+      <div class="row">
+        <div><label>skill name</label><input id="e-pname" value="rollback_on_error"></div>
+        <div><label>approval nonce (auto-filled)</label><input id="e-nonce" placeholder="(none yet)"></div>
+      </div>
+      <button class="go" onclick="evolvePromote()">Promote</button>
+      <div id="e-prom-out"></div>
+    </div>
+    <div class="panel">
+      <h2>Skills</h2>
+      <button class="go" onclick="evolveList()">Refresh</button>
+      <div id="e-list"></div>
+    </div>
+  </section>
+
+  <!-- Audit -->
+  <section id="tab-audit" class="hide">
+    <div class="panel">
+      <h2>Self-improvement change log (tamper-evident)</h2>
+      <button class="go" onclick="evolveHistory()">Load &amp; verify chain</button>
+      <div id="a-out"></div>
+    </div>
+  </section>
+</main>
+
+<script>
+const $ = s => document.querySelector(s);
+document.querySelectorAll('nav button').forEach(b => b.onclick = () => {
+  document.querySelectorAll('nav button').forEach(x => x.classList.remove('active'));
+  b.classList.add('active');
+  ['guardian','evolve','audit'].forEach(t => $('#tab-'+t).classList.toggle('hide', t !== b.dataset.tab));
+});
+
+async function call(server, tool, args) {
+  const r = await fetch('/api/call', {method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({server, tool, args})});
+  return r.json();
+}
+function tierBadge(t){ return t ? `<span class="tier t-${t}">${t}</span>` : ''; }
+// Render bridge data as TEXT, never HTML: bridge fields (skill triggers/steps,
+// echoed operation JSON, etc.) can contain markup, so innerHTML would be a
+// stored-XSS vector in the console origin (which can call /api/call).
+function appendJson(node, obj){ const p = document.createElement('pre'); p.textContent = JSON.stringify(obj, null, 2); node.appendChild(p); }
+function show(el, obj){ const n = $(el); n.replaceChildren(); appendJson(n, obj); }
+
+async function guardianAssess(){
+  let op; try { op = JSON.parse($('#g-op').value); } catch { return show('#g-out',{error:'operation must be valid JSON'}); }
+  const res = await call('guardian','guardian_assess',{operation_type:$('#g-type').value, operation:op});
+  const head = res.risk_tier ? `<p>${tierBadge(res.risk_tier)} score ${res.risk_score} · decision_required: <b>${res.decision_required}</b></p>` : '';
+  const n = $('#g-out'); n.innerHTML = head; appendJson(n, res);
+}
+async function evolvePropose(){
+  const steps = $('#e-steps').value.split('\n').map(s=>s.trim()).filter(Boolean);
+  const res = await call('evolve','evolve_skill_propose',{name:$('#e-name').value, trigger:$('#e-trigger').value, steps, actor:'console'});
+  show('#e-prop-out',res); evolveList();
+}
+async function evolvePromote(){
+  const name = $('#e-pname').value, nonce = $('#e-nonce').value.trim();
+  const args = {name, actor:'console'}; if (nonce) args.human_acknowledgment_token = nonce;
+  const res = await call('evolve','evolve_skill_promote',args);
+  if (res.approval_nonce){ $('#e-nonce').value = res.approval_nonce; }
+  if (res.state === 'active'){ $('#e-nonce').value = ''; }
+  const head = res.decision_required ? `<p>${tierBadge(res.risk_tier)} approval required — nonce captured, click Promote again to confirm.</p>`
+             : res.state === 'active' ? `<p>${tierBadge('SAFE')} skill is now <b>active</b>.</p>` : '';
+  const n = $('#e-prom-out'); n.innerHTML = head; appendJson(n, res);
+  evolveList();
+}
+async function evolveList(){
+  const res = await call('evolve','evolve_skill_list',{});
+  const list = res.skills || [];
+  const n = $('#e-list'); n.replaceChildren();
+  if (!list.length){ const p = document.createElement('p'); p.className = 'muted'; p.textContent = 'no skills yet'; n.appendChild(p); return; }
+  const table = document.createElement('table');
+  const cell = (parent, text, tag) => { const c = document.createElement(tag || 'td'); c.textContent = text; parent.appendChild(c); return c; };
+  const hdr = document.createElement('tr');
+  ['name','state','succ/total','score'].forEach(h => cell(hdr, h, 'th'));
+  table.appendChild(hdr);
+  for (const s of list){
+    const tr = document.createElement('tr');
+    cell(tr, s.name);
+    const td = document.createElement('td'); const pill = document.createElement('span');
+    pill.className = 'pill'; pill.textContent = s.state; td.appendChild(pill); tr.appendChild(td);
+    cell(tr, `${s.successes}/${s.successes + s.failures}`);
+    cell(tr, s.score);
+    table.appendChild(tr);
+  }
+  n.appendChild(table);
+}
+async function evolveHistory(){
+  const res = await call('evolve','evolve_history',{limit:50});
+  const ok = res.valid ? `<p>${tierBadge('SAFE')} chain valid · ${res.total_count||0} entries</p>`
+                       : `<p>${tierBadge('CRITICAL')} chain BROKEN at entry ${res.broken_at_entry}</p>`;
+  const n = $('#a-out'); n.innerHTML = ok; appendJson(n, res);
+}
+guardianAssess();
+</script>
+</body>
+</html>

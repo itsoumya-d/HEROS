@@ -6,6 +6,9 @@
 |---|---|
 | forge v0.1.4 | ✓ |
 | ledger v0.1.11 | ✓ |
+| guardian v0.1.0 | ✓ |
+| vault v0.1.0 | ✓ |
+| audit v0.1.0 | ✓ |
 | All prior versions | ✗ |
 
 ## Reporting a Vulnerability
@@ -33,12 +36,13 @@ HEROS tools are designed with the following trust boundaries:
 
 - **Untrusted input:** All fields provided by agents (`org_name`, `to`, `memo`, `idempotency_key`, `from_schema`, `to_schema`, `request_id`) are treated as untrusted and validated at both binary and bridge layers.
 - **Trusted:** `HEROS_DATA_DIR`, `HEROS_API_KEY`, `HEROS_HMAC_SEED`, `HEROS_FORGE_*` rate limit env vars — operator-controlled, not agent-controlled.
-- **Binary isolation:** Zero lang's capability model means the compiled binary (`forge`, `ledger`) has no network access and no file I/O. All I/O flows through the bridge.
+- **Binary isolation (forge, ledger):** Zero lang's capability model means the compiled binary (`forge`, `ledger`) has no network access and no file I/O. All I/O flows through the bridge.
+- **Pure bash tools (guardian, vault, audit):** These tools have no compiled binary — the bridge script itself owns all logic, I/O, auth, and state. The same security constraints apply: no `eval`, all user input via `jq --arg`, flock-protected state files, and atomic writes. The `vault` bridge handles actual secrets and is the highest-sensitivity component in the stack.
 
 ## Security Hardening Summary
 
 - OWASP Agentic AI Top 10 (ASI01-ASI10) audited; see `docs/threat-model.md`
-- 250+ red-team security cycles completed (CRIT-1, CRIT-2, HIGH-2, HIGH-3, MED-1, MED-2 fixed 2026-05-25)
+- Documented red-team review process; P0–P2 findings resolved (CRIT-1, CRIT-2, HIGH-2, HIGH-3, MED-1, MED-2 fixed 2026-05-25)
 - No `eval` anywhere in shell code (RT-33)
 - All shell argument construction uses bash arrays (no string concatenation)
 - All user input extracted via `jq --arg` (never concatenated into shell commands) — including all eval harness error messages (CRIT-2 fix)

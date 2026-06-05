@@ -3,7 +3,7 @@
   "mcp_protocol_version": "2025-11-25",
   "name": "ledger",
   "display_name": "Ledger Agent-Native Accounting",
-  "description": "Double-entry accounting for autonomous agents. Programmatic org registration, invoice creation with idempotency keys, and invoice listing. No human in the loop. All calls return stable JSON error codes.",
+  "description": "Agent-native accounting for autonomous agents. Programmatic org registration, invoice creation with idempotency keys, and invoice listing. No human in the loop. All calls return stable JSON error codes.",
   "version": "0.1.11",
   "transport": "stdio",
   "invocation": {
@@ -25,7 +25,7 @@
   "signing": {
     "manifest_sha256": "UNSIGNED in source — cosign sign-blob runs in CI (release.yml) at publish time",
     "sig_file": "ledger/mcp-manifest.json.sig (produced by CI, uploaded as release artifact)",
-    "verify_cmd": "cosign verify-blob --certificate-identity-regexp https://github.com/soumyadebnath/heros --certificate-oidc-issuer https://token.actions.githubusercontent.com --signature ledger/mcp-manifest.json.sig ledger/mcp-manifest.json",
+    "verify_cmd": "cosign verify-blob --certificate-identity-regexp https://github.com/itsoumya-d/HEROS --certificate-oidc-issuer https://token.actions.githubusercontent.com --signature ledger/mcp-manifest.json.sig ledger/mcp-manifest.json",
     "signed_at": null,
     "cosign_bundle_url": null
   },

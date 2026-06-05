@@ -1,5 +1,10 @@
 # HEROS Pricing Model
 
+> **Status:** The **self-hosted** tier is available today (MIT-licensed source + signed release
+> binaries). The **hosted** tiers below (Developer / Pro / Team / Enterprise) describe the
+> *planned* managed MCP endpoint — it is **not yet deployed**. Figures are model assumptions,
+> not live offerings.
+
 **Philosophy:** Agent-native infrastructure should be free to try, cheap to run, and priced on usage — not seats. Agents don't have expense accounts; the humans deploying them do.
 
 ---
@@ -80,10 +85,10 @@ Self-hosting requires the Zero compiler toolchain. Binaries are pre-compiled and
 - Custom rate limits
 - SAML SSO
 - Private deployment (VPC, on-prem)
-- SOC 2 Type II report on request
+- SOC 2 Type II (planned, 12–18 months post-launch; not yet available)
 - Custom data retention policy
 - Dedicated support channel (Slack)
-- SLA: 99.9% uptime
+- SLA: 99.9% uptime target (when available — service not yet deployed)
 
 Contact: [soumyadebnath1619@gmail.com](mailto:soumyadebnath1619@gmail.com)
 

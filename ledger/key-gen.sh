@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: MIT
 # ledger/key-gen.sh — Generate a new API key and write to .heros-keys.
 #
 # Provides the key-creation side of V44 auth for v0.1.x (before `ledger key create`

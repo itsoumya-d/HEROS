@@ -21,7 +21,7 @@ pub fun main(world: World) -> Void raises {
     }
 
     if std.mem.eql(std.mem.span(cmd.value), std.mem.span("--version")) {
-        check world.out.write("{\"tool\":\"ledger\",\"version\":\"0.1.10\"}\n")
+        check world.out.write("{\"tool\":\"ledger\",\"version\":\"0.1.11\"}\n")
         return
     }
 

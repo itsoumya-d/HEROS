@@ -1,6 +1,9 @@
 # Release pipeline for ledger + forge (Zero ELF64 linux-musl-x64)
 # Implements V6 (supply chain signing) and V15 (MCP manifest signing).
-# Triggered on semver tags (v*.*.*). Also runs checks on push to main (no upload).
+# Triggered on releases (build/sign/upload) and on push to main / pull requests
+# to main (checks only — the Zero-compiler, secret, and signing jobs self-guard
+# with `if: github.event_name == 'release' || vars.ZERO_RELEASE_URL != ''`, so
+# pure-bash evals, lints, and the app builds run on PRs without needing secrets).
 #
 # Prerequisites (set in repo Settings → Secrets & Actions → Variables):
 #   ZERO_RELEASE_URL — download URL for the Zero compiler binary
@@ -10,6 +13,8 @@ name: Release
 
 on:
   push:
+    branches: [main]
+  pull_request:
     branches: [main]
   release:
     types: [published]
@@ -51,6 +56,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
 
       # ── Install Zero compiler ────────────────────────────────────────────
       - name: Download Zero compiler
@@ -298,6 +305,8 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
 
       - name: Install jq
         run: sudo apt-get install -y jq
@@ -338,6 +347,8 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
 
       - name: Install dependencies
         run: sudo apt-get install -y jq xxd openssl python3
@@ -366,6 +377,8 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
 
       - name: Install dependencies
         run: sudo apt-get install -y jq xxd openssl python3
@@ -393,6 +406,8 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
 
       - name: Install dependencies
         run: sudo apt-get install -y jq xxd openssl python3
@@ -413,6 +428,8 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
 
       - name: Install dependencies
         run: sudo apt-get install -y jq
@@ -436,37 +453,81 @@ jobs:
           JSONSCHEMA_BIN=zero-ecosystem/json-schema/jsonschema \
             bash zero-ecosystem/json-schema/eval-runner.sh
 
-  # ── Shell script lint (mcp-bridge.sh) ────────────────────────────────────
+  # ── Shell script lint (all bridge + eval scripts) ────────────────────────
   shell-lint:
-    name: Lint MCP bridge scripts
+    name: Lint all shell scripts (shellcheck -S warning)
     runs-on: ubuntu-22.04
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
 
       - name: Install shellcheck
         run: sudo apt-get install -y shellcheck
 
-      - name: Lint ledger/mcp-bridge.sh
-        run: shellcheck -S warning ledger/mcp-bridge.sh
+      - name: Lint forge scripts
+        run: |
+          shellcheck -S warning \
+            forge/mcp-bridge.sh \
+            forge/eval-bridge.sh \
+            forge/eval-auth.sh \
+            forge/squawk-bridge.sh \
+            forge/eval-squawk.sh
 
-      - name: Lint forge/mcp-bridge.sh
-        run: shellcheck -S warning forge/mcp-bridge.sh
+      - name: Lint ledger scripts
+        run: |
+          shellcheck -S warning \
+            ledger/mcp-bridge.sh \
+            ledger/key-gen.sh \
+            ledger/eval-auth.sh \
+            ledger/eval-bridge-auth.sh \
+            ledger/litestream-replicate.sh \
+            ledger/eval-litestream.sh
 
-      - name: Lint ledger/eval-bridge-auth.sh
-        run: shellcheck -S warning ledger/eval-bridge-auth.sh
+      - name: Lint guardian scripts
+        run: |
+          shellcheck -S warning \
+            guardian/mcp-bridge.sh \
+            guardian/eval-bridge.sh
 
-      - name: Lint ledger/key-gen.sh
-        run: shellcheck -S warning ledger/key-gen.sh
+      - name: Lint vault scripts
+        run: |
+          shellcheck -S warning \
+            vault/mcp-bridge.sh \
+            vault/eval-bridge.sh
 
-      - name: Lint ledger/eval-auth.sh
-        run: shellcheck -S warning ledger/eval-auth.sh
+      - name: Lint audit scripts
+        run: |
+          shellcheck -S warning \
+            audit/mcp-bridge.sh \
+            audit/eval-bridge.sh
 
-      - name: Lint forge/eval-auth.sh
-        run: shellcheck -S warning forge/eval-auth.sh
+      - name: Lint evolve scripts
+        run: |
+          shellcheck -S warning \
+            evolve/mcp-bridge.sh \
+            evolve/eval-bridge.sh
 
-      - name: Lint zero-ecosystem/json-schema/eval-runner.sh
-        run: shellcheck -S warning zero-ecosystem/json-schema/eval-runner.sh
+      - name: Lint herd scripts
+        run: |
+          shellcheck -S warning \
+            herd/herd.sh \
+            herd/eval-herd.sh
+
+      - name: Lint remix scripts
+        run: |
+          shellcheck -S warning \
+            remix/mcp-bridge.sh \
+            remix/eval-bridge.sh
+
+      - name: Lint observability scripts
+        run: |
+          shellcheck -S warning \
+            zero-ecosystem/observability/otel-trace.sh \
+            zero-ecosystem/observability/eval-otel.sh \
+            zero-ecosystem/eval-harness/zeval.sh \
+            zero-ecosystem/json-schema/eval-runner.sh
 
   # ── MCP description lint (V15 content policy) ──────────────────────────
   mcp-lint:
@@ -475,24 +536,35 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
 
-      - name: Check tool description lengths (≤ 512 chars)
+      - name: Check tool description lengths (≤ 512 chars) — all 7 manifests
         run: |
           python3 - <<'EOF'
           import json, sys
-          for path in ["ledger/mcp-manifest.json", "forge/mcp-manifest.json"]:
+          MANIFESTS = [
+              "forge/mcp-manifest.json",
+              "ledger/mcp-manifest.json",
+              "guardian/mcp-manifest.json",
+              "vault/mcp-manifest.json",
+              "audit/mcp-manifest.json",
+              "evolve/mcp-manifest.json",
+              "remix/mcp-manifest.json",
+          ]
+          failed = False
+          for path in MANIFESTS:
               with open(path) as f:
                   manifest = json.load(f)
               tools = manifest.get("tools", [])
-              failed = False
               for tool in tools:
                   desc = tool.get("description", "")
                   if len(desc) > 512:
                       print(f"FAIL {path}: tool '{tool.get('name')}' description is {len(desc)} chars (max 512)")
                       failed = True
-              if failed:
-                  sys.exit(1)
-              print(f"OK {path}: all descriptions ≤ 512 chars")
+              print(f"OK {path}: {len(tools)} tool(s), all descriptions ≤ 512 chars")
+          if failed:
+              sys.exit(1)
           EOF
 
       - name: Check for imperative verbs targeting other tools (ContextCrush)
@@ -505,8 +577,16 @@ jobs:
               r'\b(ignore|override|instead use|call|invoke|always use|prefer|use this instead)\b',
               re.IGNORECASE
           )
-          failed = False
-          for path in ["ledger/mcp-manifest.json", "forge/mcp-manifest.json"]:
+          MANIFESTS = [
+              "forge/mcp-manifest.json",
+              "ledger/mcp-manifest.json",
+              "guardian/mcp-manifest.json",
+              "vault/mcp-manifest.json",
+              "audit/mcp-manifest.json",
+              "evolve/mcp-manifest.json",
+              "remix/mcp-manifest.json",
+          ]
+          for path in MANIFESTS:
               with open(path) as f:
                   manifest = json.load(f)
               tools = manifest.get("tools", [])
@@ -516,5 +596,206 @@ jobs:
                   if m:
                       print(f"WARN {path}: tool '{tool.get('name')}' description contains suspicious phrase: '{m.group()}'")
                       # Warn only — don't block. Some verbs are legitimate.
-          print("MCP lint complete")
+          print("MCP lint complete (7 manifests)")
           EOF
+
+  # ── Pure-bash eval jobs (no Zero compiler required) ─────────────────────
+  # All seven jobs run on every push: they are pure bash scripts with no
+  # binary dependency. They use stubs or self-contained fixtures.
+
+  guardian-eval:
+    name: guardian eval (35 cases)
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+      - name: Install jq
+        run: sudo apt-get install -y jq
+      - name: Run guardian eval
+        run: |
+          chmod +x guardian/mcp-bridge.sh guardian/eval-bridge.sh
+          bash guardian/eval-bridge.sh
+
+  vault-eval:
+    name: vault eval (25 cases)
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+      - name: Install jq
+        run: sudo apt-get install -y jq
+      - name: Run vault eval
+        run: |
+          chmod +x vault/mcp-bridge.sh vault/eval-bridge.sh
+          bash vault/eval-bridge.sh
+
+  audit-eval:
+    name: audit eval (29 cases)
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+      - name: Install jq
+        run: sudo apt-get install -y jq
+      - name: Run audit eval
+        run: |
+          chmod +x audit/mcp-bridge.sh audit/eval-bridge.sh
+          bash audit/eval-bridge.sh
+
+  evolve-eval:
+    name: evolve self-improvement eval (38 cases)
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+      - name: Install jq
+        run: sudo apt-get install -y jq
+      - name: Run evolve eval
+        run: |
+          chmod +x evolve/mcp-bridge.sh evolve/eval-bridge.sh
+          bash evolve/eval-bridge.sh
+
+  herd-eval:
+    name: herd coordination eval (30 cases)
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+      - name: Install jq
+        run: sudo apt-get install -y jq
+      - name: Run herd eval
+        run: |
+          chmod +x herd/herd.sh herd/eval-herd.sh
+          bash herd/eval-herd.sh
+
+  remix-eval:
+    name: remix companion-UI eval (17 cases)
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+      - name: Install jq
+        run: sudo apt-get install -y jq
+      - name: Run remix eval
+        run: |
+          chmod +x remix/mcp-bridge.sh remix/eval-bridge.sh
+          bash remix/eval-bridge.sh
+
+  squawk-eval:
+    name: forge Squawk integration eval (27 cases)
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+      - name: Install jq
+        run: sudo apt-get install -y jq
+      - name: Run squawk eval (stub-based)
+        run: |
+          chmod +x forge/squawk-bridge.sh forge/eval-squawk.sh
+          bash forge/eval-squawk.sh
+
+  otel-eval:
+    name: OpenTelemetry tracing eval (7 cases)
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+      - name: Run otel eval
+        run: |
+          chmod +x zero-ecosystem/observability/otel-trace.sh \
+                   zero-ecosystem/observability/eval-otel.sh
+          bash zero-ecosystem/observability/eval-otel.sh
+
+  litestream-eval:
+    name: Litestream replication eval (22 cases)
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+      - name: Install jq
+        run: sudo apt-get install -y jq
+      - name: Run litestream eval (stub-based)
+        run: |
+          chmod +x ledger/litestream-replicate.sh ledger/eval-litestream.sh
+          bash ledger/eval-litestream.sh
+
+  # ── HEROS Console desktop app: vet, build, cross-compile (no Zero needed) ──
+  desktop-app:
+    name: desktop app (vet + cross-compile linux/macos/windows)
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version: '1.21'
+      - name: Vet
+        working-directory: app
+        run: go vet ./...
+      - name: Build + cross-compile (pure Go, static)
+        working-directory: app
+        run: |
+          mkdir -p dist
+          for t in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64 android/arm64; do
+            os="${t%/*}"; arch="${t#*/}"; ext=""; [ "$os" = "windows" ] && ext=".exe"
+            GOOS="$os" GOARCH="$arch" CGO_ENABLED=0 \
+              go build -trimpath -ldflags='-s -w' -o "dist/heros-console-${os}-${arch}${ext}" .
+            echo "built dist/heros-console-${os}-${arch}${ext}"
+          done
+
+  # ── Android packaged APK (WASM-in-app shell) — builds on a runner with the SDK ──
+  android-apk:
+    name: android app (assembleDebug)
+    runs-on: ubuntu-22.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9 # v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3
+      - name: Build debug APK
+        working-directory: android-app
+        run: ./gradlew --no-daemon :app:assembleDebug
+
+  # ── Apple build: macOS (swift build) + iOS (xcodebuild compile) on a Mac runner ──
+  apple-build:
+    name: apple build (macOS + iOS compile)
+    runs-on: macos-14
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+      - name: swift build (macOS — client + UI + CLI)
+        working-directory: apple
+        run: swift build
+      - name: xcodebuild (iOS compile — no signing)
+        working-directory: apple
+        run: |
+          xcodebuild -scheme HEROSConsoleUI \
+            -destination 'generic/platform=iOS' \
+            CODE_SIGNING_ALLOWED=NO build

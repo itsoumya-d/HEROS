@@ -1,0 +1,23 @@
+{
+  "name": "heros",
+  "version": "0.1.0",
+  "description": "Agent operations stack: pre-execution risk gates (guardian), tamper-evident audit (audit), secret vault (vault), gated self-improvement (evolve), companion-UI rendering (remix), database-migration safety (forge), and agent accounting (ledger). MCP-native, bash + jq bridges.",
+  "author": {
+    "name": "itsoumya-d",
+    "url": "https://github.com/itsoumya-d/HEROS"
+  },
+  "homepage": "https://github.com/itsoumya-d/HEROS",
+  "repository": "https://github.com/itsoumya-d/HEROS",
+  "license": "MIT",
+  "keywords": [
+    "mcp",
+    "agent-safety",
+    "audit",
+    "secrets",
+    "self-improvement",
+    "database-migrations",
+    "accounting"
+  ],
+  "commands": "./commands",
+  "mcpServers": "./.mcp.json"
+}

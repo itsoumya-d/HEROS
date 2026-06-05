@@ -1,14 +1,16 @@
-# Threat Model: `ledger` — Agent-Native Accounting in Zero
+# Threat Model: `ledger` + `forge` — Core Binary Tools
 
-**Version 1.0 — 2026-05-17**
+**Version 1.1 — 2026-05-31** (updated from 1.0, 2026-05-17)
 **Classification:** Engineering — Share with build agent and operators
-**Scope:** `ledger` CLI v0.1.0 and planned v0.2+ (networked MCP/HTTP)
+**Scope:** `ledger` v0.1.11 and `forge` v0.1.4 binary + bash bridges
+
+> **Coverage gap:** This document covers `ledger` and `forge` only. `vault`, `guardian`, and `audit` have not yet been formally threat-modeled. `vault` in particular (handles actual secrets) represents the highest-sensitivity component in the HEROS stack — a full threat model for vault is the next priority. `herd` (git-native agent coordination), `squawk` integration, and `litestream` replication also introduce new attack surfaces not covered here. See the [CHANGELOG](../CHANGELOG.md) for a summary of what each component does.
 
 ---
 
 ## 1. System Description
 
-`ledger` is an agent-callable double-entry accounting CLI built in Zero. Callers are autonomous LLM agents. There is no human in the loop. Every input is potentially adversarial; every output flows back into an agent's context and can be used to attack that agent.
+`ledger` is an agent-callable agent-native accounting CLI built in Zero. Callers are autonomous LLM agents. There is no human in the loop. Every input is potentially adversarial; every output flows back into an agent's context and can be used to attack that agent.
 
 **Current (v0.1):** Local binary, flat-file persistence (`.ledger-data`, `.ledger-invoices`), no network, no auth beyond org_id.
 **Planned (v0.2+):** MCP server (stdio + HTTP), multi-tenant, API key auth, billing, rate limiting, registry publication.
@@ -588,7 +590,7 @@ This is a fundamental language constraint, not a configuration choice. It means 
 
 **Full fix:** When Zero adds `world.in.readLine()` or equivalent, replace `mcp-bridge.sh` with a native Zero MCP server that eliminates the bash + jq dependency. Track: [github.com/vercel-labs/zero](https://github.com/vercel-labs/zero) releases and issues.
 
-**forge gap:** `forge/mcp-bridge.sh` not yet written (Cycle 21). The `forge/mcp-manifest.json` still incorrectly points to the bare `forge` binary.
+**forge bridge (implemented):** `forge/mcp-bridge.sh` is now written and mirrors the ledger bridge — it owns the JSON-RPC 2.0 stdio session loop and delegates each `tools/call` to the `forge` binary. `forge/mcp-manifest.json`'s `invocation.command` points to `forge/mcp-bridge.sh` (no longer the bare `forge` binary).
 
 ---
 
@@ -669,7 +671,7 @@ The following gates MUST be satisfied before publishing to any registry (npm, Py
 3. **Install documentation includes verify step**: the README install section must include the cosign verify-blob command before any `mcp-bridge.sh` invocation:
    ```
    cosign verify-blob \
-     --certificate-identity-regexp "https://github.com/soumyadebnath/heros" \
+     --certificate-identity-regexp "https://github.com/itsoumya-d/HEROS" \
      --certificate-oidc-issuer https://token.actions.githubusercontent.com \
      --signature ledger/mcp-manifest.json.sig \
      ledger/mcp-manifest.json
@@ -679,7 +681,7 @@ The following gates MUST be satisfied before publishing to any registry (npm, Py
 
 5. **V30 SDK audit gate**: before publishing, confirm mcp-bridge.sh is not using any MCP SDK version affected by the April 2026 RCE. mcp-bridge.sh is pure bash + jq (no SDK), so this is automatically satisfied — but document it at publish time.
 
-6. **`OWNER/REPO` placeholder FIXED (2026-05-25)**: `verify_cmd` in both manifests updated to `soumyadebnath/heros`. CI `sed` step also stamps the correct URL at release time.
+6. **`OWNER/REPO` placeholder FIXED (2026-05-25)**: `verify_cmd` in both manifests updated to `itsoumya-d/HEROS`. CI `sed` step also stamps the correct URL at release time.
 
 **Manifest transport security (v0.2+):**
 - When served via HTTP: serve `.well-known/mcp-server` over HTTPS only (HSTS required)

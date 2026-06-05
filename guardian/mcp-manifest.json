@@ -1,0 +1,122 @@
+{
+  "schema_version": "1",
+  "mcp_protocol_version": "2025-11-25",
+  "name": "guardian",
+  "display_name": "Guardian Universal Safety Oracle",
+  "description": "Pre-execution risk oracle for any agent operation. Classifies file system, shell, network, infrastructure, code execution, and data access operations into SAFE/NOTABLE/MEDIUM/HIGH/CRITICAL before the agent acts. Same approval-nonce protocol as forge.",
+  "version": "0.1.0",
+  "transport": "stdio",
+  "invocation": {
+    "command": "guardian/mcp-bridge.sh",
+    "args": [],
+    "requires": ["jq >= 1.6"],
+    "bridge_note": "Pure bash implementation — no separate binary. Risk assessment rulesets are embedded in the bridge. Extends forge's pre-execution risk gate to all operation types beyond database migrations."
+  },
+  "capabilities": {
+    "tools": true,
+    "prompts": false,
+    "resources": false
+  },
+  "signing": {
+    "manifest_sha256": "UNSIGNED in source — cosign sign-blob runs in CI at publish time",
+    "verify_cmd": "cosign verify-blob --certificate-identity-regexp https://github.com/itsoumya-d/HEROS --certificate-oidc-issuer https://token.actions.githubusercontent.com --signature guardian/mcp-manifest.json.sig guardian/mcp-manifest.json"
+  },
+  "tools": [
+    {
+      "name": "guardian_assess",
+      "title": "Assess Operation Risk",
+      "description": "Assess any agent operation for risk before execution. Returns risk_tier (SAFE/NOTABLE/MEDIUM/HIGH/CRITICAL), reversibility, side effects, and agent guidance. HIGH/CRITICAL operations set decision_required and issue a single-use approval_nonce for human sign-off. Covers: file_system, shell_command, network_request, infrastructure, code_execution, data_access, database (use forge for DB migrations).",
+      "annotations": {
+        "readOnly": true,
+        "destructive": false,
+        "idempotent": true,
+        "cost_usd": 0.0,
+        "decision_required": false,
+        "untrusted_fields": ["operation"],
+        "side_effects": []
+      },
+      "input_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "operation_type": {
+            "type": "string",
+            "description": "Category of operation. One of: file_system, shell_command, network_request, infrastructure, code_execution, data_access, database.",
+            "enum": ["file_system", "shell_command", "network_request", "infrastructure", "code_execution", "data_access", "database"],
+            "maxLength": 64
+          },
+          "operation": {
+            "type": "object",
+            "description": "UNTRUSTED. Operation details as a JSON object. Fields depend on operation_type. For file_system: {action, path, recursive?}. For shell_command: {command, args?}. For network_request: {method, url, contains_pii?, financial?, batch_size?}. For infrastructure: {action, resource_type?}. For code_execution: {environment, isolated?, elevated_privileges?, dry_run?}. For data_access: {action, sensitivity, record_count?}.",
+            "additionalProperties": true
+          },
+          "request_id": {
+            "type": "string",
+            "description": "Optional idempotency key for log deduplication. ASCII printable only. Max 512 chars.",
+            "maxLength": 512
+          },
+          "human_acknowledgment_token": {
+            "type": "string",
+            "description": "Nonce from a prior approval_nonce response. Pass after obtaining human sign-off on a HIGH/CRITICAL operation. Single-use, 5-min TTL.",
+            "maxLength": 64
+          }
+        },
+        "required": ["operation_type", "operation"]
+      },
+      "output_schema": {
+        "type": "object",
+        "properties": {
+          "schema_version": {"type": "integer"},
+          "operation_type": {"type": "string"},
+          "risk_tier": {"type": "string", "enum": ["SAFE", "NOTABLE", "MEDIUM", "HIGH", "CRITICAL"]},
+          "risk_score": {"type": "number", "description": "0.0 (SAFE) to 1.0 (CRITICAL)"},
+          "has_side_effects": {"type": "boolean"},
+          "reversible": {"type": "boolean"},
+          "decision_required": {"type": "boolean"},
+          "proceed_ok": {"type": "boolean", "description": "True when a valid human_acknowledgment_token was verified"},
+          "guidance": {"type": "string", "description": "Agent-readable explanation and recommended action"},
+          "approval_nonce": {"type": ["string", "null"], "description": "Present (non-null) when decision_required:true. Single-use, 5-min TTL"},
+          "approval_prompt": {"type": ["string", "null"]},
+          "request_id": {"type": ["string", "null"]},
+          "_rate_limit": {
+            "type": "object",
+            "properties": {
+              "remaining": {"type": "integer"},
+              "reset_at": {"type": "integer"},
+              "limit": {"type": "integer"},
+              "window": {"type": "string"}
+            }
+          },
+          "error_code": {"type": "string"},
+          "error": {"type": "string"}
+        }
+      },
+      "error_codes": {
+        "MISSING_FLAG": {"retryable": true, "fix": "Provide operation_type and operation fields"},
+        "INVALID_INPUT": {"retryable": true, "fix": "Check field values against schema constraints"},
+        "UNKNOWN_TOOL": {"retryable": false, "fix": "Use guardian_assess"},
+        "RATE_LIMITED": {"retryable": true, "fix": "Wait retry_after_seconds. Monitor _rate_limit.remaining."},
+        "INVALID_ACKNOWLEDGMENT_TOKEN": {"retryable": true, "fix": "Re-run guardian_assess without token to obtain a fresh approval_nonce"}
+      },
+      "rate_limits": {
+        "per_session": "300/hour",
+        "burst": 15,
+        "note": "In-memory per bridge process. Resets on bridge restart."
+      }
+    }
+  ],
+  "security": {
+    "untrusted_input_fields": ["operation"],
+    "content_policy": "Tool descriptions audited against mcp-security-spec.md §4.3. No instruction-format language. <= 512 chars.",
+    "description_char_count": 336
+  },
+  "agent_quickstart": [
+    "1. Call guardian_assess before any destructive or side-effecting operation.",
+    "2. If risk_tier is SAFE or NOTABLE and decision_required is false, proceed autonomously.",
+    "3. If decision_required is true, surface the guidance and approval_nonce to a human principal.",
+    "4. After human approves, call guardian_assess again with human_acknowledgment_token: <nonce>.",
+    "5. Proceed only when proceed_ok: true is returned.",
+    "6. For database schema migrations specifically, use forge_analyze instead — it gives PostgreSQL-specific lock time estimates and operation-level detail that guardian does not."
+  ]
+}

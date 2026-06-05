@@ -1,0 +1,22 @@
+{
+  "schemaVersion": "2025-11-25",
+  "name": "remix",
+  "version": "0.1.0",
+  "description": "Validate and normalize a heros.ui/v1 declarative UI spec: an agent turns data from a connected app into a separate, user-tweakable companion surface.",
+  "tools": [
+    {
+      "name": "remix_render",
+      "description": "Validate + normalize a heros.ui/v1 companion-UI spec (tweakable design tokens + a closed widget tree + a whitelisted action table). Enforces the component catalog, sanitizes every rendered string (no control/non-ASCII/oversized), validates color/dimension tokens, requires https + optional host-allowlist for links/images, and forbids raw OS intent/package fields. Returns {status:ok,valid:true,node_count,spec} or {error_code:INVALID_SPEC,violations:[...]}. Pure compute: no I/O.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "spec": {
+            "type": "object",
+            "description": "A heros.ui/v1 spec object: {schema:'heros.ui/v1', tokens?, actions?, tree}. tree is a component (type in column|row|card|list|text|image|button|spacer|divider) with optional children/itemTemplate; text fields value|label|alt|title are sanitized; onTap must reference an action id; actions map id -> {type in navigate|open_deeplink|mark_done|dismiss|submit, ...}."
+          }
+        },
+        "required": ["spec"]
+      }
+    }
+  ]
+}

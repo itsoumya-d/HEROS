@@ -50,6 +50,7 @@
     .comment { color: var(--muted); }
     .cmd { color: #93c5fd; }
     .output-safe { color: var(--safe); }
+    .output-high { color: var(--high); }
     .output-key { color: #f9a8d4; }
     .output-val { color: #86efac; }
 
@@ -70,6 +71,7 @@
     .tier { padding: 6px 14px; border-radius: 4px; font-size: 12px; font-weight: 600; }
     .tier-safe { background: rgba(34,197,94,0.1); color: var(--safe); border: 1px solid rgba(34,197,94,0.2); }
     .tier-notable { background: rgba(234,179,8,0.1); color: var(--notable); border: 1px solid rgba(234,179,8,0.2); }
+    .tier-medium { background: rgba(249,115,22,0.08); color: var(--high); border: 1px solid rgba(249,115,22,0.15); }
     .tier-high { background: rgba(249,115,22,0.1); color: var(--high); border: 1px solid rgba(249,115,22,0.2); }
     .tier-critical { background: rgba(239,68,68,0.1); color: var(--critical); border: 1px solid rgba(239,68,68,0.2); }
 
@@ -108,9 +110,9 @@
 <nav>
   <div class="nav-logo">HEROS<span>.</span></div>
   <div class="nav-links">
-    <a href="https://github.com/soumyadebnath/heros">GitHub</a>
-    <a href="docs/getting-started.html">Docs</a>
-    <a href="docs/pricing.html">Pricing</a>
+    <a href="https://github.com/itsoumya-d/HEROS">GitHub</a>
+    <a href="https://github.com/itsoumya-d/HEROS/blob/main/docs/getting-started.md">Docs</a>
+    <a href="https://github.com/itsoumya-d/HEROS/blob/main/docs/pricing.md">Pricing</a>
     <a href="mailto:soumyadebnath1619@gmail.com">Contact</a>
   </div>
 </nav>
@@ -125,12 +127,12 @@
       Built in Zero lang for deterministic latency and zero runtime dependencies.
     </p>
     <div class="cta-row">
-      <a href="https://github.com/soumyadebnath/heros" class="btn btn-primary">View on GitHub</a>
-      <a href="docs/getting-started.md" class="btn btn-secondary">Get started in 5 min</a>
+      <a href="https://github.com/itsoumya-d/HEROS" class="btn btn-primary">View on GitHub</a>
+      <a href="https://github.com/itsoumya-d/HEROS/blob/main/docs/getting-started.md" class="btn btn-secondary">Get started in 5 min</a>
     </div>
 
     <pre><span class="comment"># Try forge in 60 seconds</span>
-<span class="cmd">curl -L https://github.com/soumyadebnath/heros/releases/latest/download/forge -o forge</span>
+<span class="cmd">curl -L https://github.com/itsoumya-d/HEROS/releases/latest/download/forge-linux-x64.bin -o forge</span>
 <span class="cmd">chmod +x forge && ./forge --describe</span>  <span class="comment"># full API contract, no docs needed</span>
 
 <span class="cmd">./forge analyze \</span>
@@ -138,10 +140,10 @@
 <span class="cmd">  --to   "TABLE users|COLUMN id serial NOT_NULL|COLUMN email text NOT_NULL|COLUMN bio text NOT_NULL"</span>
 
 <span class="output-key">{</span>
-  <span class="output-key">"risk_tier"</span>: <span class="output-safe">"MEDIUM"</span>,
+  <span class="output-key">"risk_tier"</span>: <span class="output-high">"MEDIUM"</span>,
   <span class="output-key">"has_data_loss"</span>: <span class="output-val">false</span>,
   <span class="output-key">"decision_required"</span>: <span class="output-val">false</span>,
-  <span class="output-key">"operations"</span>: [{ <span class="output-key">"type"</span>: <span class="output-safe">"add_column"</span>, <span class="output-key">"risk"</span>: <span class="output-safe">"medium"</span>, <span class="output-key">"table"</span>: <span class="output-safe">"users"</span> }]
+  <span class="output-key">"operations"</span>: [{ <span class="output-key">"type"</span>: <span class="output-val">"add_column"</span>, <span class="output-key">"risk"</span>: <span class="output-high">"medium"</span>, <span class="output-key">"data_loss"</span>: <span class="output-val">false</span> }]
 <span class="output-key">}</span></pre>
   </div>
 
@@ -150,7 +152,7 @@
     <div class="tools-grid">
       <div class="tool-card">
         <div class="tool-name">forge</div>
-        <div class="tool-version">v0.1.4 · 35 KiB binary</div>
+        <div class="tool-version">v0.1.4 · sub-100 KiB binary</div>
         <div class="tool-desc">
           Schema migration risk analysis. Detects 15 operation types — drop table, add column, type change, NOT NULL, UNIQUE, FK, PRIMARY KEY — with correct risk tier and PostgreSQL lock estimates. Zero false negatives on data-loss operations.
         </div>
@@ -158,20 +160,56 @@
           <span class="tag">PostgreSQL</span>
           <span class="tag">MCP server</span>
           <span class="tag">human_acknowledgment_token</span>
-          <span class="tag">39 eval tests</span>
+          <span class="tag">56 eval cases</span>
         </div>
       </div>
       <div class="tool-card">
         <div class="tool-name">ledger</div>
         <div class="tool-version">v0.1.11 · 7 KiB binary</div>
         <div class="tool-desc">
-          Double-entry accounting for agents. Register an org, create invoices with idempotency keys, list and count transactions. No Stripe dashboard. No transaction fees. JSON-only API with stable error codes.
+          Agent accounting. Register an org, create invoices with idempotency keys, list and count them. No Stripe dashboard. No transaction fees. JSON-only API with stable error codes. (True double-entry journals are on the v0.2 roadmap.)
         </div>
         <div class="tool-tags">
           <span class="tag">Idempotency keys</span>
           <span class="tag">MCP server</span>
           <span class="tag">HMAC-SHA256 auth</span>
-          <span class="tag">26 eval tests</span>
+          <span class="tag">45 eval cases</span>
+        </div>
+      </div>
+      <div class="tool-card">
+        <div class="tool-name">guardian</div>
+        <div class="tool-version">v0.1.0 · pure bash</div>
+        <div class="tool-desc">
+          Universal operation safety oracle. Pre-execution risk gate for 6 categories: file system, shell commands, network requests, infrastructure changes, code execution, and data access. Same approval-nonce protocol as forge.
+        </div>
+        <div class="tool-tags">
+          <span class="tag">MCP server</span>
+          <span class="tag">decision_required</span>
+          <span class="tag">35 eval cases</span>
+        </div>
+      </div>
+      <div class="tool-card">
+        <div class="tool-name">vault</div>
+        <div class="tool-version">v0.1.0 · pure bash</div>
+        <div class="tool-desc">
+          Agent-native credential storage. Named secrets with scoped access, base64-encoded at rest, flock-protected atomic writes, and a per-secret access audit log. Delete requires a human approval nonce.
+        </div>
+        <div class="tool-tags">
+          <span class="tag">MCP server</span>
+          <span class="tag">scoped access</span>
+          <span class="tag">25 eval cases</span>
+        </div>
+      </div>
+      <div class="tool-card">
+        <div class="tool-name">audit</div>
+        <div class="tool-version">v0.1.0 · pure bash</div>
+        <div class="tool-desc">
+          Tamper-evident append-only compliance log. Chain-hashed JSONL: each entry hashes the previous. audit_verify detects any deletion or modification with entry-level precision.
+        </div>
+        <div class="tool-tags">
+          <span class="tag">MCP server</span>
+          <span class="tag">chain-hashed</span>
+          <span class="tag">29 eval cases</span>
         </div>
       </div>
     </div>
@@ -182,7 +220,7 @@
     <div class="tiers">
       <span class="tier tier-safe">SAFE — no lock, instant</span>
       <span class="tier tier-notable">NOTABLE — brief lock, safe</span>
-      <span class="tier tier-notable">MEDIUM — NOT NULL add</span>
+      <span class="tier tier-medium">MEDIUM — NOT NULL add</span>
       <span class="tier tier-high">HIGH — ACCESS EXCLUSIVE lock</span>
       <span class="tier tier-critical">CRITICAL — data loss · decision_required: true</span>
     </div>
@@ -222,8 +260,8 @@
     <div class="section-title">Security</div>
     <div class="stats">
       <div>
-        <div class="stat-val">250+</div>
-        <div class="stat-label">red-team security cycles</div>
+        <div class="stat-val">P0–P2</div>
+        <div class="stat-label">findings resolved (documented red-team)</div>
       </div>
       <div>
         <div class="stat-val">0</div>
@@ -245,14 +283,18 @@
     <div class="mcp-config"><span class="comment">// ~/.claude/settings.json</span>
 {
   <span class="output-key">"mcpServers"</span>: {
-    <span class="output-key">"forge"</span>: { <span class="output-key">"command"</span>: <span class="output-safe">"/path/to/forge/mcp-bridge.sh"</span>, <span class="output-key">"transport"</span>: <span class="output-safe">"stdio"</span> },
-    <span class="output-key">"ledger"</span>: { <span class="output-key">"command"</span>: <span class="output-safe">"/path/to/ledger/mcp-bridge.sh"</span>, <span class="output-key">"transport"</span>: <span class="output-safe">"stdio"</span> }
+    <span class="output-key">"forge"</span>:    { <span class="output-key">"command"</span>: <span class="output-safe">"/path/to/forge/mcp-bridge.sh"</span>,    <span class="output-key">"transport"</span>: <span class="output-safe">"stdio"</span> },
+    <span class="output-key">"ledger"</span>:   { <span class="output-key">"command"</span>: <span class="output-safe">"/path/to/ledger/mcp-bridge.sh"</span>,   <span class="output-key">"transport"</span>: <span class="output-safe">"stdio"</span> },
+    <span class="output-key">"guardian"</span>: { <span class="output-key">"command"</span>: <span class="output-safe">"/path/to/guardian/mcp-bridge.sh"</span>, <span class="output-key">"transport"</span>: <span class="output-safe">"stdio"</span> },
+    <span class="output-key">"vault"</span>:    { <span class="output-key">"command"</span>: <span class="output-safe">"/path/to/vault/mcp-bridge.sh"</span>,    <span class="output-key">"transport"</span>: <span class="output-safe">"stdio"</span> },
+    <span class="output-key">"audit"</span>:    { <span class="output-key">"command"</span>: <span class="output-safe">"/path/to/audit/mcp-bridge.sh"</span>,    <span class="output-key">"transport"</span>: <span class="output-safe">"stdio"</span> }
   }
 }</div>
   </div>
 
   <div class="section">
     <div class="section-title">Pricing</div>
+    <p style="font-size:12px;color:var(--muted);margin-bottom:24px;max-width:540px">The self-hosted tier is available now (MIT, free forever). The hosted tiers below are <strong>planned</strong> — the managed endpoint is not yet deployed.</p>
     <div class="pricing-grid">
       <div class="plan">
         <div class="plan-name">Free</div>
@@ -267,7 +309,7 @@
       <div class="plan">
         <div class="plan-name">Developer</div>
         <div class="plan-price">$0</div>
-        <div class="plan-period">hosted, no card needed</div>
+        <div class="plan-period">planned hosted tier</div>
         <ul class="plan-features">
           <li>1K forge analyses/mo</li>
           <li>10K ledger ops/mo</li>
@@ -277,24 +319,24 @@
       <div class="plan featured">
         <div class="plan-name">Pro</div>
         <div class="plan-price">$49</div>
-        <div class="plan-period">/month flat</div>
+        <div class="plan-period">planned · /month flat</div>
         <ul class="plan-features">
           <li>50K forge analyses/mo</li>
           <li>500K ledger ops/mo</li>
           <li>API key mgmt</li>
           <li>Audit log export</li>
-          <li>24h support SLA</li>
+          <li>24h support target (when available)</li>
         </ul>
       </div>
       <div class="plan">
         <div class="plan-name">Enterprise</div>
         <div class="plan-price">Custom</div>
-        <div class="plan-period">VPC · SOC 2 · SAML SSO</div>
+        <div class="plan-period">planned: VPC · SAML SSO · SOC 2</div>
         <ul class="plan-features">
           <li>Private deployment</li>
           <li>Custom rate limits</li>
           <li>Dedicated Slack</li>
-          <li>99.9% SLA</li>
+          <li>99.9% uptime target (when available)</li>
         </ul>
       </div>
     </div>
@@ -302,7 +344,7 @@
 </main>
 
 <footer>
-  <p>HEROS · Built in <a href="https://zerolang.ai">Zero lang</a> · <a href="https://github.com/soumyadebnath/heros">Open source MIT</a> · Built for <a href="https://www.ycombinator.com/rfs">YC RFS: Software for Agents</a></p>
+  <p>HEROS · Built in <a href="https://zerolang.ai">Zero lang</a> · <a href="https://github.com/itsoumya-d/HEROS">Open source MIT</a> · Built for <a href="https://www.ycombinator.com/rfs">YC RFS: Software for Agents</a></p>
   <p style="margin-top:8px"><a href="mailto:soumyadebnath1619@gmail.com">soumyadebnath1619@gmail.com</a></p>
 </footer>
 
