@@ -423,21 +423,46 @@ invoke_forge() {
 handle_message() {
     local line="$1"
 
+    # Combine validation and field extraction into a single jq pass to avoid subprocess spawning overhead.
+    # We extract the JSON-RPC fields (id, method, jsonrpc) and deeply nested fields for all branches
+    # simultaneously (e.g. .params.name and .params.arguments).
+    local _parsed_json
+    _parsed_json=$(jq -r '
+        if type != "object" then
+            "NOT_OBJ"
+        else
+            [
+                (.id // null | tojson),
+                (.method | if type == "string" then . else "" end),
+                (if has("id") then "YES" else "NO" end),
+                (.jsonrpc | if type == "string" then . else "" end),
+                (if .method | type == "string" then "YES" else "NO" end),
+                (try (.params.name | if type == "string" then . else "" end) catch ""),
+                (try (.params.arguments // {} | tojson) catch "{}")
+            ] | @sh
+        end
+    ' <<< "$line" 2>/dev/null)
+
     # Validate JSON
-    if ! jq -e . >/dev/null 2>&1 <<< "$line"; then
+    if [[ -z "$_parsed_json" ]]; then
         rpc_err "null" -32700 "Parse error: message is not valid JSON"
         return
     fi
 
     # RT-38: reject non-object JSON-RPC (arrays and primitives are invalid)
-    if ! jq -e 'type == "object"' >/dev/null 2>&1 <<< "$line"; then
+    if [[ "$_parsed_json" == "NOT_OBJ" ]]; then
         rpc_err "null" -32600 "Invalid Request: message must be a JSON object, not an array or primitive"
         return
     fi
 
-    local id method
-    id=$(jq -c '.id // null' <<< "$line")
-    method=$(jq -r '.method // ""' <<< "$line")
+    # Deserialize the output from jq safely into an array
+    eval "local _arr=($_parsed_json)"
+
+    local id="${_arr[0]}"
+    local method="${_arr[1]}"
+    local has_id="${_arr[2]}"
+    local jsonrpc="${_arr[3]}"
+    local method_is_str="${_arr[4]}"
 
     # RT-431: guard oversized id values — jq's --argjson passes id as an execve argv string;
     # Linux MAX_ARG_STRLEN = 131072 bytes; a >4KB id cannot be a legitimate MCP id (UUIDs are
@@ -448,20 +473,20 @@ handle_message() {
     fi
 
     # Notifications: absent "id" key means no response expected
-    if ! jq -e 'has("id")' >/dev/null 2>&1 <<< "$line"; then
+    if [[ "$has_id" == "NO" ]]; then
         # V119 port: only accept notifications/initialized after initialize was processed
         [[ "$method" == "notifications/initialized" && "$INIT_REQUESTED" == "true" ]] && INITIALIZED=true
         return
     fi
 
     # RT-292 port: reject requests with missing or wrong jsonrpc version field
-    if ! jq -e '.jsonrpc == "2.0"' >/dev/null 2>&1 <<< "$line"; then
+    if [[ "$jsonrpc" != "2.0" ]]; then
         rpc_err "$id" -32600 "Invalid Request: jsonrpc field must be \"2.0\""
         return
     fi
 
     # V154 port: non-string method must return -32600 (Invalid Request), not -32601 (Method not found)
-    if ! jq -e '.method | type == "string"' >/dev/null 2>&1 <<< "$line"; then
+    if [[ "$method_is_str" != "YES" ]]; then
         rpc_err "$id" -32600 "Invalid Request: method must be a string"
         return
     fi
@@ -500,8 +525,8 @@ handle_message() {
                 return
             fi
             local tool_name tool_args forge_out first_line is_error content_json
-            tool_name=$(jq -r '.params.name // ""' <<< "$line")
-            tool_args=$(jq -c '.params.arguments // {}' <<< "$line")
+            tool_name="${_arr[5]}"
+            tool_args="${_arr[6]}"
 
             if [[ -z "$tool_name" ]]; then
                 rpc_err "$id" -32602 "Invalid params: missing tool name in params.name"
