@@ -1,0 +1,56 @@
+# HEROS MCP servers for OpenAI Codex.
+#
+# Codex has no "plugin" concept — it loads MCP servers from ~/.codex/config.toml.
+# Append these tables (or run install/codex/install.sh, which does it for you).
+#
+# Replace __HEROS_ROOT__ with the absolute path to your HEROS checkout and
+# __HEROS_DATA__ with a writable dir for persistent state (e.g. ~/.heros). The
+# install.sh script substitutes both automatically.
+#
+# The five pure-bash servers work as soon as bash + jq are on PATH. forge and
+# ledger additionally need their Zero binary on PATH or pointed to by
+# FORGE_BIN / LEDGER_BIN (fetch via install/fetch-binaries.sh).
+
+[mcp_servers.heros-guardian]
+command = "bash"
+args = ["__HEROS_ROOT__/guardian/mcp-bridge.sh"]
+[mcp_servers.heros-guardian.env]
+HEROS_DATA_DIR = "__HEROS_DATA__"
+
+[mcp_servers.heros-vault]
+command = "bash"
+args = ["__HEROS_ROOT__/vault/mcp-bridge.sh"]
+[mcp_servers.heros-vault.env]
+HEROS_DATA_DIR = "__HEROS_DATA__"
+
+[mcp_servers.heros-audit]
+command = "bash"
+args = ["__HEROS_ROOT__/audit/mcp-bridge.sh"]
+[mcp_servers.heros-audit.env]
+HEROS_DATA_DIR = "__HEROS_DATA__"
+
+[mcp_servers.heros-evolve]
+command = "bash"
+args = ["__HEROS_ROOT__/evolve/mcp-bridge.sh"]
+[mcp_servers.heros-evolve.env]
+HEROS_DATA_DIR = "__HEROS_DATA__"
+
+[mcp_servers.heros-remix]
+command = "bash"
+args = ["__HEROS_ROOT__/remix/mcp-bridge.sh"]
+[mcp_servers.heros-remix.env]
+HEROS_DATA_DIR = "__HEROS_DATA__"
+
+[mcp_servers.heros-forge]
+command = "bash"
+args = ["__HEROS_ROOT__/forge/mcp-bridge.sh"]
+[mcp_servers.heros-forge.env]
+HEROS_DATA_DIR = "__HEROS_DATA__"
+FORGE_BIN = "__HEROS_DATA__/bin/forge"
+
+[mcp_servers.heros-ledger]
+command = "bash"
+args = ["__HEROS_ROOT__/ledger/mcp-bridge.sh"]
+[mcp_servers.heros-ledger.env]
+HEROS_DATA_DIR = "__HEROS_DATA__"
+LEDGER_BIN = "__HEROS_DATA__/bin/ledger"
