@@ -1,0 +1,4 @@
+## 2025-06-05 - DoS via jq Exit Code in set -e bash scripts
+**Vulnerability:** Sending malformed JSON-RPC properties (e.g., arrays or numbers instead of objects or strings) to `jq` while attempting to extract fields caused `jq` to return exit code 5 ("Cannot index ..."). Because the script used `set -e`, this unexpected exit code crashed the entire bash MCP bridge process.
+**Learning:** In bash scripts running with `set -e`, executing `jq` extraction commands without first validating the JSON property types using `jq -e` will lead to abrupt process termination if the client provides unexpected primitive types. This is an application-level Denial of Service (DoS) for bridge scripts acting as long-lived servers.
+**Prevention:** Always use `jq -e` to explicitly type-check nested properties (e.g., `if ! jq -e '.params | . == null or type == "object"' >/dev/null`) before extracting values with `jq -r` or `jq -c` in `set -e` environments.
