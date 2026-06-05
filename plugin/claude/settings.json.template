@@ -1,0 +1,18 @@
+{
+  "mcpServers": {
+    "heros-forge": {
+      "command": "__HEROS_ROOT__/forge/mcp-bridge.sh",
+      "args": [],
+      "env": {
+        "HEROS_DATA_DIR": "__HEROS_ROOT__/.heros-data"
+      }
+    },
+    "heros-ledger": {
+      "command": "__HEROS_ROOT__/ledger/mcp-bridge.sh",
+      "args": [],
+      "env": {
+        "HEROS_DATA_DIR": "__HEROS_ROOT__/.heros-data"
+      }
+    }
+  }
+}
