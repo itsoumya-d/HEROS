@@ -1,0 +1,4 @@
+## 2024-05-24 - Missing symlink bypass and FIFO blocking checks
+**Vulnerability:** The forge bridge was missing startup checks for symlinked `.heros-keys` and lacked a regular file check before invoking `awk` during API key validation.
+**Learning:** Symlinks can be used to redirect writes/reads to attacker-controlled files. A malicious FIFO or directory could cause `awk` to block indefinitely or error out, leading to DoS or bypassing validation logic. These mechanisms were present in the ledger bridge but missing in the forge bridge.
+**Prevention:** Port fail-closed symlink checks for critical files (`.heros-keys`) and warn-only checks for audit files to all bridges. Always ensure `-f` (regular file) check is performed before reading sensitive files with tools like `awk` to prevent FIFO blocking.
