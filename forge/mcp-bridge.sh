@@ -435,9 +435,13 @@ handle_message() {
         return
     fi
 
-    local id method
-    id=$(jq -c '.id // null' <<< "$line")
-    method=$(jq -r '.method // ""' <<< "$line")
+    # ⚡ Bolt Optimization: Combine multiple jq extractions into a single subprocess call using @sh
+    # Reduces fork/exec overhead in the busy JSON-RPC message loop by ~50%.
+    local id method _parsed_id_method
+    _parsed_id_method=$(jq -r '[((.id // null) | tojson), ((.method // "") | if type == "string" then . else "" end)] | map(@sh) | join(" ")' <<< "$line")
+    eval "local _arr_im=(${_parsed_id_method})"
+    id="${_arr_im[0]}"
+    method="${_arr_im[1]}"
 
     # RT-431: guard oversized id values — jq's --argjson passes id as an execve argv string;
     # Linux MAX_ARG_STRLEN = 131072 bytes; a >4KB id cannot be a legitimate MCP id (UUIDs are
@@ -499,9 +503,12 @@ handle_message() {
                 rpc_err "$id" -32002 "Server not initialized — send initialize first"
                 return
             fi
-            local tool_name tool_args forge_out first_line is_error content_json
-            tool_name=$(jq -r '.params.name // ""' <<< "$line")
-            tool_args=$(jq -c '.params.arguments // {}' <<< "$line")
+            # ⚡ Bolt Optimization: Extract tool name and args in a single jq subprocess to minimize fork overhead
+            local tool_name tool_args forge_out first_line is_error content_json _parsed_ta
+            _parsed_ta=$(jq -r '[((.params.name // "") | if type == "string" then . else "" end), ((.params.arguments // {}) | tojson)] | map(@sh) | join(" ")' <<< "$line")
+            eval "local _arr_ta=(${_parsed_ta})"
+            tool_name="${_arr_ta[0]}"
+            tool_args="${_arr_ta[1]}"
 
             if [[ -z "$tool_name" ]]; then
                 rpc_err "$id" -32602 "Invalid params: missing tool name in params.name"
