@@ -1,0 +1,3 @@
+## 2025-06-09 - Accessible Focus States and Contrast
+**Learning:** Static sites without standard UI libraries often omit `focus-visible` styling and accessible contrast by default, significantly hindering keyboard navigation for screen readers or power users. Wrapping logos in `<a>` tags enables basic home navigation but requires CSS resets (`text-decoration: none`) to prevent hyperlink artifacts.
+**Action:** Always verify keyboard accessibility (`tab` testing) via Playwright or locally. Apply `:focus-visible` to interactive elements (`a`, `button`, `.btn`, `input`, `textarea`) and ensure `--muted` or secondary text variables meet WCAG contrast limits.
