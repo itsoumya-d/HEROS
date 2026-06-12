@@ -14,7 +14,7 @@
       --accent: #7c3aed;
       --accent-dim: #4c1d95;
       --text: #e5e5e5;
-      --muted: #666;
+      --muted: #a3a3a3;
       --code-bg: #0d0d0d;
       --safe: #22c55e;
       --critical: #ef4444;
@@ -28,10 +28,13 @@
     /* Nav */
     nav { border-bottom: 1px solid var(--border); padding: 16px 24px; display: flex; align-items: center; justify-content: space-between; }
     .nav-logo { font-size: 18px; font-weight: 700; letter-spacing: -0.5px; }
+    .nav-logo a { color: inherit; text-decoration: none; }
     .nav-logo span { color: var(--accent); }
     .nav-links { display: flex; gap: 24px; }
     .nav-links a { color: var(--muted); font-size: 13px; }
     .nav-links a:hover { color: var(--text); text-decoration: none; }
+
+    :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
     /* Hero */
     .hero { max-width: 860px; margin: 80px auto 0; padding: 0 24px; }
@@ -106,7 +109,7 @@
 <body>
 
 <nav>
-  <div class="nav-logo">HEROS<span>.</span></div>
+  <div class="nav-logo"><a href="/">HEROS<span>.</span></a></div>
   <div class="nav-links">
     <a href="https://github.com/soumyadebnath/heros">GitHub</a>
     <a href="docs/getting-started.html">Docs</a>
