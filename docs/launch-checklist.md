@@ -10,6 +10,7 @@ npm run test:agentic-site
 npm run demo:agentic
 npm run pack:agentic
 node packages/agentic/bin/heros-agentic.mjs doctor
+npm publish --dry-run --workspace @heros/agentic --access public
 npm publish --dry-run --provenance --workspace @heros/agentic --access public
 ```
 

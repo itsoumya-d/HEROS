@@ -22,7 +22,7 @@ Check the local environment:
 npx @heros/agentic doctor
 ```
 
-Until the package is published, use the local workspace:
+For repository development, use the local workspace:
 
 ```bash
 npm install file:packages/agentic

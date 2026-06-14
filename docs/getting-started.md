@@ -17,9 +17,9 @@ Get HEROS running locally. The web SDK works with Node.js. The `forge` and `ledg
 ## Web SDK: Make A Website Agent-Ready
 
 ```bash
-npm install file:packages/agentic
-node packages/agentic/bin/heros-agentic.mjs doctor
-node packages/agentic/bin/heros-agentic.mjs init my-agentic-site
+npm install @heros/agentic
+npx @heros/agentic doctor
+npx @heros/agentic init my-agentic-site
 ```
 
 ```js
@@ -34,19 +34,13 @@ const heros = createAgenticApp({
 });
 ```
 
-Verify the local SDK and demo:
+For repository development, use the local workspace package and demo checks:
 
 ```bash
+npm install file:packages/agentic
 npm run test:agentic
 npm run test:agentic-site
 npm run demo:agentic
-```
-
-After npm publish, the same flow becomes:
-
-```bash
-npm install @heros/agentic
-npx @heros/agentic init my-agentic-site
 ```
 
 ---

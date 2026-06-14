@@ -45,7 +45,7 @@ bunx @heros/agentic init my-agentic-site
 
 ## Local Workspace
 
-Until the npm package is published:
+For repository development or local package testing:
 
 ```bash
 npm install file:packages/agentic

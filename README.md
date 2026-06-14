@@ -10,7 +10,7 @@ Core CLI primitives are built in [Zero lang](https://github.com/vercel-labs/zero
 
 | Tool | What it does | Status |
 |---|---|---|
-| [@heros/agentic](packages/agentic/README.md) | Installable web SDK surface for explicit, authenticated, auditable agent actions | local v0.1.0 |
+| [@heros/agentic](packages/agentic/README.md) | Installable web SDK surface for explicit, authenticated, auditable agent actions | v0.1.0 |
 | [forge](forge/README.md) | Agent-safe database migration risk gate - risk-scores schema changes before they run | v0.1.4 |
 | [ledger](ledger/README.md) | Agent accounting receipt primitive - register an org and create/list invoices with idempotency keys | v0.1.11 |
 
@@ -23,8 +23,9 @@ Core CLI primitives are built in [Zero lang](https://github.com/vercel-labs/zero
 The first web SDK surface is an explicit action registry. Developers choose what agents may do, attach schemas and safety policy, then expose a manifest plus an execute endpoint.
 
 ```bash
-# Local workspace until npm publish
-npm install file:packages/agentic
+npm install @heros/agentic
+npx @heros/agentic doctor
+npx @heros/agentic init my-agentic-site
 ```
 
 ```js
@@ -59,6 +60,7 @@ console.log(heros.manifest());
 Run the local proof:
 
 ```bash
+npm install file:packages/agentic
 node --test packages/agentic/test/*.test.mjs
 node --test examples/agentic-site/test/*.test.mjs
 node examples/agentic-site/agent-demo.mjs
@@ -186,7 +188,7 @@ The bridge owns I/O and session state. The binary owns business logic. This sepa
 
 | Component | Tests | Security Cycles | Zero Version |
 |---|---|---|---|
-| @heros/agentic local v0.1.0 | 9 Node unit tests, 5 demo route tests, plus `examples/agentic-site/agent-demo.mjs` integration proof | Current proof covers schema validation, auth denial, approval token flow, durable file stores, idempotency replay/conflict, receipts, HTTP route errors, and demo action flow | N/A |
+| @heros/agentic v0.1.0 | 11 Node unit tests, 5 demo route tests, plus `examples/agentic-site/agent-demo.mjs` integration proof | Current proof covers schema validation, auth denial, approval token flow, durable file stores, idempotency replay/conflict, receipts, HTTP route errors, and demo action flow | N/A |
 | forge v0.1.4 | 38 eval_log tests; 33 binary-testable cases covered by release CI when Zero compiler variables are configured | 239+ cycles (all P2+ resolved) | v0.1.3 |
 | ledger v0.1.11 | 25 binary-testable cases plus MCP bridge/auth evals covered by release CI when Zero compiler variables are configured | 239+ cycles (all P2+ resolved) | v0.1.3 |
 
