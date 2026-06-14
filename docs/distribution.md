@@ -100,8 +100,21 @@ Before publishing:
 ```bash
 npm test
 npm run pack:agentic
-npm publish --dry-run --provenance --workspace @heros/agentic --access public
+npm publish --dry-run --workspace @heros/agentic --access public
 ```
+
+Manual first publish, after logging in with `npm login --auth-type=web`:
+
+```bash
+npm whoami
+npm publish --workspace @heros/agentic --access public
+```
+
+Recommended provenance publish path:
+
+1. In npm, configure `@heros/agentic` for GitHub Actions trusted publishing from `itsoumya-d/HEROS` and `.github/workflows/npm-publish.yml`.
+2. Push a tag like `agentic-v0.1.0`, or run the `Publish Agentic SDK` workflow manually.
+3. The workflow runs tests, packs the package, and publishes with `--provenance`.
 
 For `forge` and `ledger`, GitHub release automation must run with:
 

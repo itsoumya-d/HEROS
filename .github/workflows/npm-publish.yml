@@ -1,0 +1,49 @@
+name: Publish Agentic SDK
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "agentic-v*"
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish-agentic:
+    name: Publish @heros/agentic
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "24"
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Upgrade npm
+        run: npm install -g npm@latest
+
+      - name: Show runtime versions
+        run: |
+          node --version
+          npm --version
+
+      - name: SDK unit tests
+        run: npm run test:agentic
+
+      - name: Demo route tests
+        run: npm run test:agentic-site
+
+      - name: Demo integration proof
+        run: npm run demo:agentic
+
+      - name: Agentic package dry-run
+        run: npm run pack:agentic
+
+      - name: Publish
+        run: npm publish --workspace @heros/agentic --access public --provenance

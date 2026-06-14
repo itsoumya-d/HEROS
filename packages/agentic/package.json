@@ -41,8 +41,7 @@
   },
   "homepage": "https://github.com/itsoumya-d/HEROS/tree/main/packages/agentic",
   "publishConfig": {
-    "access": "public",
-    "provenance": true
+    "access": "public"
   },
   "license": "MIT"
 }
