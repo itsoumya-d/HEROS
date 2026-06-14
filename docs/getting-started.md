@@ -1,15 +1,53 @@
 # Getting Started with HEROS
 
-Get forge and ledger running in an MCP-compatible client in under 5 minutes.
+Get HEROS running locally. The web SDK works with Node.js. The `forge` and `ledger` binaries require Linux x86-64 release artifacts or a Linux build environment.
 
 ---
 
 ## Prerequisites
 
-- Any MCP-compatible client
-- Linux x86-64 (for binaries) OR Docker
-- `jq >= 1.6` in PATH
-- `bash >= 4.0`
+- Node.js 20+ for `@heros/agentic`
+- Any MCP-compatible client for `forge` and `ledger`
+- Linux x86-64 or Docker for binaries
+- `jq >= 1.6` in PATH for bridges
+- `bash >= 4.0` for bridge evals
+
+---
+
+## Web SDK: Make A Website Agent-Ready
+
+```bash
+npm install file:packages/agentic
+node packages/agentic/bin/heros-agentic.mjs doctor
+node packages/agentic/bin/heros-agentic.mjs init my-agentic-site
+```
+
+```js
+import { createAgenticApp, createFileReceiptStore } from "@heros/agentic";
+
+const heros = createAgenticApp({
+  name: "shop",
+  receiptStore: createFileReceiptStore({ path: ".heros/receipts.json" }),
+  authorize: ({ context }) => context.apiKey === process.env.AGENT_API_KEY
+    ? { principal: "agent:shop" }
+    : false
+});
+```
+
+Verify the local SDK and demo:
+
+```bash
+npm run test:agentic
+npm run test:agentic-site
+npm run demo:agentic
+```
+
+After npm publish, the same flow becomes:
+
+```bash
+npm install @heros/agentic
+npx @heros/agentic init my-agentic-site
+```
 
 ---
 
@@ -20,22 +58,22 @@ Get forge and ledger running in an MCP-compatible client in under 5 minutes.
 mkdir -p ~/heros && cd ~/heros
 
 # Download forge (schema migration engine)
-curl -L https://github.com/soumyadebnath/heros/releases/latest/download/forge-linux-x64.bin \
+curl -L https://github.com/itsoumya-d/HEROS/releases/latest/download/forge-linux-x64.bin \
   -o forge && chmod +x forge
 
 # Download ledger (agent accounting)
-curl -L https://github.com/soumyadebnath/heros/releases/latest/download/ledger-linux-x64.bin \
+curl -L https://github.com/itsoumya-d/HEROS/releases/latest/download/ledger-linux-x64.bin \
   -o ledger && chmod +x ledger
 
 # Download MCP bridges and manifests
-curl -L https://raw.githubusercontent.com/soumyadebnath/heros/main/forge/mcp-bridge.sh \
+curl -L https://raw.githubusercontent.com/itsoumya-d/HEROS/main/forge/mcp-bridge.sh \
   -o forge-bridge.sh && chmod +x forge-bridge.sh
-curl -L https://raw.githubusercontent.com/soumyadebnath/heros/main/forge/mcp-manifest.json \
+curl -L https://raw.githubusercontent.com/itsoumya-d/HEROS/main/forge/mcp-manifest.json \
   -o forge-manifest.json
 
-curl -L https://raw.githubusercontent.com/soumyadebnath/heros/main/ledger/mcp-bridge.sh \
+curl -L https://raw.githubusercontent.com/itsoumya-d/HEROS/main/ledger/mcp-bridge.sh \
   -o ledger-bridge.sh && chmod +x ledger-bridge.sh
-curl -L https://raw.githubusercontent.com/soumyadebnath/heros/main/ledger/mcp-manifest.json \
+curl -L https://raw.githubusercontent.com/itsoumya-d/HEROS/main/ledger/mcp-manifest.json \
   -o ledger-manifest.json
 ```
 
@@ -205,12 +243,12 @@ VOLUME ["/data"]
 ```bash
 # Verify cosign signature (requires cosign CLI)
 cosign verify-blob \
-  --certificate-identity-regexp https://github.com/soumyadebnath/heros \
+  --certificate-identity-regexp https://github.com/itsoumya-d/HEROS \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
   --signature forge-linux-x64.bin.sig \
   forge-linux-x64.bin
 
 # Check SHA-256 against published checksum
 sha256sum forge-linux-x64.bin
-# Compare against: https://github.com/soumyadebnath/heros/releases/latest/download/forge-linux-x64.bin.sha256
+# Compare against: https://github.com/itsoumya-d/HEROS/releases/latest/download/forge-linux-x64.bin.sha256
 ```

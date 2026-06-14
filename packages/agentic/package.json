@@ -4,12 +4,45 @@
   "description": "Explicit action-registry SDK for safe, authenticated, auditable AI agent actions.",
   "type": "module",
   "main": "./src/index.js",
+  "types": "./src/index.d.ts",
+  "bin": {
+    "heros-agentic": "bin/heros-agentic.mjs"
+  },
   "exports": {
-    ".": "./src/index.js"
+    ".": {
+      "types": "./src/index.d.ts",
+      "default": "./src/index.js"
+    }
   },
   "files": [
+    "bin",
     "src",
     "README.md"
   ],
+  "sideEffects": false,
+  "engines": {
+    "node": ">=20"
+  },
+  "keywords": [
+    "agents",
+    "mcp",
+    "agentic",
+    "actions",
+    "receipts",
+    "approval"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/itsoumya-d/HEROS.git",
+    "directory": "packages/agentic"
+  },
+  "bugs": {
+    "url": "https://github.com/itsoumya-d/HEROS/issues"
+  },
+  "homepage": "https://github.com/itsoumya-d/HEROS/tree/main/packages/agentic",
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
   "license": "MIT"
 }

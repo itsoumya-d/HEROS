@@ -16,7 +16,7 @@ All notable changes to forge and ledger. Follows [Keep a Changelog](https://keep
 
 ### Fixed
 - Eval test case descriptions corrected: FE-04 ("drop table"), FE-06 ("analyze without --from → UNKNOWN_COMMAND"), FE-07 ("identical schemas → SAFE baseline"), LE-15 ("unknown top-level command → UNKNOWN_COMMAND").
-- GitHub repo URL placeholder (`OWNER/REPO`) replaced with `soumyadebnath/heros` in README, docs, MCP manifests, and Show HN post.
+- GitHub repo URL placeholder (`OWNER/REPO`) replaced with `itsoumya-d/HEROS` in README, docs, MCP manifests, and release materials.
 
 ### Added
 - `CONTRIBUTING.md` — gstack-style team workflow, autoresearch eval loop pattern, security standards.

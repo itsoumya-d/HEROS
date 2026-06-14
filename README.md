@@ -60,6 +60,7 @@ Run the local proof:
 
 ```bash
 node --test packages/agentic/test/*.test.mjs
+node --test examples/agentic-site/test/*.test.mjs
 node examples/agentic-site/agent-demo.mjs
 ```
 
@@ -67,7 +68,7 @@ node examples/agentic-site/agent-demo.mjs
 
 ```bash
 # Install: download the binary (Linux x86-64)
-curl -L https://github.com/soumyadebnath/heros/releases/latest/download/forge -o forge && chmod +x forge
+curl -L https://github.com/itsoumya-d/HEROS/releases/latest/download/forge-linux-x64.bin -o forge && chmod +x forge
 
 # Analyze migration risk
 forge analyze \
@@ -123,6 +124,8 @@ Both tools ship as MCP servers (stdio transport). Add to any MCP-compatible orch
 Both bridges implement the MCP 2025-11-25 protocol. Run `--describe` on either binary for the full self-describing API schema — no documentation fetch needed.
 
 For the web SDK demo path, see [docs/agentic-web-sdk-demo.md](docs/agentic-web-sdk-demo.md).
+For install paths across npm, pnpm, yarn, Linux, and MCP clients, see [docs/distribution.md](docs/distribution.md).
+For the full launch checklist, see [docs/launch-checklist.md](docs/launch-checklist.md).
 
 ---
 
@@ -183,7 +186,7 @@ The bridge owns I/O and session state. The binary owns business logic. This sepa
 
 | Component | Tests | Security Cycles | Zero Version |
 |---|---|---|---|
-| @heros/agentic local v0.1.0 | 7 Node unit tests plus `examples/agentic-site/agent-demo.mjs` integration proof | Current proof covers schema validation, auth denial, approval token flow, idempotency replay/conflict, and receipts | N/A |
+| @heros/agentic local v0.1.0 | 9 Node unit tests, 5 demo route tests, plus `examples/agentic-site/agent-demo.mjs` integration proof | Current proof covers schema validation, auth denial, approval token flow, durable file stores, idempotency replay/conflict, receipts, HTTP route errors, and demo action flow | N/A |
 | forge v0.1.4 | 38 eval_log tests; 33 binary-testable cases covered by release CI when Zero compiler variables are configured | 239+ cycles (all P2+ resolved) | v0.1.3 |
 | ledger v0.1.11 | 25 binary-testable cases plus MCP bridge/auth evals covered by release CI when Zero compiler variables are configured | 239+ cycles (all P2+ resolved) | v0.1.3 |
 

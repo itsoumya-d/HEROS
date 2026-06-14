@@ -11,6 +11,7 @@ This sample website shows the first launchable HEROS SDK flow:
 Run the integration proof:
 
 ```bash
+npm run test:agentic-site
 node examples/agentic-site/agent-demo.mjs
 ```
 

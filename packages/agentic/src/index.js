@@ -1,4 +1,6 @@
 import { createHash, randomBytes } from "node:crypto";
+import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { dirname } from "node:path";
 
 const DEFAULT_PROTOCOL_VERSION = "2025-11-25";
 const ACTION_NAME_RE = /^[A-Za-z0-9_.:-]{1,96}$/;
@@ -41,6 +43,76 @@ export function createMemoryReceiptStore() {
     },
     async list() {
       return cloneJson(receipts);
+    }
+  };
+}
+
+export function createFileReceiptStore({ path }) {
+  if (!path || typeof path !== "string") {
+    throw new Error("createFileReceiptStore requires a file path.");
+  }
+
+  let writeChain = Promise.resolve();
+
+  async function readState() {
+    try {
+      const parsed = JSON.parse(await readFile(path, "utf8"));
+      return {
+        receipts: Array.isArray(parsed.receipts) ? parsed.receipts : [],
+        idempotency: isObject(parsed.idempotency) ? parsed.idempotency : {}
+      };
+    } catch (error) {
+      if (error && error.code === "ENOENT") {
+        return { receipts: [], idempotency: {} };
+      }
+      throw error;
+    }
+  }
+
+  async function writeState(state) {
+    await mkdir(dirname(path), { recursive: true });
+    const tempPath = `${path}.${process.pid}.${Date.now()}.${randomBytes(6).toString("hex")}.tmp`;
+    await writeFile(tempPath, `${JSON.stringify(state, null, 2)}\n`);
+    await rename(tempPath, path);
+  }
+
+  function enqueue(mutator) {
+    const run = writeChain.catch(() => {}).then(async () => {
+      const state = await readState();
+      const result = await mutator(state);
+      await writeState(state);
+      return result;
+    });
+    writeChain = run.then(() => undefined, () => undefined);
+    return run;
+  }
+
+  return {
+    async append(receipt) {
+      return enqueue((state) => {
+        const saved = cloneJson(receipt);
+        state.receipts.push(saved);
+        return cloneJson(saved);
+      });
+    },
+    async findByIdempotencyKey(key) {
+      await writeChain;
+      const state = await readState();
+      const entry = state.idempotency[key];
+      return entry ? cloneJson(entry) : null;
+    },
+    async recordIdempotency(key, actionHash, response) {
+      await enqueue((state) => {
+        state.idempotency[key] = {
+          action_hash: actionHash,
+          response: cloneJson(response)
+        };
+      });
+    },
+    async list() {
+      await writeChain;
+      const state = await readState();
+      return cloneJson(state.receipts);
     }
   };
 }
@@ -88,6 +160,93 @@ export function createMemoryApprovalStore({ ttlMs = 5 * 60 * 1000 } = {}) {
         approved_at: token.used_at,
         token_hash: hashValue(approvalToken)
       };
+    }
+  };
+}
+
+export function createFileApprovalStore({ path, ttlMs = 5 * 60 * 1000 }) {
+  if (!path || typeof path !== "string") {
+    throw new Error("createFileApprovalStore requires a file path.");
+  }
+
+  let writeChain = Promise.resolve();
+
+  async function readState() {
+    try {
+      const parsed = JSON.parse(await readFile(path, "utf8"));
+      return {
+        tokens: isObject(parsed.tokens) ? parsed.tokens : {}
+      };
+    } catch (error) {
+      if (error && error.code === "ENOENT") {
+        return { tokens: {} };
+      }
+      throw error;
+    }
+  }
+
+  async function writeState(state) {
+    await mkdir(dirname(path), { recursive: true });
+    const tempPath = `${path}.${process.pid}.${Date.now()}.${randomBytes(6).toString("hex")}.tmp`;
+    await writeFile(tempPath, `${JSON.stringify(state, null, 2)}\n`);
+    await rename(tempPath, path);
+  }
+
+  function enqueue(mutator) {
+    const run = writeChain.catch(() => {}).then(async () => {
+      const state = await readState();
+      const result = await mutator(state);
+      await writeState(state);
+      return result;
+    });
+    writeChain = run.then(() => undefined, () => undefined);
+    return run;
+  }
+
+  return {
+    async issue({ action, inputHash, principal, now = new Date() }) {
+      return enqueue((state) => {
+        const token = `ha_${randomBytes(18).toString("hex")}`;
+        const expiresAt = new Date(now.getTime() + ttlMs);
+        state.tokens[token] = {
+          action,
+          input_hash: inputHash,
+          principal: principal || "human",
+          expires_at: expiresAt.toISOString(),
+          used_at: null
+        };
+
+        return {
+          approval_token: token,
+          action,
+          expires_at: expiresAt.toISOString()
+        };
+      });
+    },
+    async redeem({ approvalToken, action, inputHash, now = new Date() }) {
+      return enqueue((state) => {
+        const token = state.tokens[approvalToken];
+        if (!token) {
+          return { ok: false, reason: "missing" };
+        }
+        if (token.used_at) {
+          return { ok: false, reason: "used" };
+        }
+        if (new Date(token.expires_at).getTime() <= now.getTime()) {
+          return { ok: false, reason: "expired" };
+        }
+        if (token.action !== action || token.input_hash !== inputHash) {
+          return { ok: false, reason: "mismatch" };
+        }
+
+        token.used_at = now.toISOString();
+        return {
+          ok: true,
+          approved_by: token.principal,
+          approved_at: token.used_at,
+          token_hash: hashValue(approvalToken)
+        };
+      });
     }
   };
 }
@@ -484,6 +643,10 @@ function canonicalize(value) {
 
 function cloneJson(value) {
   return value === undefined ? undefined : JSON.parse(JSON.stringify(value));
+}
+
+function isObject(value) {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
 function safeErrorMessage(error) {

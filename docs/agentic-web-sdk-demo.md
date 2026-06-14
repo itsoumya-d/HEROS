@@ -15,6 +15,7 @@ This demo shows how an application can expose explicit, safe actions to AI agent
 
 ```bash
 node --test packages/agentic/test/*.test.mjs
+node --test examples/agentic-site/test/*.test.mjs
 node examples/agentic-site/agent-demo.mjs
 ```
 
@@ -49,6 +50,20 @@ The protected action endpoint expects:
 ```text
 Authorization: Bearer demo-agent-key
 ```
+
+## Route-Level Proof
+
+The demo route tests verify:
+
+- landing page renders
+- manifest exposes the expected actions
+- malformed JSON returns `BAD_JSON`
+- unknown routes return `NOT_FOUND`
+- unknown actions return `UNKNOWN_ACTION`
+- public catalog search works without auth
+- protected cart writes reject missing or bad auth
+- idempotency replay returns the original receipt
+- approval challenges can be redeemed exactly once
 
 ## Demo Flow
 

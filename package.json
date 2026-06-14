@@ -7,7 +7,10 @@
     "examples/agentic-site"
   ],
   "scripts": {
-    "test:agentic": "node --test packages/agentic/test/*.test.mjs",
+    "test": "npm run test:agentic && npm run test:agentic-site && npm run demo:agentic",
+    "test:agentic": "node --test \"packages/agentic/test/*.test.mjs\"",
+    "test:agentic-site": "node --test \"examples/agentic-site/test/*.test.mjs\"",
+    "pack:agentic": "npm pack --dry-run --workspace @heros/agentic",
     "demo:agentic": "node examples/agentic-site/agent-demo.mjs"
   }
 }

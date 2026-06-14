@@ -1,0 +1,175 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - "**"
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  agentic-sdk:
+    name: Agentic SDK and demo
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-22.04
+          - macos-14
+          - windows-2022
+        node-version:
+          - "20"
+          - "22"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: ${{ matrix.node-version }}
+
+      - name: Show runtime versions
+        run: |
+          node --version
+          npm --version
+
+      - name: SDK unit tests
+        run: npm run test:agentic
+
+      - name: Demo route tests
+        run: npm run test:agentic-site
+
+      - name: Demo integration proof
+        run: npm run demo:agentic
+
+      - name: Agentic package dry-run
+        run: npm run pack:agentic
+
+      - name: Agentic CLI doctor
+        run: node packages/agentic/bin/heros-agentic.mjs doctor
+
+  public-hygiene:
+    name: Public hygiene
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Check public process markers
+        run: |
+          python3 - <<'EOF'
+          import pathlib
+          import re
+          import sys
+
+          roots = [
+              pathlib.Path("README.md"),
+              pathlib.Path("docs"),
+              pathlib.Path("packages"),
+              pathlib.Path("examples"),
+              pathlib.Path(".github"),
+              pathlib.Path("forge"),
+              pathlib.Path("ledger"),
+              pathlib.Path("package.json"),
+          ]
+          blocked_terms = [
+              "".join(["Goal", "Buddy"]),
+              "".join(["Co", "dex"]),
+              " ".join(["Claude", "Code"]),
+              " ".join(["Y", "Combinator"]),
+              " ".join(["founder", "video"]),
+              " ".join(["application", "draft"]),
+          ]
+          blocked = re.compile(
+              r"\b(" + "|".join(re.escape(term) for term in blocked_terms) + r")\b",
+              re.IGNORECASE,
+          )
+          failed = False
+          for root in roots:
+              paths = [root] if root.is_file() else root.rglob("*")
+              for path in paths:
+                  if not path.is_file():
+                      continue
+                  if "docs/goals" in path.as_posix():
+                      continue
+                  if path.suffix.lower() not in {".md", ".json", ".yml", ".yaml", ".js", ".mjs", ".sh"}:
+                      continue
+                  text = path.read_text(errors="replace")
+                  match = blocked.search(text)
+                  if match:
+                      print(f"FAIL {path}: public process marker {match.group(1)!r}")
+                      failed = True
+          if failed:
+              sys.exit(1)
+          print("OK public process-marker scan")
+          EOF
+
+      - name: Check MCP manifest descriptions
+        run: |
+          python3 - <<'EOF'
+          import json
+          import sys
+
+          for path in ["ledger/mcp-manifest.json", "forge/mcp-manifest.json"]:
+              with open(path) as file:
+                  manifest = json.load(file)
+              for tool in manifest.get("tools", []):
+                  description = tool.get("description", "")
+                  if len(description) > 512:
+                      sys.exit(f"FAIL {path}: {tool['name']} description {len(description)} chars")
+              print(f"OK {path}")
+          EOF
+
+      - name: Check no executable shell eval
+        run: |
+          python3 - <<'EOF'
+          import pathlib
+          import re
+          import sys
+
+          pattern = re.compile(r'(^|[;&|({\s])eval([;&|)\s]|$)')
+          quoted = re.compile(r"\"(?:\\.|[^\"\\])*\"|'(?:\\.|[^'\\])*'")
+          failed = False
+          for path in pathlib.Path(".").rglob("*.sh"):
+              if ".git" in path.parts:
+                  continue
+              stripped_path = path.as_posix()
+              if stripped_path.startswith("docs/goals/"):
+                  continue
+              for lineno, line in enumerate(path.read_text(errors="replace").splitlines(), 1):
+                  stripped = line.strip()
+                  if not stripped or stripped.startswith("#"):
+                      continue
+                  code = quoted.sub("", stripped)
+                  if pattern.search(code):
+                      print(f"FAIL {path}:{lineno}: executable shell eval is forbidden")
+                      failed = True
+          if failed:
+              sys.exit(1)
+          print("OK no executable shell eval usage in shell scripts")
+          EOF
+
+      - name: Install shellcheck
+        run: sudo apt-get update && sudo apt-get install -y shellcheck
+
+      - name: Shellcheck public scripts
+        run: |
+          shellcheck -S warning \
+            scripts/install-heros.sh \
+            ledger/mcp-bridge.sh \
+            forge/mcp-bridge.sh \
+            ledger/eval-bridge-auth.sh \
+            ledger/eval-bridge.sh \
+            ledger/key-gen.sh \
+            ledger/eval-auth.sh \
+            forge/eval-auth.sh \
+            zero-ecosystem/json-schema/eval-runner.sh
+
+      - name: Diff whitespace check
+        run: git diff --check

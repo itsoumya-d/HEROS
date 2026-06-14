@@ -160,12 +160,10 @@ export async function createDemoServer({ port = 0 } = {}) {
     if (req.method === "POST" && url.pathname === "/heros/actions") {
       const body = await readJson(req);
       if (!body.ok) {
-        return sendJson(res, 400, {
-          ok: false,
-          error_code: "BAD_JSON",
-          error: "Request body must be valid JSON.",
-          retryable: false
-        });
+        return sendBadJson(res);
+      }
+      if (!isPlainObject(body.value)) {
+        return sendBadJson(res);
       }
 
       const response = await agenticApp.execute({
@@ -200,6 +198,15 @@ export async function createDemoServer({ port = 0 } = {}) {
   };
 }
 
+function sendBadJson(res) {
+  return sendJson(res, 400, {
+    ok: false,
+    error_code: "BAD_JSON",
+    error: "Request body must be a valid JSON object.",
+    retryable: false
+  });
+}
+
 function parseBearer(header) {
   const prefix = "Bearer ";
   return header.startsWith(prefix) ? header.slice(prefix.length) : "";
@@ -221,6 +228,10 @@ async function readJson(req) {
   } catch {
     return { ok: false };
   }
+}
+
+function isPlainObject(value) {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
 function sendJson(res, status, value) {

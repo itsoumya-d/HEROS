@@ -10,17 +10,32 @@ It does not try to make any UI magically clickable. Developers declare the actio
 npm install @heros/agentic
 ```
 
+Create a starter site:
+
+```bash
+npx @heros/agentic init my-agentic-site
+```
+
+Check the local environment:
+
+```bash
+npx @heros/agentic doctor
+```
+
 Until the package is published, use the local workspace:
 
 ```bash
 npm install file:packages/agentic
+node packages/agentic/bin/heros-agentic.mjs doctor
 ```
 
 ## Import
 
 ```js
-import { createAgenticApp } from "@heros/agentic";
+import { createAgenticApp, createFileReceiptStore } from "@heros/agentic";
 ```
+
+Type declarations are included with the package.
 
 ## Minimal Server
 
@@ -28,6 +43,7 @@ import { createAgenticApp } from "@heros/agentic";
 const heros = createAgenticApp({
   name: "shop",
   version: "0.1.0",
+  receiptStore: createFileReceiptStore({ path: ".heros/receipts.json" }),
   authorize: ({ context }) => context.apiKey === process.env.AGENT_API_KEY
     ? { principal: "agent:shop", scopes: ["cart:write"] }
     : false
@@ -154,7 +170,24 @@ Every successful action emits a receipt with:
 - action annotations
 - timestamp
 
-Receipts are stored in memory by default. Production adapters should replace the receipt store with a durable database or ledger-backed store.
+Receipts are stored in memory by default. Use `createFileReceiptStore()` for dependency-free single-process persistence, or provide a database-backed `receiptStore` for multi-process production deployments.
+
+## Durable Stores
+
+```js
+import {
+  createAgenticApp,
+  createFileApprovalStore,
+  createFileReceiptStore
+} from "@heros/agentic";
+
+const heros = createAgenticApp({
+  receiptStore: createFileReceiptStore({ path: ".heros/receipts.json" }),
+  approvalStore: createFileApprovalStore({ path: ".heros/approvals.json" })
+});
+```
+
+The file stores persist receipts, idempotency records, and approval tokens across process restarts. Use a database-backed store when multiple app processes write to the same action surface.
 
 ## Production Checklist
 
@@ -163,4 +196,4 @@ Receipts are stored in memory by default. Production adapters should replace the
 - Require approval for destructive or high-value actions.
 - Use strict schemas with `additionalProperties: false`, length limits, charset limits, and `safeText: true` on user-facing strings.
 - Persist receipts and idempotency records outside process memory.
-- Run `node --test packages/agentic/test/*.test.mjs` before shipping.
+- Run `npm run test:agentic`, `npm run test:agentic-site`, and `npm run demo:agentic` before shipping.

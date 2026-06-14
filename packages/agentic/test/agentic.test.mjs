@@ -1,7 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { mkdtemp } from "node:fs/promises";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 import {
   createAgenticApp,
+  createFileApprovalStore,
+  createFileReceiptStore,
   createMemoryApprovalStore,
   createMemoryReceiptStore
 } from "../src/index.js";
@@ -275,4 +280,103 @@ test("replays idempotent results and rejects idempotency conflicts", async () =>
   assert.equal(replay.receipt.receipt_id, first.receipt.receipt_id);
   assert.equal(calls, 1);
   assert.equal(conflict.error_code, "IDEMPOTENCY_CONFLICT");
+});
+
+test("file receipt store persists receipts and idempotency across app instances", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "heros-agentic-"));
+  const receiptPath = join(dir, "receipts.json");
+  let calls = 0;
+
+  function appWithStore() {
+    const app = createAgenticApp({
+      receiptStore: createFileReceiptStore({ path: receiptPath })
+    });
+    app.action({
+      name: "cart.add_item",
+      inputSchema: addItemSchema,
+      annotations: {
+        idempotent: true
+      },
+      handler: () => {
+        calls += 1;
+        return { calls };
+      }
+    });
+    return app;
+  }
+
+  const first = await appWithStore().execute({
+    name: "cart.add_item",
+    input: { sku: "BOOK-1", quantity: 1 },
+    idempotencyKey: "persisted-key"
+  });
+  const replay = await appWithStore().execute({
+    name: "cart.add_item",
+    input: { sku: "BOOK-1", quantity: 1 },
+    idempotencyKey: "persisted-key"
+  });
+  const receipts = await createFileReceiptStore({ path: receiptPath }).list();
+
+  assert.equal(first.ok, true);
+  assert.equal(replay.ok, true);
+  assert.equal(replay._idempotent, true);
+  assert.equal(replay.receipt.receipt_id, first.receipt.receipt_id);
+  assert.equal(receipts.length, 1);
+  assert.equal(calls, 1);
+});
+
+test("file approval store persists approval challenges across app instances", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "heros-agentic-"));
+  const approvalPath = join(dir, "approvals.json");
+
+  function appWithStore() {
+    const app = createAgenticApp({
+      approvalStore: createFileApprovalStore({ path: approvalPath }),
+      authorize: () => ({ principal: "agent:checkout" })
+    });
+    app.action({
+      name: "checkout.apply_discount",
+      inputSchema: {
+        type: "object",
+        required: ["code"],
+        additionalProperties: false,
+        properties: {
+          code: {
+            type: "string",
+            minLength: 3,
+            maxLength: 24,
+            pattern: "^[A-Z0-9-]+$",
+            safeText: true
+          }
+        }
+      },
+      authRequired: true,
+      approvalRequired: true,
+      handler: ({ input }) => ({ applied: input.code })
+    });
+    return app;
+  }
+
+  const challenge = await appWithStore().execute({
+    name: "checkout.apply_discount",
+    input: { code: "SAVE-25" },
+    context: { apiKey: "ok" }
+  });
+  const approved = await appWithStore().execute({
+    name: "checkout.apply_discount",
+    input: { code: "SAVE-25" },
+    context: { apiKey: "ok" },
+    approvalToken: challenge.approval.approval_token
+  });
+  const reused = await appWithStore().execute({
+    name: "checkout.apply_discount",
+    input: { code: "SAVE-25" },
+    context: { apiKey: "ok" },
+    approvalToken: challenge.approval.approval_token
+  });
+
+  assert.equal(challenge.error_code, "APPROVAL_REQUIRED");
+  assert.equal(approved.ok, true);
+  assert.equal(approved.receipt.approval.required, true);
+  assert.equal(reused.error_code, "INVALID_APPROVAL_TOKEN");
 });
