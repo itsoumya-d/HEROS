@@ -1,0 +1,13 @@
+{
+  "name": "heros",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "packages/agentic",
+    "examples/agentic-site"
+  ],
+  "scripts": {
+    "test:agentic": "node --test packages/agentic/test/*.test.mjs",
+    "demo:agentic": "node examples/agentic-site/agent-demo.mjs"
+  }
+}

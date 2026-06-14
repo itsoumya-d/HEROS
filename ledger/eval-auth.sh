@@ -114,9 +114,14 @@ else
 fi
 
 # ── BA-08: revoked key → return 2 ───────────────────────────────────────────
-# Manually revoke BA-01's key by rewriting .heros-keys with revoked=1
-sed -i "s/^${BA01_KEY_ID} .*/$(grep "^${BA01_KEY_ID} " "${TMP}/.heros-keys" | awk '{$6=1; print}')/" \
-    "${TMP}/.heros-keys" 2>/dev/null || true
+# Manually revoke BA-01's key by rewriting .heros-keys with revoked=1.
+# Use awk+mv instead of sed -i so the eval works on both GNU and BSD/macOS sed.
+BA08_KEYS_TMP=$(mktemp)
+awk -v kid="$BA01_KEY_ID" '
+    $1 == kid && !done { $6 = 1; done = 1 }
+    { print }
+' "${TMP}/.heros-keys" > "$BA08_KEYS_TMP"
+mv "$BA08_KEYS_TMP" "${TMP}/.heros-keys"
 BA08_RC=0
 _validate_api_key "$BA01_KEY" "rw" >/dev/null 2>&1 || BA08_RC=$?
 if [[ $BA08_RC -eq 2 ]]; then

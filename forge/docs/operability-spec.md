@@ -71,7 +71,7 @@ Returns the same payload as `--describe`. Agents using the `--help --json` conve
 cat mcp-manifest.json   # co-located with forge binary
 ```
 
-MCP tool spec for `forge_analyze`. Input schema mirrors `forge analyze` flags. Output schema mirrors analyze response fields. Allows Claude, Cursor, and any MCP-compatible orchestrator to call forge as a native tool without shell invocation.
+MCP tool spec for `forge_analyze`. Input schema mirrors `forge analyze` flags. Output schema mirrors analyze response fields. Allows any MCP-compatible orchestrator to call forge as a native tool without shell invocation.
 
 ### 2.5 MCP Registry Publication (v0.2 required)
 
@@ -373,7 +373,7 @@ Reads `current.forge` and `desired.forge`, converts to `|`-separated inline form
 | `--request-id` idempotency key with input validation | Done |
 | Schema size limit (64 KiB) | Done |
 | Cold-start agent eval (Test 7) | Pass |
-| YC scorecard | 40/40 |
+| Agent-native output contract | Pass |
 
 ### v0.2 Required (before network/MCP server exposure)
 

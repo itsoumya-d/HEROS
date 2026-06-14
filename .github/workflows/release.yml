@@ -111,6 +111,15 @@ jobs:
             exit 1
           fi
 
+      # ── Ledger MCP bridge workflow eval ─────────────────────────────────
+      # Proves register/create/idempotency/list/count through the MCP bridge before signing.
+      - name: Eval — ledger MCP bridge workflow
+        run: |
+          cp ledger-linux-x64.bin ledger/ledger
+          chmod +x ledger/ledger ledger/eval-bridge.sh ledger/mcp-bridge.sh
+          bash ledger/eval-bridge.sh
+          echo "ledger bridge eval passed"
+
       - name: Eval — forge behavioral tests
         run: |
           result=$(zero-ecosystem/eval-harness/zeval.sh \
@@ -124,9 +133,9 @@ jobs:
           fi
 
       # ── V46: Bridge eval (V39 approval-nonce protocol, RT-109 format guard) ──
-      # Runs eval-bridge.sh: 13 cases covering decision_required nonce injection,
+      # Runs eval-bridge.sh: 14 cases covering decision_required nonce injection,
       # SAFE/NOTABLE/HIGH/CRITICAL tiers, single-use nonces, cross-session isolation,
-      # and RT-109 array-subscript injection prevention (BE-11/12/13).
+      # RT-109 array-subscript injection prevention (BE-11/12/13), and schema binding (BE-14).
       # Requires: jq (pre-installed on ubuntu-latest), bash 4+ (≥4.4 on ubuntu).
       - name: Eval — forge MCP bridge (V39 approval-nonce protocol)
         run: |
@@ -444,6 +453,32 @@ jobs:
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
+      - name: Check no executable shell eval
+        run: |
+          python3 - <<'EOF'
+          import pathlib
+          import re
+          import sys
+
+          pattern = re.compile(r'(^|[;&|({\s])eval([;&|)\s]|$)')
+          quoted = re.compile(r"\"(?:\\.|[^\"\\])*\"|'(?:\\.|[^'\\])*'")
+          failed = False
+          for path in pathlib.Path(".").rglob("*.sh"):
+              if ".git" in path.parts:
+                  continue
+              for lineno, line in enumerate(path.read_text(errors="replace").splitlines(), 1):
+                  stripped = line.strip()
+                  if not stripped or stripped.startswith("#"):
+                      continue
+                  code = quoted.sub("", stripped)
+                  if pattern.search(code):
+                      print(f"FAIL {path}:{lineno}: executable shell eval is forbidden")
+                      failed = True
+          if failed:
+              sys.exit(1)
+          print("OK no executable shell eval usage in shell scripts")
+          EOF
+
       - name: Install shellcheck
         run: sudo apt-get install -y shellcheck
 
@@ -455,6 +490,9 @@ jobs:
 
       - name: Lint ledger/eval-bridge-auth.sh
         run: shellcheck -S warning ledger/eval-bridge-auth.sh
+
+      - name: Lint ledger/eval-bridge.sh
+        run: shellcheck -S warning ledger/eval-bridge.sh
 
       - name: Lint ledger/key-gen.sh
         run: shellcheck -S warning ledger/key-gen.sh
@@ -514,7 +552,9 @@ jobs:
                   desc = tool.get("description", "")
                   m = SUSPICIOUS.search(desc)
                   if m:
-                      print(f"WARN {path}: tool '{tool.get('name')}' description contains suspicious phrase: '{m.group()}'")
-                      # Warn only — don't block. Some verbs are legitimate.
+                      print(f"FAIL {path}: tool '{tool.get('name')}' description contains suspicious phrase: '{m.group()}'")
+                      failed = True
+          if failed:
+              sys.exit(1)
           print("MCP lint complete")
           EOF

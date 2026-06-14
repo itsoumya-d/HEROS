@@ -43,6 +43,16 @@ _skip() {
     SKIP=$(( SKIP + 1 ))
 }
 
+if (( BASH_VERSINFO[0] < 4 )); then
+    echo "forge bridge eval (V39 approval-nonce protocol)"
+    echo "bridge: ${BRIDGE}"
+    echo "----------------------------------------"
+    _skip BE-ALL "forge bridge eval" "requires bash 4+ for bridge associative arrays and coproc tests (got bash ${BASH_VERSION})"
+    echo "----------------------------------------"
+    printf 'bridge-eval: %d passed, %d failed, %d skipped\n' "$PASS" "$FAIL" "$SKIP"
+    exit 0
+fi
+
 # Send multiple JSON-RPC messages (one per arg) to bridge via temp file; return stdout.
 _batch() {
     local tmpfile
@@ -287,6 +297,47 @@ fi
     ec=$(jq -r '.error_code // "MISSING"' <<< "$c" 2>/dev/null || echo "MISSING")
     _assert BE-13 "RT-109: uppercase/non-hex nonce → format-rejected" "$ec" "INVALID_ACKNOWLEDGMENT_TOKEN"
 }
+
+# ── BE-14: approval nonce is bound to exact schema pair ───────────────────
+if (( BASH_VERSINFO[0] >= 4 )); then
+    be14_result="fail:unknown"
+
+    coproc FORGE3 { bash "$BRIDGE" 2>/dev/null; }
+
+    printf '%s\n' "$INIT_MSG" >&"${FORGE3[1]}"
+    IFS= read -r -t 5 _ir14 <&"${FORGE3[0]}" 2>/dev/null || true
+    printf '%s\n' "$NOTIF_MSG" >&"${FORGE3[1]}"
+
+    printf '%s\n' "$(_analyze_msg 2 "$FROM_CRIT" "$TO_CRIT")" >&"${FORGE3[1]}"
+    IFS= read -r -t 10 _r14a <&"${FORGE3[0]}" 2>/dev/null || true
+    _n14=$(jq -r '.result.content[0].text | fromjson | .approval_nonce // ""' \
+        <<< "${_r14a:-{}}" 2>/dev/null) || _n14=""
+
+    if [[ -n "$_n14" ]]; then
+        _alt_to=$'TABLE audit\nCOLUMN id serial NOT_NULL'
+        _e14=$(jq -cn --arg h "$_n14" '{"human_acknowledgment_token":$h}')
+        printf '%s\n' "$(_analyze_msg 3 "$FROM_CRIT" "$_alt_to" "$_e14")" >&"${FORGE3[1]}"
+        IFS= read -r -t 10 _r14b <&"${FORGE3[0]}" 2>/dev/null || true
+        _ec14=$(jq -r '.result.content[0].text | fromjson | .error_code // "MISSING"' \
+            <<< "${_r14b:-{}}" 2>/dev/null) || _ec14="MISSING"
+        [[ "$_ec14" == "INVALID_ACKNOWLEDGMENT_TOKEN" ]] \
+            && be14_result="pass" \
+            || be14_result="fail:mismatched schema got error_code=${_ec14}"
+    else
+        be14_result="fail:no nonce"
+    fi
+
+    kill "$FORGE3_PID" 2>/dev/null || true
+    wait "$FORGE3_PID" 2>/dev/null || true
+
+    if [[ "$be14_result" == "pass" ]]; then
+        _assert BE-14 "nonce cannot be redeemed for different schemas" "yes" "yes"
+    else
+        _assert BE-14 "nonce cannot be redeemed for different schemas" "$be14_result" "pass"
+    fi
+else
+    _skip BE-14 "nonce schema binding" "requires bash 4+ for coproc"
+fi
 
 echo ""
 printf 'bridge-eval: %d passed, %d failed, %d skipped\n' "$PASS" "$FAIL" "$SKIP"

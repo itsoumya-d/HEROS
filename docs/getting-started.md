@@ -1,12 +1,12 @@
 # Getting Started with HEROS
 
-Get forge and ledger running in Claude Code in under 5 minutes.
+Get forge and ledger running in an MCP-compatible client in under 5 minutes.
 
 ---
 
 ## Prerequisites
 
-- Claude Code (or any MCP-compatible client)
+- Any MCP-compatible client
 - Linux x86-64 (for binaries) OR Docker
 - `jq >= 1.6` in PATH
 - `bash >= 4.0`
@@ -55,7 +55,7 @@ curl -L https://raw.githubusercontent.com/soumyadebnath/heros/main/ledger/mcp-ma
 
 ---
 
-## Step 3: Add to Claude Code
+## Step 3: Add To An MCP Client
 
 Edit `~/.claude/settings.json` (create if it doesn't exist):
 
@@ -89,13 +89,13 @@ Edit `~/.claude/settings.json` (create if it doesn't exist):
 mkdir -p ~/heros/data
 ```
 
-Restart Claude Code. Both tools should appear in the MCP tools list.
+Restart your MCP client. Both tools should appear in the MCP tools list.
 
 ---
 
 ## Step 4: Test forge
 
-In Claude Code, ask:
+In your MCP client, ask:
 
 > Analyze this schema migration for risk: adding a NOT NULL column `status` to the `users` table.
 
@@ -127,19 +127,12 @@ Expected output:
 
 ## Step 5: Test ledger
 
-```bash
-# Register your org (idempotent — safe to run every startup)
-./ledger register --org-name "MyOrg"
+The Zero ledger binary is pure compute and does not own disk state. For agent-facing stateful operations, use the MCP bridge tools; the bridge supplies entropy/timestamps, persists org and invoice state, and implements list/count.
 
-# Create an invoice
-./ledger invoice create \
-  --to "Vendor Inc" \
-  --amount "1000.00" \
-  --currency USD \
-  --idempotency-key "$(uuidgen)"
-
-# List all invoices
-./ledger invoice list
+```json
+{"tool":"ledger_register","arguments":{"org_name":"MyOrg"}}
+{"tool":"ledger_invoice_create","arguments":{"to":"Vendor Inc","amount":1000.00,"currency":"USD","idempotency_key":"uuid-v4-here"}}
+{"tool":"ledger_invoice_list","arguments":{"limit":100,"offset":0}}
 ```
 
 ---
@@ -183,8 +176,8 @@ VOLUME ["/data"]
 | `HEROS_HMAC_SEED` | Both | HMAC seed for key verification (min 32 chars). Generate: `openssl rand -hex 32` | Required when `HEROS_API_KEY` set |
 | `FORGE_BIN` | forge | Path to forge binary | `forge` (must be in PATH) |
 | `LEDGER_BIN` | ledger | Path to ledger binary | `ledger` (must be in PATH) |
-| `HEROS_FORGE_ANALYZE_RATE` | forge | Rate limit for forge_analyze (calls/hour) | 3600 |
-| `HEROS_FORGE_ANALYZE_BURST` | forge | Burst capacity for forge_analyze | 20 |
+| `FORGE_RATE_ANALYZE_IP` | forge | Per-session IP bucket for forge_analyze (calls/hour) | 200 |
+| `FORGE_RATE_ANALYZE_ORG` | forge | Per-session org bucket for forge_analyze when auth is enabled (calls/hour) | 500 |
 
 ---
 
@@ -197,7 +190,7 @@ VOLUME ["/data"]
 → Disk I/O error. Check `HEROS_DATA_DIR` is writable.
 
 **`NO_ORG_REGISTERED`**  
-→ Call `ledger register --org-name "YourOrg"` first.
+→ Run `ledger_register` first.
 
 **`python3 not found`**  
 → Only needed when `HEROS_API_KEY` is set. Unset `HEROS_API_KEY` for anonymous mode, or install python3.

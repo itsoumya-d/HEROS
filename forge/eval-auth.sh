@@ -95,8 +95,13 @@ else
 fi
 
 # ── FA-06: revoked key → API_KEY_REVOKED ────────────────────────────────────
-sed -i "s/^${FA01_KEY_ID} .*/$(awk -v kid="$FA01_KEY_ID" '$1==kid{$6=1;print}' \
-    "${TMP}/.heros-keys")/" "${TMP}/.heros-keys" 2>/dev/null || true
+# Use awk+mv instead of sed -i so the eval works on both GNU and BSD/macOS sed.
+FA06_KEYS_TMP=$(mktemp)
+awk -v kid="$FA01_KEY_ID" '
+    $1 == kid && !done { $6 = 1; done = 1 }
+    { print }
+' "${TMP}/.heros-keys" > "$FA06_KEYS_TMP"
+mv "$FA06_KEYS_TMP" "${TMP}/.heros-keys"
 FA06_RC=0
 _validate_api_key "$FA01_KEY" "ro" >/dev/null 2>&1 || FA06_RC=$?
 if [[ $FA06_RC -eq 2 ]]; then

@@ -9,7 +9,8 @@
 # │ only exposes world.out/world.err for I/O. Stdin reading requires a      │
 # │ future Zero release (V34 gap). This bridge fills that gap today.        │
 # │                                                                          │
-# │ Requires: jq ≥ 1.6, ledger binary in PATH or alongside this script     │
+# │ Requires: bash 4.0+, jq ≥ 1.6, ledger binary in PATH or alongside      │
+# │ this script                                                            │
 # │ Security: docs/threat-model.md V34, V35, RT-33, RT-34, RT-35           │
 # └──────────────────────────────────────────────────────────────────────────┘
 
@@ -27,6 +28,13 @@ trap 'exit 0' TERM INT PIPE
 
 readonly MCP_PROTOCOL="2025-11-25"
 readonly MAX_MSG=1048576  # 1 MiB — per mcp-security-spec.md §5.1
+
+# Associative arrays used for rate limits require bash 4+.
+if (( BASH_VERSINFO[0] < 4 )); then
+    printf '{"jsonrpc":"2.0","id":null,"error":{"code":-32603,"message":"bash 4.0+ required for HEROS ledger MCP bridge. Install bash 4+ or run on Linux."}}\n'
+    printf '[ledger-error] bash 4.0+ required for MCP bridge (found %s)\n' "${BASH_VERSION:-unknown}" >&2
+    exit 1
+fi
 
 # ── Locate ledger binary ───────────────────────────────────────────────────
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

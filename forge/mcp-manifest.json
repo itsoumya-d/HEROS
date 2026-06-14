@@ -9,7 +9,7 @@
   "invocation": {
     "command": "forge/mcp-bridge.sh",
     "args": [],
-    "requires": ["jq >= 1.6", "forge binary in PATH or forge/ directory"],
+    "requires": ["bash 4.0+", "jq >= 1.6", "forge binary in PATH or forge/ directory"],
     "bridge_note": "Zero v0.1.x lacks world.in (stdin reading). mcp-bridge.sh manages the JSON-RPC session; forge binary handles schema analysis. When Zero adds stdin support (V34), this bridge will be replaced by a native Zero MCP server."
   },
   "capabilities": {
@@ -28,7 +28,7 @@
     {
       "name": "forge_analyze",
       "title": "Analyze Schema Migration",
-      "description": "Analyze migration risk between two database schemas. Returns structured JSON with risk tier (SAFE/NOTABLE/MEDIUM/HIGH/CRITICAL), per-operation risk scores, data loss flags, estimated lock times, and agent guidance. Always run this before executing a migration. Not a migration executor — read-only analysis only, makes no schema changes. Not for non-PostgreSQL schemas or input not in TABLE/COLUMN format.",
+      "description": "Analyze migration risk between two database schemas. Returns structured JSON with risk tier (SAFE/NOTABLE/MEDIUM/HIGH/CRITICAL), per-operation risk scores, data loss flags, estimated lock times, and agent guidance. Intended as a pre-execution safety check before a separate migration tool applies changes. Read-only analysis only; makes no schema changes. Scope: PostgreSQL-style schemas in TABLE/COLUMN format.",
       "annotations": {
         "readOnly": true,
         "destructive": false,
@@ -142,7 +142,7 @@
   "security": {
     "untrusted_input_fields": ["from_schema", "to_schema"],
     "content_policy": "Tool descriptions audited against mcp-security-spec.md §4.3. No instruction-format language. ≤ 512 chars.",
-    "description_char_count": 347
+    "description_char_count": 411
   },
   "agent_quickstart": [
     "1. Run `forge --describe` to get the full schema of commands and formats.",

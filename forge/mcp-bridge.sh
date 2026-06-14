@@ -7,7 +7,8 @@
 # │                                                                          │
 # │ Why a bridge? Zero v0.1.x lacks world.in (stdin reading). V34 gap.     │
 # │                                                                          │
-# │ Requires: jq ≥ 1.6, forge binary in PATH or alongside this script      │
+# │ Requires: bash 4.0+, jq ≥ 1.6, forge binary in PATH or alongside       │
+# │ this script                                                            │
 # │ Security: docs/threat-model.md V34, V35, RT-33, RT-34, RT-35           │
 # └──────────────────────────────────────────────────────────────────────────┘
 
@@ -27,6 +28,13 @@ trap 'exit 0' TERM INT PIPE
 
 readonly MCP_PROTOCOL="2025-11-25"
 readonly MAX_MSG=1048576  # 1 MiB — mcp-security-spec.md §5.1
+
+# Associative arrays used for rate limits and approval nonces require bash 4+.
+if (( BASH_VERSINFO[0] < 4 )); then
+    printf '{"jsonrpc":"2.0","id":null,"error":{"code":-32603,"message":"bash 4.0+ required for HEROS forge MCP bridge. Install bash 4+ or run on Linux."}}\n'
+    printf '[forge-error] bash 4.0+ required for MCP bridge (found %s)\n' "${BASH_VERSION:-unknown}" >&2
+    exit 1
+fi
 
 # ── Locate forge binary ────────────────────────────────────────────────────
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -271,8 +279,8 @@ INITIALIZED=false
 INIT_REQUESTED=false
 
 # ── V39: decision_required approval nonces ───────────────────────────────
-# Stores pending approvals: nonce → expires_at (SECONDS + 300 TTL).
-# Single-use: cleared on first valid redemption. Prevents replay.
+# Stores pending approvals: nonce → from_hash:to_hash:expires_at (SECONDS + 300 TTL).
+# Single-use: cleared on valid redemption or schema mismatch. Prevents replay.
 declare -A _PENDING_APPROVALS
 
 # Generate a 16-hex-char nonce (64 bits) from /dev/urandom.
@@ -288,6 +296,23 @@ _generate_nonce() {
     else
         return 1
     fi
+}
+
+# Return the first 16 hex chars of SHA-256(schema). Used to bind approval nonces
+# to the exact schema pair that produced the decision_required result.
+_schema_hash() {
+    local value="$1" digest
+    if command -v sha256sum >/dev/null 2>&1; then
+        digest=$(printf '%s' "$value" | sha256sum 2>/dev/null | awk '{print $1}') || return 1
+    elif command -v shasum >/dev/null 2>&1; then
+        digest=$(printf '%s' "$value" | shasum -a 256 2>/dev/null | awk '{print $1}') || return 1
+    elif command -v openssl >/dev/null 2>&1; then
+        digest=$(printf '%s' "$value" | openssl dgst -sha256 -r 2>/dev/null | awk '{print $1}') || return 1
+    else
+        return 1
+    fi
+    [[ "$digest" =~ ^[0-9a-fA-F]{64}$ ]] || return 1
+    printf '%s' "${digest:0:16}" | tr 'A-F' 'a-f'
 }
 
 # ── JSON-RPC response builders ────────────────────────────────────────────
@@ -594,7 +619,9 @@ handle_message() {
                 local hat=""
                 hat=$(jq -re '.human_acknowledgment_token // empty' <<< "$tool_args" 2>/dev/null) || true
 
-                if [[ -n "$hat" ]]; then
+                if jq -e 'type == "object" and has("error_code")' >/dev/null 2>&1 <<< "$forge_out"; then
+                    :
+                elif [[ -n "$hat" ]]; then
                     # Agent provided a token — verify it.
                     # RT-109: validate format before using as associative array key.
                     # hat="@" or hat="*" would expand to special bash array subscripts,
@@ -606,31 +633,53 @@ handle_message() {
                         # Token not found (never issued or already used)
                         forge_out='{"error_code":"INVALID_ACKNOWLEDGMENT_TOKEN","retryable":true,"error":"Token not recognized or already used. Re-run forge_analyze (no token) to obtain a fresh approval_nonce."}'
                     else
-                        local hat_expires="${_PENDING_APPROVALS[$hat]}"
-                        if (( SECONDS > hat_expires )); then
+                        local pending_from_hash pending_to_hash hat_expires
+                        IFS=: read -r pending_from_hash pending_to_hash hat_expires <<< "${_PENDING_APPROVALS[$hat]}"
+                        if [[ ! "$pending_from_hash" =~ ^[0-9a-f]{16}$ || \
+                              ! "$pending_to_hash" =~ ^[0-9a-f]{16}$ || \
+                              ! "$hat_expires" =~ ^[0-9]+$ ]]; then
+                            unset "_PENDING_APPROVALS[$hat]"
+                            forge_out='{"error_code":"INVALID_ACKNOWLEDGMENT_TOKEN","retryable":true,"error":"Approval token state was invalid. Re-run forge_analyze (no token) to obtain a fresh approval_nonce."}'
+                        elif (( SECONDS > hat_expires )); then
                             # Token expired — remove and reject
                             unset "_PENDING_APPROVALS[$hat]"
                             forge_out='{"error_code":"INVALID_ACKNOWLEDGMENT_TOKEN","retryable":true,"error":"Approval token expired (5-min TTL). Re-run forge_analyze (no token) to obtain a fresh approval_nonce."}'
                         else
-                            # Valid token — single-use: consume it, inject proceed_ok
-                            unset "_PENDING_APPROVALS[$hat]"
-                            forge_out=$(jq -c '. + {"proceed_ok":true,"decision_required":false}' \
-                                <<< "$forge_out" 2>/dev/null || printf '%s\n' "$forge_out")
+                            local current_from_schema current_to_schema current_from_hash current_to_hash
+                            current_from_schema=$(jq -re '.from_schema' <<< "$tool_args" 2>/dev/null) || current_from_schema=""
+                            current_to_schema=$(jq -re '.to_schema' <<< "$tool_args" 2>/dev/null) || current_to_schema=""
+                            if ! current_from_hash=$(_schema_hash "$current_from_schema") || \
+                               ! current_to_hash=$(_schema_hash "$current_to_schema"); then
+                                forge_out='{"error_code":"EXEC_FAILED","retryable":true,"error":"Bridge: schema hashing failed. Cannot verify approval token binding."}'
+                            elif [[ "$current_from_hash" != "$pending_from_hash" || "$current_to_hash" != "$pending_to_hash" ]]; then
+                                unset "_PENDING_APPROVALS[$hat]"
+                                forge_out='{"error_code":"INVALID_ACKNOWLEDGMENT_TOKEN","retryable":true,"error":"Token does not match this schema pair. Re-run forge_analyze (no token) for this migration."}'
+                            else
+                                # Valid token — single-use: consume it, inject proceed_ok
+                                unset "_PENDING_APPROVALS[$hat]"
+                                forge_out=$(jq -c '. + {"proceed_ok":true,"decision_required":false}' \
+                                    <<< "$forge_out" 2>/dev/null || printf '%s\n' "$forge_out")
+                            fi
                         fi
                     fi
                 elif jq -e '.decision_required == true' >/dev/null 2>&1 <<< "$forge_out"; then
                     # No token but decision_required: true — issue nonce
                     # RT-106: guard against empty nonce if no hex tool is available.
-                    local nonce expires_at
+                    local nonce expires_at from_schema_hash to_schema_hash issue_from_schema issue_to_schema
                     nonce=$(_generate_nonce 2>/dev/null) || nonce=""
                     # RT-399: validate exact 16-hex-char format — empty-check alone misses partial
                     # dd reads (< 8 bytes from /dev/urandom) which produce short nonces that pass
                     # the empty check but later fail the redemption format check, causing deadlock.
                     if [[ ! "$nonce" =~ ^[0-9a-f]{16}$ ]]; then
                         forge_out='{"error_code":"EXEC_FAILED","retryable":true,"error":"Bridge: nonce generation failed or produced invalid output. Cannot gate decision_required migration."}'
+                    elif ! issue_from_schema=$(jq -re '.from_schema' <<< "$tool_args" 2>/dev/null) || \
+                         ! issue_to_schema=$(jq -re '.to_schema' <<< "$tool_args" 2>/dev/null) || \
+                         ! from_schema_hash=$(_schema_hash "$issue_from_schema") || \
+                         ! to_schema_hash=$(_schema_hash "$issue_to_schema"); then
+                        forge_out='{"error_code":"EXEC_FAILED","retryable":true,"error":"Bridge: schema hashing failed. Cannot bind approval_nonce to migration."}'
                     else
                         expires_at=$(( SECONDS + 300 ))
-                        _PENDING_APPROVALS[$nonce]="$expires_at"
+                        _PENDING_APPROVALS[$nonce]="${from_schema_hash}:${to_schema_hash}:${expires_at}"
                         forge_out=$(jq -c \
                             --arg n "$nonce" \
                             --arg p "Migration has data loss or critical risk. Human sign-off required. Pass this nonce as human_acknowledgment_token after the human principal approves." \

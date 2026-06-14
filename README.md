@@ -1,8 +1,8 @@
 # HEROS — Agent-Native Infrastructure Toolkit
 
-Infrastructure primitives rebuilt for autonomous agents. JSON-only output. Machine-readable errors. Idempotent operations. MCP-native.
+Infrastructure and web-action safety primitives rebuilt for autonomous agents. JSON-only output. Machine-readable errors. Idempotent operations. MCP-native contracts. Explicit website actions with auth, approvals, and receipts.
 
-Built in [Zero lang](https://github.com/vercel-labs/zero) — deterministic latency, static binaries, no runtime dependencies.
+Core CLI primitives are built in [Zero lang](https://github.com/vercel-labs/zero) — deterministic latency, static binaries, no runtime dependencies. The web SDK is dependency-free Node/ESM.
 
 ---
 
@@ -10,12 +10,58 @@ Built in [Zero lang](https://github.com/vercel-labs/zero) — deterministic late
 
 | Tool | What it does | Status |
 |---|---|---|
-| [forge](forge/README.md) | Database schema migration engine — risk-scores schema changes before they run | v0.1.4 |
-| [ledger](ledger/README.md) | Double-entry accounting — create invoices and register orgs with idempotency keys | v0.1.11 |
+| [@heros/agentic](packages/agentic/README.md) | Installable web SDK surface for explicit, authenticated, auditable agent actions | local v0.1.0 |
+| [forge](forge/README.md) | Agent-safe database migration risk gate - risk-scores schema changes before they run | v0.1.4 |
+| [ledger](ledger/README.md) | Agent accounting receipt primitive - register an org and create/list invoices with idempotency keys | v0.1.11 |
 
 ---
 
 ## Quick Start
+
+### @heros/agentic - Make a Website Safely Agentic
+
+The first web SDK surface is an explicit action registry. Developers choose what agents may do, attach schemas and safety policy, then expose a manifest plus an execute endpoint.
+
+```bash
+# Local workspace until npm publish
+npm install file:packages/agentic
+```
+
+```js
+import { createAgenticApp } from "@heros/agentic";
+
+const heros = createAgenticApp({
+  name: "shop",
+  authorize: ({ context }) => context.apiKey === process.env.AGENT_API_KEY
+    ? { principal: "agent:shop" }
+    : false
+});
+
+heros.action({
+  name: "cart.add_item",
+  inputSchema: {
+    type: "object",
+    required: ["sku", "quantity"],
+    additionalProperties: false,
+    properties: {
+      sku: { type: "string", minLength: 3, maxLength: 32, pattern: "^[A-Z0-9-]+$", safeText: true },
+      quantity: { type: "integer", minimum: 1, maximum: 10 }
+    }
+  },
+  authRequired: true,
+  annotations: { idempotent: true },
+  handler: async ({ input }) => ({ added: true, sku: input.sku, quantity: input.quantity })
+});
+
+console.log(heros.manifest());
+```
+
+Run the local proof:
+
+```bash
+node --test packages/agentic/test/*.test.mjs
+node examples/agentic-site/agent-demo.mjs
+```
 
 ### forge — Schema Migration Risk Analysis
 
@@ -40,24 +86,21 @@ Output:
 }
 ```
 
-### ledger — Agent Accounting
+### ledger - Agent Accounting Receipts
 
-```bash
-# Install: download the binary (Linux x86-64)
-curl -L https://github.com/soumyadebnath/heros/releases/latest/download/ledger -o ledger && chmod +x ledger
+For stateful accounting operations, use the MCP bridge. The Zero binary stays pure-compute while the bridge owns disk state, timestamps, entropy, idempotency lookup, auth, and rate limits.
 
-# Register your org (idempotent)
-ledger register --org-name "MyOrg"
-
-# Create an invoice
-ledger invoice create --to "Vendor Inc" --amount "1000.00" --currency USD --idempotency-key "uuid-v4"
+```json
+{"tool":"ledger_register","arguments":{"org_name":"MyOrg"}}
+{"tool":"ledger_invoice_create","arguments":{"to":"Vendor Inc","amount":1000.00,"currency":"USD","idempotency_key":"uuid-v4"}}
+{"tool":"ledger_invoice_list","arguments":{"limit":100,"offset":0}}
 ```
 
 ---
 
 ## MCP Integration
 
-Both tools ship as MCP servers (stdio transport). Add to Claude Code or any MCP-compatible orchestrator:
+Both tools ship as MCP servers (stdio transport). Add to any MCP-compatible orchestrator:
 
 **`~/.claude/settings.json`:**
 ```json
@@ -79,18 +122,21 @@ Both tools ship as MCP servers (stdio transport). Add to Claude Code or any MCP-
 
 Both bridges implement the MCP 2025-11-25 protocol. Run `--describe` on either binary for the full self-describing API schema — no documentation fetch needed.
 
+For the web SDK demo path, see [docs/agentic-web-sdk-demo.md](docs/agentic-web-sdk-demo.md).
+
 ---
 
 ## Design Principles
 
-Every tool in HEROS follows the same contract:
+Every tool and SDK surface in HEROS follows the same contract:
 
 1. **JSON on every code path** — including errors. Agents read one output stream, no stdout/stderr merge.
 2. **Stable error codes** — `MISSING_FLAG`, `INVALID_INPUT`, `ORG_EXISTS`, etc. Agents branch on codes, not text.
 3. **Idempotent writes** — call `register` or `invoice create` on every cold start. Duplicate calls return the existing result.
-4. **Self-describing** — `--describe` emits a complete API contract. Cold LLMs discover the full interface from one invocation.
-5. **Exit 0 always** — errors live in the JSON payload. Agents never need to inspect exit codes.
-6. **No human prompts** — no "press Y to continue", no interactive flows, no TTY assumptions.
+4. **Self-describing** — `--describe` or `manifest()` emits a complete API contract. Cold LLMs discover the full interface from one invocation.
+5. **Human approval gates** — dangerous actions return explicit approval challenges before side effects.
+6. **Receipts** — successful actions emit audit records with input hashes, result hashes, principal, approval state, and idempotency metadata.
+7. **No human prompts** — no "press Y to continue", no interactive flows, no TTY assumptions.
 
 ---
 
@@ -123,6 +169,7 @@ The bridge owns I/O and session state. The binary owns business logic. This sepa
 ## Security
 
 - **No eval** — all shell argument construction uses bash arrays
+- **No-shell-`eval` CI gate** - release checks fail if executable shell scripts introduce `eval`
 - **jq extraction only** — user input never concatenated into shell commands (RT-33)
 - **Argument injection hardened** — binary receives each flag as a separate array element
 - **Idempotency keys** — validated for control chars to prevent idempotency bypass
@@ -136,8 +183,9 @@ The bridge owns I/O and session state. The binary owns business logic. This sepa
 
 | Component | Tests | Security Cycles | Zero Version |
 |---|---|---|---|
-| forge v0.1.4 | 38 eval_log tests; 33 binary cases in CI | 239+ cycles (all P2+ resolved) | v0.1.3 |
-| ledger v0.1.11 | 25 binary cases in CI | 239+ cycles (all P2+ resolved) | v0.1.3 |
+| @heros/agentic local v0.1.0 | 7 Node unit tests plus `examples/agentic-site/agent-demo.mjs` integration proof | Current proof covers schema validation, auth denial, approval token flow, idempotency replay/conflict, and receipts | N/A |
+| forge v0.1.4 | 38 eval_log tests; 33 binary-testable cases covered by release CI when Zero compiler variables are configured | 239+ cycles (all P2+ resolved) | v0.1.3 |
+| ledger v0.1.11 | 25 binary-testable cases plus MCP bridge/auth evals covered by release CI when Zero compiler variables are configured | 239+ cycles (all P2+ resolved) | v0.1.3 |
 
 Binary compilation requires Linux x86-64 (Zero ELF64 backend). Source compiles with the Zero compiler at [zero.vercel.app](https://zero.vercel.app).
 
@@ -147,4 +195,4 @@ Binary compilation requires Linux x86-64 (Zero ELF64 backend). Source compiles w
 
 Soumya Debnath — [soumyadebnath1619@gmail.com](mailto:soumyadebnath1619@gmail.com)
 
-Built for the YC RFS "Software for Agents" category. The premise: every software category needs to be rebuilt for agents as the primary user.
+Built for agent-operated software. The wedge: make websites and high-stakes infrastructure expose safe, explicit action surfaces before autonomous agents reach production systems.

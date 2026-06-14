@@ -48,6 +48,16 @@ _skip() {
     SKIP=$(( SKIP + 1 ))
 }
 
+if (( BASH_VERSINFO[0] < 4 )); then
+    echo "ledger bridge auth eval (V44 — AE-01..AE-08)"
+    echo "bridge:   ${BRIDGE}"
+    echo "----------------------------------------"
+    _skip AE-ALL "ledger bridge auth eval" "requires bash 4+ for bridge associative arrays (got bash ${BASH_VERSION})"
+    echo "----------------------------------------"
+    printf 'Results: %d passed, %d failed, %d skipped\n' "$PASS" "$FAIL" "$SKIP"
+    exit 0
+fi
+
 # ── Test fixture setup ────────────────────────────────────────────────────────
 SEED="eval-only-hmac-seed-not-for-production"
 TEST_DIR=$(mktemp -d)

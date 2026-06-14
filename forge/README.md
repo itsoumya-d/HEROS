@@ -206,13 +206,13 @@ The full implementation is structured across six Zero source files:
 
 ## MCP Integration
 
-Forge ships an MCP manifest (`mcp-manifest.json`) and a bash bridge (`mcp-bridge.sh`) for use as a tool by Claude, Cursor, and any MCP-compatible orchestrator.
+Forge ships an MCP manifest (`mcp-manifest.json`) and a bash bridge (`mcp-bridge.sh`) for use as a tool by any MCP-compatible orchestrator.
 
 **Why a bridge?** Zero v0.1.x has no stdin reading API (`world.in` not yet available). `mcp-bridge.sh` owns the JSON-RPC 2.0 session lifecycle (initialize, tools/list, tools/call, ping) and delegates tool calls to the `forge` binary as a subprocess. The bridge also implements rate limiting and security hardening. When Zero adds stdin support, the bridge will be replaced by a native Zero MCP server.
 
-**Requirements:** `jq >= 1.6`, `forge` binary in PATH or same directory as `mcp-bridge.sh`.
+**Requirements:** `bash >= 4.0`, `jq >= 1.6`, `forge` binary in PATH or same directory as `mcp-bridge.sh`.
 
-**Add to Claude Code (`~/.claude/settings.json`):**
+**Add to an MCP client:**
 ```json
 {
   "mcpServers": {
@@ -368,4 +368,4 @@ forge is designed with the assumption that every caller is untrusted and every o
 
 Soumya Debnath — [soumyadebnath1619@gmail.com](mailto:soumyadebnath1619@gmail.com)
 
-forge v0.1.0 — Built for the YC RFS "Software for Agents" category.
+forge v0.1.0 - built for agent-safe database migration analysis.

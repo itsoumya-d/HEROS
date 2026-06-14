@@ -1,0 +1,15 @@
+{
+  "name": "@heros/agentic",
+  "version": "0.1.0",
+  "description": "Explicit action-registry SDK for safe, authenticated, auditable AI agent actions.",
+  "type": "module",
+  "main": "./src/index.js",
+  "exports": {
+    ".": "./src/index.js"
+  },
+  "files": [
+    "src",
+    "README.md"
+  ],
+  "license": "MIT"
+}

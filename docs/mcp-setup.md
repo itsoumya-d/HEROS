@@ -1,12 +1,12 @@
 # MCP Setup Guide
 
-Configure forge and ledger as MCP servers in your AI agent client. Setup takes under 5 minutes.
+Configure forge and ledger as MCP servers in an MCP-compatible client. Setup takes under 5 minutes.
 
 ---
 
-## Claude Code
+## Generic MCP Client
 
-Edit `~/.claude/settings.json` (or `%APPDATA%\Claude\settings.json` on Windows):
+Add both servers to your client's MCP server configuration:
 
 ```json
 {
@@ -33,7 +33,7 @@ Edit `~/.claude/settings.json` (or `%APPDATA%\Claude\settings.json` on Windows):
 }
 ```
 
-Restart Claude Code. Type `/tools` or ask "what tools do you have?" to verify forge and ledger appear.
+Restart your MCP client and verify that forge and ledger appear in the tool list.
 
 ---
 
