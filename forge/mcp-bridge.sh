@@ -62,6 +62,16 @@ if [[ -n "${HEROS_API_KEY:-}" ]] && ! command -v python3 >/dev/null 2>&1; then
     exit 1
 fi
 
+# V318: fail-closed symlink check — a symlink replacing a security-critical data file
+# redirects writes to an attacker-chosen target. Check at startup before any tool calls.
+for _v318_f in ".heros-keys" ".heros-audit" ".heros-audit-failed"; do
+    if [[ -L "${HEROS_DATA_DIR:-.}/${_v318_f}" ]]; then
+        jq -cn --arg p "${HEROS_DATA_DIR:-.}/${_v318_f}" \
+            '{"jsonrpc":"2.0","id":null,"error":{"code":-32603,"message":("Security: "+$p+" is a symlink — data files must be regular files to prevent write-redirect attacks. Remove the symlink and restart.")}}'
+        exit 1
+    fi
+done
+
 # MED-1 FIX: HMAC auth startup validation — matches ledger bridge RT-463/RT-603 checks.
 # Runs only when auth is enabled (HEROS_API_KEY set).
 if [[ -n "${HEROS_API_KEY:-}" ]]; then
@@ -206,6 +216,10 @@ _validate_api_key() {
        [[ ! "$secret" =~ ^[0-9a-f]{32}$ ]]; then
         return 1
     fi
+
+    # RT-364: require regular file before awk — FIFO/directory/missing file would block or error;
+    # -f follows symlinks, so symlink→FIFO also fails. Absent file returns INVALID_API_KEY directly.
+    [[ ! -f "${HEROS_DATA_DIR}/.heros-keys" ]] && return 1
 
     # RT-135: awk field-exact lookup; RT-134: first match exits (duplicate key_id safe)
     local record
