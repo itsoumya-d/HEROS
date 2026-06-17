@@ -1,0 +1,4 @@
+## 2024-06-10 - Write-Redirect and FIFO Blocking DoS
+**Vulnerability:** Bash scripts without symlink checks (`[[ -L <file> ]]`) are susceptible to write-redirect attacks where a symlink replaces a data file and redirects writes to arbitrary files. Further, passing unchecked files to commands like `awk` without verifying they are regular files (`[[ -f <file> ]]`) allows an attacker to substitute a FIFO pipeline or directory, causing a denial of service (blocking execution).
+**Learning:** Symlinks and irregular files bypass traditional UNIX permission expectations when executed under a privileged or persistent environment. Missing these checks causes critical security failures.
+**Prevention:** Systematically enforce fail-closed symlink checks (`if [[ -L <file> ]]`) on all security-critical data files during application startup. Ensure a file is a regular file (`if [[ ! -f <file> ]]`) before passing it into tools like `awk` or `jq`.
