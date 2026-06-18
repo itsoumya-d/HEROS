@@ -1,0 +1,3 @@
+## 2024-05-28 - [Bash Subshell Parsing Optimization]
+**Learning:** Shell scripts using `jq` to parse message envelopes suffer heavy performance bottlenecks due to frequent process creation (fork/exec). Using `jq -e` individually to validate json structure, types, and extract fields compounds this latency.
+**Action:** Consolidate multiple validation and extraction `jq` calls into a single `jq -r` subshell using the `@sh` operator to output safely-escaped variable assignments, which can then be evaluated natively in `bash` using `eval`. This reduces process-creation overhead from N to 1 per message while fully protecting against shell injection.
