@@ -1,0 +1,3 @@
+## 2024-06-24 - Accessibility improvements for HEROS
+**Learning:** Found that custom buttons, navigation logos, and links didn't have adequate focus styles for keyboard navigation, making the app hard to navigate without a mouse. In addition, `#666` for `--muted` text on dark backgrounds causes readability issues.
+**Action:** Always verify keyboard navigation by adding `:focus-visible` styles with sufficient outline offset. Use at least `#888` for muted text on `#0a0a0a` to satisfy WCAG contrast minimums. Ensure application logos are wrapped in an anchor tag linking to the root path for standard navigation expectations.
