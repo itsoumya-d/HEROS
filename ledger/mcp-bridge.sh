@@ -303,7 +303,9 @@ _validate_api_key() {
 
     # RT-364: require regular file before awk — FIFO/directory/missing file would block or error;
     # -f follows symlinks, so symlink→FIFO also fails. Absent file returns INVALID_API_KEY directly.
-    [[ ! -f "${HEROS_DATA_DIR}/.heros-keys" ]] && return 1
+    if [[ -L "${HEROS_DATA_DIR}/.heros-keys" ]] || [[ ! -f "${HEROS_DATA_DIR}/.heros-keys" ]]; then
+        return 1
+    fi
 
     # RT-135: awk field-exact lookup prevents any substring match and handles duplicates (first wins)
     local record
