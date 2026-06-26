@@ -14,7 +14,7 @@
       --accent: #7c3aed;
       --accent-dim: #4c1d95;
       --text: #e5e5e5;
-      --muted: #666;
+      --muted: #a3a3a3;
       --code-bg: #0d0d0d;
       --safe: #22c55e;
       --critical: #ef4444;
@@ -24,10 +24,13 @@
     body { background: var(--bg); color: var(--text); font-family: 'Menlo','Monaco','Courier New',monospace; font-size: 14px; line-height: 1.6; }
     a { color: var(--accent); text-decoration: none; }
     a:hover { text-decoration: underline; }
+    a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
     /* Nav */
     nav { border-bottom: 1px solid var(--border); padding: 16px 24px; display: flex; align-items: center; justify-content: space-between; }
     .nav-logo { font-size: 18px; font-weight: 700; letter-spacing: -0.5px; }
+    .nav-logo a { color: var(--text); text-decoration: none; display: inline-block; }
+    .nav-logo a:hover { text-decoration: none; }
     .nav-logo span { color: var(--accent); }
     .nav-links { display: flex; gap: 24px; }
     .nav-links a { color: var(--muted); font-size: 13px; }
@@ -40,6 +43,7 @@
     .hero-sub { font-size: 16px; color: var(--muted); max-width: 540px; margin-bottom: 40px; line-height: 1.7; }
     .cta-row { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 64px; }
     .btn { display: inline-block; padding: 10px 20px; border-radius: 6px; font-family: inherit; font-size: 13px; cursor: pointer; border: none; }
+    .btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
     .btn-primary { background: var(--accent); color: #fff; }
     .btn-primary:hover { background: #6d28d9; text-decoration: none; }
     .btn-secondary { background: transparent; border: 1px solid var(--border); color: var(--text); }
@@ -106,7 +110,7 @@
 <body>
 
 <nav>
-  <div class="nav-logo">HEROS<span>.</span></div>
+  <div class="nav-logo"><a href="/">HEROS<span>.</span></a></div>
   <div class="nav-links">
     <a href="https://github.com/soumyadebnath/heros">GitHub</a>
     <a href="docs/getting-started.html">Docs</a>
