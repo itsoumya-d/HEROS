@@ -1,0 +1,3 @@
+## 2024-05-18 - Improve accessibility and keyboard navigation
+**Learning:** In static HTML sites with custom CSS properties, text contrast can easily fall below WCAG guidelines (e.g., `#666` on `#0a0a0a`), and interactive elements may lack keyboard navigation cues if `:focus-visible` is not explicitly defined. Additionally, application logos are often implemented as static `div` elements, breaking standard navigation expectations.
+**Action:** Always verify color contrast ratios using WCAG standards, wrap application logos in anchor tags linking to the root path (with appropriate styling to prevent default link behaviors), and implement `:focus-visible` pseudo-class styles for all interactive elements to ensure keyboard accessibility.
