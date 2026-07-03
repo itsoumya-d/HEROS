@@ -1,0 +1,3 @@
+## 2024-07-03 - Optimize Repeated jq Calls in Bash MCP Bridge
+**Learning:** In heavily used Bash scripts (like the MCP bridges handling JSON-RPC message loops), executing multiple sequential `jq` commands to validate and extract properties from the same JSON object incurs significant process spawning overhead, causing a severe performance bottleneck.
+**Action:** Combine multiple validations and property extractions into a single `jq` invocation using the `@sh` filter to output an array string. Then use `eval "arr=($parsed)"` to deserialize it directly into a Bash array. This technique eliminates all but one subprocess call, massively boosting request handling throughput while safely handling special characters.
