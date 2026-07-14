@@ -1,0 +1,18 @@
+{
+  "servers": {
+    "heros-forge": {
+      "type": "stdio",
+      "command": "${workspaceFolder}/forge/mcp-bridge.sh",
+      "env": {
+        "HEROS_DATA_DIR": "${workspaceFolder}/.heros-data"
+      }
+    },
+    "heros-ledger": {
+      "type": "stdio",
+      "command": "${workspaceFolder}/ledger/mcp-bridge.sh",
+      "env": {
+        "HEROS_DATA_DIR": "${workspaceFolder}/.heros-data"
+      }
+    }
+  }
+}
