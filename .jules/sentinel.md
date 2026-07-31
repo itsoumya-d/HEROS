@@ -1,0 +1,5 @@
+## $(date +%Y-%m-%d) - Missing Failed-Auth Audit Logging
+
+**Vulnerability:** When API key validation failed (INVALID_API_KEY, API_KEY_REVOKED, INSUFFICIENT_SCOPE), the bridge scripts (`ledger/mcp-bridge.sh` and `forge/mcp-bridge.sh`) did not log the failure event, creating a blind spot for anomaly detection and brute-force attempts. This was documented as V50 in `docs/threat-model.md`.
+**Learning:** Auth rejection paths must always be logged to ensure traceability. However, logging the full raw `key_id` could act as an oracle. Extracting just the first 8 characters of the `key_id` strikes the right balance between observability and security. Additionally, writing to local append-only files requires concurrency safety (`flock`) and size bounding (log rotation) to prevent disk exhaustion attacks.
+**Prevention:** Implement `_audit_fail` mechanisms on all authentication boundaries. Ensure such logs only record partial identifiers (like the first 8 chars of a key). Use atomic locks (`flock`) when performing in-place file truncation or rotation.
