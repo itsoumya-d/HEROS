@@ -1,0 +1,4 @@
+## 2025-10-18 - Fix FIFO blocking DoS and Write-redirect attacks
+**Vulnerability:** `awk` could block indefinitely if `.heros-keys` is replaced by a FIFO pipe, causing a denial of service. Additionally, security-critical data files could be replaced by symlinks to direct writes to arbitrary attacker-chosen locations.
+**Learning:** Utilities that read from files sequentially (like `awk` or `cat`) can hang if the target file is a FIFO/named pipe. If a process does not check for symlinks, an attacker with directory write access can replace critical files with symlinks.
+**Prevention:** Always enforce fail-closed symlink checks (`if [[ -L <file> ]]`) for critical files at startup, and check that a file is a regular file (`if [[ ! -f <file> ]]`) before passing it to utilities like `awk` or `cat`.
