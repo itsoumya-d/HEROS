@@ -460,9 +460,11 @@ handle_message() {
         return
     fi
 
-    local id method
-    id=$(jq -c '.id // null' <<< "$line")
-    method=$(jq -r '.method // ""' <<< "$line")
+    local id method _parsed_im _arr_im
+    _parsed_im=$(jq -r 'try [ (.id // null | tojson), (.method // "") ] catch ["null", ""] | @sh' <<< "$line")
+    eval "_arr_im=(${_parsed_im})"
+    id="${_arr_im[0]}"
+    method="${_arr_im[1]}"
 
     # RT-431: guard oversized id values — jq's --argjson passes id as an execve argv string;
     # Linux MAX_ARG_STRLEN = 131072 bytes; a >4KB id cannot be a legitimate MCP id (UUIDs are
@@ -524,9 +526,11 @@ handle_message() {
                 rpc_err "$id" -32002 "Server not initialized — send initialize first"
                 return
             fi
-            local tool_name tool_args forge_out first_line is_error content_json
-            tool_name=$(jq -r '.params.name // ""' <<< "$line")
-            tool_args=$(jq -c '.params.arguments // {}' <<< "$line")
+            local tool_name tool_args forge_out first_line is_error content_json _parsed_tool _arr_tool
+            _parsed_tool=$(jq -r 'try [ (.params.name // ""), (.params.arguments // {} | tojson) ] catch ["", "{}"] | @sh' <<< "$line")
+            eval "_arr_tool=(${_parsed_tool})"
+            tool_name="${_arr_tool[0]}"
+            tool_args="${_arr_tool[1]}"
 
             if [[ -z "$tool_name" ]]; then
                 rpc_err "$id" -32602 "Invalid params: missing tool name in params.name"
