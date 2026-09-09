@@ -1,5 +1,10 @@
 # HEROS — Agent-Native Infrastructure Toolkit
 
+[![CI](https://github.com/itsoumya-d/HEROS/actions/workflows/ci.yml/badge.svg)](https://github.com/itsoumya-d/HEROS/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE)
+[![MCP Native](https://img.shields.io/badge/MCP-native-8A2BE2.svg)](https://modelcontextprotocol.io)
+[![Zero Runtime](https://img.shields.io/badge/Zero--lang-deterministic-black.svg)](https://github.com/vercel-labs/zero)
+
 Infrastructure and web-action safety primitives rebuilt for autonomous agents. JSON-only output. Machine-readable errors. Idempotent operations. MCP-native contracts. Explicit website actions with auth, approvals, and receipts.
 
 Core CLI primitives are built in [Zero lang](https://github.com/vercel-labs/zero) — deterministic latency, static binaries, no runtime dependencies. The web SDK is dependency-free Node/ESM.
