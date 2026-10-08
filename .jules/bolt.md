@@ -1,0 +1,3 @@
+## 2024-06-11 - Combine jq invocations with @sh format
+**Learning:** Shell scripts using multiple sequential `jq` calls to parse JSON strings suffer extreme performance overhead from repeated subprocess spawns. In the `mcp-bridge.sh` scripts, dispatch loops doing up to 6 `jq` checks per line were identified as a bottleneck.
+**Action:** Combine operations into a single `jq` call using the `@sh` filter to output shell-safe escaped assignments. Deserialize this safely in Bash via `eval "arr=($parsed)"` or directly running the `eval "$parsed"` block. This minimizes subprocess overhead. Explicitly ensure fields evaluated via `@sh` map predictably, avoiding arrays/objects, or checking types with `if type == "object"` first.
