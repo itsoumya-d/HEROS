@@ -14,7 +14,7 @@
       --accent: #7c3aed;
       --accent-dim: #4c1d95;
       --text: #e5e5e5;
-      --muted: #666;
+      --muted: #a3a3a3;
       --code-bg: #0d0d0d;
       --safe: #22c55e;
       --critical: #ef4444;
@@ -24,10 +24,12 @@
     body { background: var(--bg); color: var(--text); font-family: 'Menlo','Monaco','Courier New',monospace; font-size: 14px; line-height: 1.6; }
     a { color: var(--accent); text-decoration: none; }
     a:hover { text-decoration: underline; }
+    a:focus-visible, button:focus-visible, .btn:focus-visible, input:focus-visible, textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
     /* Nav */
     nav { border-bottom: 1px solid var(--border); padding: 16px 24px; display: flex; align-items: center; justify-content: space-between; }
-    .nav-logo { font-size: 18px; font-weight: 700; letter-spacing: -0.5px; }
+    .nav-logo { font-size: 18px; font-weight: 700; letter-spacing: -0.5px; color: inherit; text-decoration: none; }
+    .nav-logo:hover { text-decoration: none; }
     .nav-logo span { color: var(--accent); }
     .nav-links { display: flex; gap: 24px; }
     .nav-links a { color: var(--muted); font-size: 13px; }
@@ -106,7 +108,7 @@
 <body>
 
 <nav>
-  <div class="nav-logo">HEROS<span>.</span></div>
+  <a href="/" class="nav-logo">HEROS<span>.</span></a>
   <div class="nav-links">
     <a href="https://github.com/soumyadebnath/heros">GitHub</a>
     <a href="docs/getting-started.html">Docs</a>
