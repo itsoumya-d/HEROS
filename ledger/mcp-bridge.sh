@@ -827,9 +827,15 @@ handle_message() {
     fi
 
     # Extract id as raw JSON (preserves type: null, number, string)
-    local id method
-    id=$(jq -c '.id // null' <<< "$line")
-    method=$(jq -r '.method // ""' <<< "$line")
+    local id method _parsed_header _header_arr
+    _parsed_header=$(jq -r '[
+        (.id // null | tojson | @sh),
+        (if (.method | type) == "string" then .method else "" end | @sh)
+    ] | join(" ")' <<< "$line")
+    eval "_header_arr=($_parsed_header)"
+    id="${_header_arr[0]}"
+    method="${_header_arr[1]}"
+    # ⚡ Bolt: Combined jq calls for header extraction to eliminate subprocess overhead
 
     # RT-389: guard oversized id values — jq's --argjson passes id as an execve argv string;
     # Linux MAX_ARG_STRLEN = 131072 bytes; a >4KB id cannot be a legitimate MCP id (UUIDs are
@@ -958,9 +964,15 @@ handle_message() {
                 rpc_err "$id" -32602 "Invalid params: params.name must be a string"
                 return
             fi
-            local tool_name tool_args ledger_out content_json
-            tool_name=$(jq -r '.params.name // ""' <<< "$line")
-            tool_args=$(jq -c '.params.arguments // {}' <<< "$line")
+            local tool_name tool_args ledger_out content_json _parsed_params _params_arr
+            _parsed_params=$(jq -r '[
+                (.params.name // "" | if type == "string" then . else "" end | @sh),
+                (.params.arguments // {} | if type == "object" then . else {} end | tojson | @sh)
+            ] | join(" ")' <<< "$line")
+            eval "_params_arr=($_parsed_params)"
+            tool_name="${_params_arr[0]}"
+            tool_args="${_params_arr[1]}"
+            # ⚡ Bolt: Combined jq calls for param extraction to eliminate subprocess overhead
 
             if [[ -z "$tool_name" ]]; then
                 rpc_err "$id" -32602 "Invalid params: missing tool name in params.name"
