@@ -91,6 +91,14 @@ KEYS_FILE="${HEROS_DATA_DIR}/.heros-keys"
 
 # ── Write to .heros-keys ─────────────────────────────────────────────────────
 # Format: key_id scope org_id hmac_hash created_epoch revoked
+
+if [[ -e "$KEYS_FILE" || -L "$KEYS_FILE" ]]; then
+    if [[ -L "$KEYS_FILE" ]] || [[ ! -f "$KEYS_FILE" ]]; then
+        printf '{"error_code":"EXEC_FAILED","retryable":false,"error":".heros-keys must be a regular file, not a symlink or FIFO."}\n' >&2
+        exit 1
+    fi
+fi
+
 # Check for key_id collision (RT-135: awk field-exact match — no substring or regex risk)
 if awk -v kid="$KEY_ID" '$1 == kid { found=1; exit } END { exit !found }' \
         "$KEYS_FILE" 2>/dev/null; then
