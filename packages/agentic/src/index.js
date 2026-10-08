@@ -2,6 +2,9 @@ import { createHash, randomBytes } from "node:crypto";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 
+// Optimization: Cache compiled RegExp objects to avoid recompilation on every schema validation
+const PATTERN_CACHE = new Map();
+
 const DEFAULT_PROTOCOL_VERSION = "2025-11-25";
 const ACTION_NAME_RE = /^[A-Za-z0-9_.:-]{1,96}$/;
 const IDEMPOTENCY_KEY_RE = /^[A-Za-z0-9_.:-]{1,160}$/;
@@ -568,8 +571,15 @@ function validateAgainstSchema(schema, value, path, issues) {
     if (schema.safeText === true && !SAFE_TEXT_RE.test(value)) {
       issues.push(`${path} must be printable ASCII with no control characters.`);
     }
-    if (schema.pattern && !new RegExp(schema.pattern).test(value)) {
-      issues.push(`${path} does not match required pattern.`);
+    if (schema.pattern) {
+      let regex = PATTERN_CACHE.get(schema.pattern);
+      if (!regex) {
+        regex = new RegExp(schema.pattern);
+        PATTERN_CACHE.set(schema.pattern, regex);
+      }
+      if (!regex.test(value)) {
+        issues.push(`${path} does not match required pattern.`);
+      }
     }
   }
 
