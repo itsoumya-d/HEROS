@@ -1,0 +1,3 @@
+## 2024-07-06 - Palette: Improve keyboard navigation on index page
+**Learning:** The HEROS landing page lacked focus-visible states on interactive elements and had low contrast for muted text, making keyboard navigation difficult and reading challenging for users with visual impairments.
+**Action:** Always add explicit `:focus-visible` styles to links, buttons, and inputs, and verify that `--muted` text colors meet the WCAG contrast guidelines against dark backgrounds (`#0a0a0a`). Wrapped the text logo in a semantic anchor tag `<a>` linking to `/` so it is easily selectable via keyboard navigation.
