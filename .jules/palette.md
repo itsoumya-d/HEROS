@@ -1,0 +1,3 @@
+## 2025-06-25 - Improve Color Contrast and Keyboard Navigation
+**Learning:** The color `#666` (var(--muted)) on a very dark background (`#0a0a0a` or `#111`) fails WCAG contrast requirements for text, which can make things hard to read for visually impaired users. Also, interactive elements like the nav logo were missing standard semantic HTML tags like `<a>` which prevented keyboard-only users from tabbing onto it, even if focus-visible styles were added.
+**Action:** Always ensure WCAG color contrast is met (especially in dark mode), and guarantee that logos acting as home links are wrapped in anchor tags with valid `href` attributes to enable correct focus states and tab flow.
