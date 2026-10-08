@@ -461,8 +461,16 @@ handle_message() {
     fi
 
     local id method
-    id=$(jq -c '.id // null' <<< "$line")
-    method=$(jq -r '.method // ""' <<< "$line")
+    # ⚡ Bolt Optimization: Combine jq calls and use @sh to deserialize.
+    # Reduces subprocess spawning overhead by ~50% in the hot path.
+    local _parsed_meta
+    _parsed_meta=$(jq -r '[
+        (.id // null | tojson),
+        (if (.method | type) == "string" then .method else "" end)
+    ] | map(@sh) | join(" ")' <<< "$line")
+    eval "local _meta_arr=($_parsed_meta)"
+    id="${_meta_arr[0]}"
+    method="${_meta_arr[1]}"
 
     # RT-431: guard oversized id values — jq's --argjson passes id as an execve argv string;
     # Linux MAX_ARG_STRLEN = 131072 bytes; a >4KB id cannot be a legitimate MCP id (UUIDs are
@@ -525,8 +533,16 @@ handle_message() {
                 return
             fi
             local tool_name tool_args forge_out first_line is_error content_json
-            tool_name=$(jq -r '.params.name // ""' <<< "$line")
-            tool_args=$(jq -c '.params.arguments // {}' <<< "$line")
+            # ⚡ Bolt Optimization: Combine jq calls and use @sh to deserialize.
+            # Reduces subprocess spawning overhead by ~50% in the hot path.
+            local _parsed_params
+            _parsed_params=$(jq -r '[
+                (if (.params.name | type) == "string" then .params.name else "" end),
+                (.params.arguments // {} | tojson)
+            ] | map(@sh) | join(" ")' <<< "$line")
+            eval "local _params_arr=($_parsed_params)"
+            tool_name="${_params_arr[0]}"
+            tool_args="${_params_arr[1]}"
 
             if [[ -z "$tool_name" ]]; then
                 rpc_err "$id" -32602 "Invalid params: missing tool name in params.name"
