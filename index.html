@@ -22,8 +22,22 @@
       --notable: #eab308;
     }
     body { background: var(--bg); color: var(--text); font-family: 'Menlo','Monaco','Courier New',monospace; font-size: 14px; line-height: 1.6; }
-    a { color: var(--accent); text-decoration: none; }
+    a { color: var(--accent); text-decoration: none; transition: all 0.2s ease; }
     a:hover { text-decoration: underline; }
+    a:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; border-radius: 2px; }
+
+    /* Skip link */
+    .skip-link {
+      position: absolute;
+      top: -40px;
+      left: 0;
+      background: var(--accent);
+      color: white;
+      padding: 8px 16px;
+      z-index: 100;
+      transition: top 0.2s ease;
+    }
+    .skip-link:focus { top: 0; outline: none; }
 
     /* Nav */
     nav { border-bottom: 1px solid var(--border); padding: 16px 24px; display: flex; align-items: center; justify-content: space-between; }
@@ -39,7 +53,8 @@
     h1 { font-size: clamp(28px, 5vw, 48px); font-weight: 700; line-height: 1.15; letter-spacing: -1px; margin-bottom: 16px; }
     .hero-sub { font-size: 16px; color: var(--muted); max-width: 540px; margin-bottom: 40px; line-height: 1.7; }
     .cta-row { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 64px; }
-    .btn { display: inline-block; padding: 10px 20px; border-radius: 6px; font-family: inherit; font-size: 13px; cursor: pointer; border: none; }
+    .btn { display: inline-block; padding: 10px 20px; border-radius: 6px; font-family: inherit; font-size: 13px; cursor: pointer; border: none; transition: all 0.2s ease; }
+    .btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }
     .btn-primary { background: var(--accent); color: #fff; }
     .btn-primary:hover { background: #6d28d9; text-decoration: none; }
     .btn-secondary { background: transparent; border: 1px solid var(--border); color: var(--text); }
@@ -105,6 +120,8 @@
 </head>
 <body>
 
+<a href="#main-content" class="skip-link">Skip to main content</a>
+
 <nav>
   <div class="nav-logo">HEROS<span>.</span></div>
   <div class="nav-links">
@@ -115,7 +132,7 @@
   </div>
 </nav>
 
-<main>
+<main id="main-content">
   <div class="hero">
     <div class="hero-badge">MCP-native · Zero lang · OWASP Agentic Top 10 audited</div>
     <h1>Infrastructure rebuilt<br>for AI agents</h1>
