@@ -1,0 +1,265 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "HEROS API",
+    "version": "0.1.0",
+    "description": "OpenAPI wrapper for HEROS forge (schema migration analysis) and ledger (invoice accounting). Derived from forge/mcp-manifest.json and ledger/mcp-manifest.json. Intended for Codex/Copilot @openapi plugin integration."
+  },
+  "paths": {
+    "/forge/analyze": {
+      "post": {
+        "operationId": "forge_analyze",
+        "summary": "Analyze schema migration risk",
+        "description": "Analyze migration risk between two database schemas. Returns structured JSON with risk tier (SAFE/NOTABLE/MEDIUM/HIGH/CRITICAL), per-operation risk scores, data loss flags, estimated lock times, and agent guidance. Always run before executing a migration. Read-only analysis only.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["from_schema", "to_schema"],
+                "additionalProperties": false,
+                "properties": {
+                  "from_schema": {
+                    "type": "string",
+                    "description": "Current schema in Forge Schema Format (TABLE/COLUMN lines separated by newlines).",
+                    "maxLength": 65536
+                  },
+                  "to_schema": {
+                    "type": "string",
+                    "description": "Desired schema in Forge Schema Format.",
+                    "maxLength": 65536
+                  },
+                  "request_id": {
+                    "type": "string",
+                    "description": "Optional idempotency key echoed in response.",
+                    "maxLength": 512
+                  },
+                  "human_acknowledgment_token": {
+                    "type": "string",
+                    "description": "Nonce from a prior approval_nonce response. Required when decision_required is true.",
+                    "maxLength": 64
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Analysis result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "risk_tier": {
+                      "type": "string",
+                      "enum": ["SAFE", "NOTABLE", "MEDIUM", "HIGH", "CRITICAL"]
+                    },
+                    "risk_score": {"type": "number"},
+                    "has_data_loss": {"type": "boolean"},
+                    "decision_required": {"type": "boolean"},
+                    "approval_nonce": {"type": "string"},
+                    "approval_prompt": {"type": "string"},
+                    "proceed_ok": {"type": "boolean"},
+                    "request_id": {"type": "string"},
+                    "operations": {
+                      "type": "array",
+                      "items": {"type": "object"}
+                    },
+                    "_rate_limit": {"type": "object"},
+                    "error_code": {"type": "string"},
+                    "error": {"type": "string"}
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/ledger/register": {
+      "post": {
+        "operationId": "ledger_register",
+        "summary": "Register accounting org",
+        "description": "Register an accounting org. Idempotent — safe to call on every startup. Returns ORG_EXISTS with existing org_id if already registered.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["org_name"],
+                "additionalProperties": false,
+                "properties": {
+                  "org_name": {
+                    "type": "string",
+                    "description": "Human-readable org name. Max 256 bytes.",
+                    "maxLength": 256
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Registration result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "org_id": {"type": "string"},
+                    "org_name": {"type": "string"},
+                    "status": {"type": "string"},
+                    "error_code": {"type": "string"},
+                    "error": {"type": "string"},
+                    "_rate_limit": {"type": "object"}
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/ledger/invoice/create": {
+      "post": {
+        "operationId": "ledger_invoice_create",
+        "summary": "Create invoice",
+        "description": "Create an invoice. Requires a unique idempotency key. Returns existing invoice data on duplicate key.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["to", "amount", "currency", "idempotency_key"],
+                "additionalProperties": false,
+                "properties": {
+                  "to": {
+                    "type": "string",
+                    "description": "Payee or vendor name. Max 256 chars.",
+                    "maxLength": 256
+                  },
+                  "amount": {
+                    "type": "number",
+                    "description": "Invoice amount (positive decimal)."
+                  },
+                  "currency": {
+                    "type": "string",
+                    "description": "ISO 4217 currency code (uppercase, e.g. USD).",
+                    "maxLength": 8
+                  },
+                  "idempotency_key": {
+                    "type": "string",
+                    "description": "Unique key for deduplication. Max 128 chars.",
+                    "maxLength": 128
+                  },
+                  "memo": {
+                    "type": "string",
+                    "description": "Optional memo. Max 512 chars.",
+                    "maxLength": 512
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Created invoice",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "invoice_id": {"type": "string"},
+                    "status": {"type": "string", "enum": ["draft"]},
+                    "to": {"type": "string"},
+                    "amount": {"type": "number"},
+                    "currency": {"type": "string"},
+                    "idempotency_key": {"type": "string"},
+                    "_idempotent": {"type": "boolean"},
+                    "_rate_limit": {"type": "object"},
+                    "error_code": {"type": "string"},
+                    "error": {"type": "string"}
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/ledger/invoice/list": {
+      "get": {
+        "operationId": "ledger_invoice_list",
+        "summary": "List invoices",
+        "description": "List invoices for the registered org with pagination.",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {"type": "integer", "minimum": 1, "maximum": 1000, "default": 100},
+            "description": "Maximum invoices to return."
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "schema": {"type": "integer", "minimum": 0, "default": 0},
+            "description": "Number of invoices to skip."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Invoice list",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "invoices": {"type": "array", "items": {"type": "object"}},
+                    "count": {"type": "integer"},
+                    "total_count": {"type": "integer"},
+                    "has_more": {"type": "boolean"},
+                    "status": {"type": "string"},
+                    "error_code": {"type": "string"},
+                    "error": {"type": "string"}
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/ledger/invoice/count": {
+      "get": {
+        "operationId": "ledger_invoice_count",
+        "summary": "Count invoices",
+        "description": "Return the total count of invoices for the registered org.",
+        "responses": {
+          "200": {
+            "description": "Invoice count",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "count": {"type": "integer"},
+                    "status": {"type": "string"},
+                    "error_code": {"type": "string"},
+                    "error": {"type": "string"}
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
