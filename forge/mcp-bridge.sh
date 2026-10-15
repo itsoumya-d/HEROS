@@ -195,6 +195,24 @@ _rl_inject_field() {
 # HEROS_DATA_DIR: directory containing .heros-keys and .heros-audit.
 HEROS_DATA_DIR="${HEROS_DATA_DIR:-.}"
 
+# V318: fail-closed symlink check — a symlink replacing a security-critical data file
+# redirects writes to an attacker-chosen target. Check at startup before any tool calls.
+# .heros-audit: warn (operators may legitimately symlink audit to a centralized log).
+# .heros-keys: fatal (redirecting these is always malicious).
+if [[ -L "${HEROS_DATA_DIR}/.heros-keys" ]]; then
+    # V321: use jq --arg to safely embed path (may contain JSON-special chars: \, ", etc).
+    jq -cn --arg p "${HEROS_DATA_DIR}/.heros-keys" \
+        '{"jsonrpc":"2.0","id":null,"error":{"code":-32603,"message":("Security: "+$p+" is a symlink — data files must be regular files to prevent write-redirect attacks. Remove the symlink and restart.")}}'
+    exit 1
+fi
+# RT-648: check audit files (warn-only — operators may legitimately symlink audit to centralized log).
+for _v318_warn in ".heros-audit" ".heros-audit-failed"; do
+    if [[ -L "${HEROS_DATA_DIR}/${_v318_warn}" ]]; then
+        echo "[forge-security] WARNING: ${HEROS_DATA_DIR}/${_v318_warn} is a symlink; audit writes will follow the link. Ensure the target path is trusted and operator-controlled." >&2
+    fi
+done
+unset _v318_warn
+
 _validate_api_key() {
     local key="$1" required_scope="${2:-ro}"
     local prefix scope key_id secret
@@ -206,6 +224,10 @@ _validate_api_key() {
        [[ ! "$secret" =~ ^[0-9a-f]{32}$ ]]; then
         return 1
     fi
+
+    # RT-364: require regular file before awk — FIFO/directory/missing file would block or error;
+    # -f follows symlinks, so symlink→FIFO also fails. Absent file returns INVALID_API_KEY directly.
+    [[ ! -f "${HEROS_DATA_DIR}/.heros-keys" ]] && return 1
 
     # RT-135: awk field-exact lookup; RT-134: first match exits (duplicate key_id safe)
     local record

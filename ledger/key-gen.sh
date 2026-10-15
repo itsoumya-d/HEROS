@@ -91,6 +91,19 @@ KEYS_FILE="${HEROS_DATA_DIR}/.heros-keys"
 
 # ── Write to .heros-keys ─────────────────────────────────────────────────────
 # Format: key_id scope org_id hmac_hash created_epoch revoked
+
+# V318: fail-closed symlink check — prevents symlink redirect attacks
+if [[ -L "$KEYS_FILE" ]]; then
+    printf '{"error_code":"SECURITY_ERROR","retryable":false,"error":"Security: %s is a symlink — data files must be regular files to prevent write-redirect attacks. Remove the symlink and try again."}\n' "$KEYS_FILE" >&2
+    exit 1
+fi
+
+# RT-364: require regular file if exists before awk (prevents FIFO blocking DoS)
+if [[ -e "$KEYS_FILE" && ! -f "$KEYS_FILE" ]]; then
+    printf '{"error_code":"SECURITY_ERROR","retryable":false,"error":"Security: %s exists but is not a regular file. Cannot safely append key."}\n' "$KEYS_FILE" >&2
+    exit 1
+fi
+
 # Check for key_id collision (RT-135: awk field-exact match — no substring or regex risk)
 if awk -v kid="$KEY_ID" '$1 == kid { found=1; exit } END { exit !found }' \
         "$KEYS_FILE" 2>/dev/null; then
