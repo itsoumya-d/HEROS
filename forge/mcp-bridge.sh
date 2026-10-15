@@ -207,6 +207,12 @@ _validate_api_key() {
         return 1
     fi
 
+    # RT-364 port: require regular file and block symlinks before awk
+    # TOCTOU defense: symlink check at runtime prevents FIFO blocking DoS
+    if [[ -L "${HEROS_DATA_DIR}/.heros-keys" ]] || [[ ! -f "${HEROS_DATA_DIR}/.heros-keys" ]]; then
+        return 1
+    fi
+
     # RT-135: awk field-exact lookup; RT-134: first match exits (duplicate key_id safe)
     local record
     record=$(awk -v kid="${key_id}" '$1 == kid { print; exit }' \
