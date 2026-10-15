@@ -622,9 +622,29 @@ invoke_ledger() {
             ;;
 
         ledger_invoice_create)
-            local to amount currency idem memo
+            # ⚡ Bolt: Optimize JSON extraction by combining into a single jq call to reduce subprocess overhead.
+            # Using @sh on each item ensures bash arrays can safely parse elements securely via eval.
+            local _parsed_args
+            _parsed_args=$(jq -r '
+                [
+                    (if (.to | type) == "string" then "1", (.to) else "0", "" end),
+                    (if (.amount | type) == "number" then "1", (.amount | tostring) else "0", "" end),
+                    (if (.currency | type) == "string" then "1", (.currency) else "0", "" end),
+                    (if (.idempotency_key | type) == "string" then "1", (.idempotency_key) else "0", "" end),
+                    (if (.memo | type) == "string" then "1", (.memo) else "0", "" end)
+                ] | map(@sh) | join(" ")
+            ' <<< "$args_json" 2>/dev/null) || _parsed_args=""
+
+            eval "local _arg_arr=($_parsed_args)"
+
+            local _st_to="${_arg_arr[0]:-}" to="${_arg_arr[1]:-}"
+            local _st_amount="${_arg_arr[2]:-}" amount="${_arg_arr[3]:-}"
+            local _st_currency="${_arg_arr[4]:-}" currency="${_arg_arr[5]:-}"
+            local _st_idem="${_arg_arr[6]:-}" idem="${_arg_arr[7]:-}"
+            local _st_memo="${_arg_arr[8]:-}" memo="${_arg_arr[9]:-}"
+
             # RT-452: type guard on all string-only fields.
-            if ! to=$(jq -re '.to | if type == "string" then . else error end' <<< "$args_json" 2>/dev/null); then
+            if [[ "$_st_to" != "1" ]]; then
                 echo '{"error_code":"MISSING_FLAG","flag":"to","retryable":true,"error":"to is required and must be a string"}'; return
             fi
             # V261: length caps prevent CLI E2BIG and invoice store bloat.
@@ -632,16 +652,16 @@ invoke_ledger() {
                 echo '{"error_code":"INVALID_PARAM","flag":"to","retryable":false,"error":"to exceeds 256 characters"}'; return
             fi
             # RT-547: require JSON number type — string "true"/arrays/objects must not reach the binary.
-            if ! amount=$(jq -re '.amount | if type == "number" then . else error end' <<< "$args_json" 2>/dev/null); then
+            if [[ "$_st_amount" != "1" ]]; then
                 echo '{"error_code":"MISSING_FLAG","flag":"amount","retryable":true,"error":"amount is required and must be a number"}'; return
             fi
-            if ! currency=$(jq -re '.currency | if type == "string" then . else error end' <<< "$args_json" 2>/dev/null); then
+            if [[ "$_st_currency" != "1" ]]; then
                 echo '{"error_code":"MISSING_FLAG","flag":"currency","retryable":true,"error":"currency is required and must be a string"}'; return
             fi
             if (( ${#currency} > 8 )); then
                 echo '{"error_code":"INVALID_PARAM","flag":"currency","retryable":false,"error":"currency exceeds 8 characters"}'; return
             fi
-            if ! idem=$(jq -re '.idempotency_key | if type == "string" then . else error end' <<< "$args_json" 2>/dev/null); then
+            if [[ "$_st_idem" != "1" ]]; then
                 echo '{"error_code":"MISSING_FLAG","flag":"idempotency_key","retryable":true,"error":"idempotency_key is required and must be a string"}'; return
             fi
             if (( ${#idem} > 128 )); then
@@ -670,7 +690,7 @@ invoke_ledger() {
                 --entropy "$_ent2"
                 --timestamp "$_ts2")
             # RT-452: non-string memo treated as absent. V261: cap at 512 chars.
-            if memo=$(jq -re '.memo | if type == "string" then . else error end' <<< "$args_json" 2>/dev/null) && [[ -n "$memo" ]]; then
+            if [[ "$_st_memo" == "1" ]] && [[ -n "$memo" ]]; then
                 if (( ${#memo} > 512 )); then
                     echo '{"error_code":"INVALID_PARAM","flag":"memo","retryable":false,"error":"memo exceeds 512 characters"}'; return
                 fi
