@@ -506,6 +506,16 @@ jobs:
       - name: Lint zero-ecosystem/json-schema/eval-runner.sh
         run: shellcheck -S warning zero-ecosystem/json-schema/eval-runner.sh
 
+      - name: Lint plugin test scripts
+        run: |
+          shellcheck -S warning \
+            plugin/test/plugin-test.sh \
+            plugin/test/test-registration.sh \
+            plugin/test/test-forge-bridge.sh \
+            plugin/test/test-ledger-bridge.sh \
+            plugin/test/test-stub-binary.sh \
+            plugin/codex/openapi-wrapper.sh
+
   # ── MCP description lint (V15 content policy) ──────────────────────────
   mcp-lint:
     name: MCP manifest content policy lint
@@ -558,3 +568,38 @@ jobs:
               sys.exit(1)
           print("MCP lint complete")
           EOF
+
+  # ── Plugin test suite (bridge-only, no Zero compiler required) ────────────
+  plugin-test:
+    name: Plugin test suite (bridge-only)
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Install dependencies
+        run: sudo apt-get install -y jq shellcheck openssl xxd python3
+
+      - name: Make scripts executable
+        run: |
+          chmod +x forge/mcp-bridge.sh \
+            ledger/mcp-bridge.sh \
+            plugin/test/plugin-test.sh \
+            plugin/test/test-registration.sh \
+            plugin/test/test-forge-bridge.sh \
+            plugin/test/test-ledger-bridge.sh \
+            plugin/test/test-stub-binary.sh \
+            plugin/codex/openapi-wrapper.sh
+
+      - name: Lint plugin scripts
+        run: |
+          shellcheck -S warning \
+            plugin/test/plugin-test.sh \
+            plugin/test/test-registration.sh \
+            plugin/test/test-forge-bridge.sh \
+            plugin/test/test-ledger-bridge.sh \
+            plugin/test/test-stub-binary.sh \
+            plugin/codex/openapi-wrapper.sh
+
+      - name: Run plugin tests (bridge-only mode)
+        run: bash plugin/test/plugin-test.sh --mode bridge-only
