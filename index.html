@@ -25,6 +25,27 @@
     a { color: var(--accent); text-decoration: none; }
     a:hover { text-decoration: underline; }
 
+    /* Accessibility */
+    a:focus-visible, button:focus-visible, .btn:focus-visible {
+      outline: 2px solid var(--accent);
+      outline-offset: 2px;
+      border-radius: 4px;
+    }
+
+    .skip-link {
+      position: absolute;
+      top: -40px;
+      left: 0;
+      background: var(--accent);
+      color: #fff;
+      padding: 8px 16px;
+      z-index: 100;
+      transition: top 0.2s;
+    }
+    .skip-link:focus {
+      top: 0;
+    }
+
     /* Nav */
     nav { border-bottom: 1px solid var(--border); padding: 16px 24px; display: flex; align-items: center; justify-content: space-between; }
     .nav-logo { font-size: 18px; font-weight: 700; letter-spacing: -0.5px; }
@@ -105,6 +126,8 @@
 </head>
 <body>
 
+<a href="#main-content" class="skip-link">Skip to main content</a>
+
 <nav>
   <div class="nav-logo">HEROS<span>.</span></div>
   <div class="nav-links">
@@ -115,7 +138,7 @@
   </div>
 </nav>
 
-<main>
+<main id="main-content">
   <div class="hero">
     <div class="hero-badge">MCP-native · Zero lang · OWASP Agentic Top 10 audited</div>
     <h1>Infrastructure rebuilt<br>for AI agents</h1>
