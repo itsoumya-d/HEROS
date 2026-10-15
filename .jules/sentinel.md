@@ -1,0 +1,4 @@
+## 2024-05-24 - Fix symlink write-redirect vulnerability in forge bridge
+**Vulnerability:** The `forge/mcp-bridge.sh` script read and wrote to `.heros-keys`, `.heros-audit`, and `.heros-audit-failed` without verifying they were not symlinks or ensuring they were regular files.
+**Learning:** A malicious actor could replace these files with symlinks, causing the bridge to write to attacker-chosen targets (write-redirect attack) or blocking execution if replaced with a FIFO or directory. This pattern was already fixed in `ledger/mcp-bridge.sh` but was missed in `forge/mcp-bridge.sh`.
+**Prevention:** Implement a V318 fail-closed symlink check at startup (`if [[ -L "${HEROS_DATA_DIR}/.heros-keys" ]]`) and an RT-364 regular file check (`[[ ! -f "${HEROS_DATA_DIR}/.heros-keys" ]]`) before any `awk` read/write operations on security-critical data files.
