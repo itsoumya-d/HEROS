@@ -814,22 +814,52 @@ invoke_ledger() {
 handle_message() {
     local line="$1"
 
+    # Combine validation and field extraction into a single jq pass to avoid subprocess spawning overhead.
+    # We extract the JSON-RPC fields (id, method, jsonrpc) and deeply nested fields for all branches
+    # simultaneously (e.g. .params.name and .params.clientInfo).
+    local _parsed_json
+    _parsed_json=$(jq -r '
+        if type != "object" then
+            "NOT_OBJ"
+        else
+            [
+                (.id // null | tojson),
+                (.method | if type == "string" then . else "" end),
+                (if has("id") then "YES" else "NO" end),
+                (.jsonrpc | if type == "string" then . else "" end),
+                (if .method | type == "string" then "YES" else "NO" end),
+                (try (.params | if . == null or type == "object" then "YES" else "NO" end) catch "NO"),
+                (try (.params.arguments | if . == null or type == "object" then "YES" else "NO" end) catch "NO"),
+                (try (.params.name | if . == null or type == "string" then "YES" else "NO" end) catch "NO"),
+                (try (.params.name | if type == "string" then . else "" end) catch ""),
+                (try (.params.arguments // {} | tojson) catch "{}"),
+                (try (.params.clientInfo.name | if type == "string" then . else "unknown" end) catch "unknown"),
+                (try (.params.clientInfo.version | if type == "string" then . else "unknown" end) catch "unknown"),
+                (try (.params.protocolVersion | if type == "string" then . else "unknown" end) catch "unknown")
+            ] | @sh
+        end
+    ' <<< "$line" 2>/dev/null)
+
     # Validate JSON (also catches empty lines)
-    if ! jq -e . >/dev/null 2>&1 <<< "$line"; then
+    if [[ -z "$_parsed_json" ]]; then
         rpc_err "null" -32700 "Parse error: message is not valid JSON"
         return
     fi
 
     # RT-38: reject non-object JSON-RPC (arrays and primitives are not valid requests/notifications)
-    if ! jq -e 'type == "object"' >/dev/null 2>&1 <<< "$line"; then
+    if [[ "$_parsed_json" == "NOT_OBJ" ]]; then
         rpc_err "null" -32600 "Invalid Request: message must be a JSON object, not an array or primitive"
         return
     fi
 
-    # Extract id as raw JSON (preserves type: null, number, string)
-    local id method
-    id=$(jq -c '.id // null' <<< "$line")
-    method=$(jq -r '.method // ""' <<< "$line")
+    # Deserialize the output from jq safely into an array
+    eval "local _arr=($_parsed_json)"
+
+    local id="${_arr[0]}"
+    local method="${_arr[1]}"
+    local has_id="${_arr[2]}"
+    local jsonrpc="${_arr[3]}"
+    local method_is_str="${_arr[4]}"
 
     # RT-389: guard oversized id values — jq's --argjson passes id as an execve argv string;
     # Linux MAX_ARG_STRLEN = 131072 bytes; a >4KB id cannot be a legitimate MCP id (UUIDs are
@@ -840,7 +870,7 @@ handle_message() {
     fi
 
     # Notifications: absent "id" key means no response expected
-    if ! jq -e 'has("id")' >/dev/null 2>&1 <<< "$line"; then
+    if [[ "$has_id" == "NO" ]]; then
         # V119 fix: only accept notifications/initialized after initialize was processed
         # to prevent bypassing the initialize handshake via notification spoofing
         [[ "$method" == "notifications/initialized" && "$INIT_REQUESTED" == "true" ]] && INITIALIZED=true
@@ -848,14 +878,14 @@ handle_message() {
     fi
 
     # RT-292: reject requests missing or mismatching jsonrpc version (mcp-security-spec.md §5.2)
-    if ! jq -e '.jsonrpc == "2.0"' >/dev/null 2>&1 <<< "$line"; then
+    if [[ "$jsonrpc" != "2.0" ]]; then
         rpc_err "$id" -32600 "Invalid Request: jsonrpc field must be \"2.0\""
         return
     fi
 
     # V154: method must be a non-null string — null/number/object method is an invalid request,
     # not "method not found". Correct code is -32600 (Invalid Request), not -32601 (Method not found).
-    if ! jq -e '.method | type == "string"' >/dev/null 2>&1 <<< "$line"; then
+    if [[ "$method_is_str" != "YES" ]]; then
         rpc_err "$id" -32600 "Invalid Request: method must be a string"
         return
     fi
@@ -891,9 +921,9 @@ handle_message() {
             local _cname _cver _client_proto
             # V151: || true prevents SIGPIPE (from head closing pipe early on long names) from
             # triggering set -e and killing the initialize handler. These are forensic-only fields.
-            _cname=$(jq -r '.params.clientInfo.name // "unknown"' <<< "$line" | tr -cd '[:print:]' | head -c 128) || true
-            _cver=$(jq -r '.params.clientInfo.version // "unknown"' <<< "$line" | tr -cd '[:print:]' | head -c 64) || true
-            _client_proto=$(jq -r '.params.protocolVersion // "unknown"' <<< "$line" | tr -cd '[:print:]' | head -c 32) || true
+            _cname=$(printf '%s' "${_arr[10]}" | tr -cd '[:print:]' | head -c 128) || true
+            _cver=$(printf '%s' "${_arr[11]}" | tr -cd '[:print:]' | head -c 64) || true
+            _client_proto=$(printf '%s' "${_arr[12]}" | tr -cd '[:print:]' | head -c 32) || true
             echo "[ledger-client] connected: name=${_cname} version=${_cver} proto=${_client_proto}" >&2 || true
             # RT-253: warn on protocol version mismatch (skip when client omits protocolVersion)
             if [[ "$_client_proto" != "$MCP_PROTOCOL" && "$_client_proto" != "unknown" ]]; then
@@ -942,25 +972,25 @@ handle_message() {
             # RT-345: validate params type before field extraction — non-object params (e.g., array)
             # cause jq to exit non-zero on .params.name/.params.arguments access, triggering set -e
             # and producing -32603 (internal error) instead of -32602 (invalid params).
-            if ! jq -e '.params | . == null or type == "object"' >/dev/null 2>&1 <<< "$line"; then
+            if [[ "${_arr[5]}" != "YES" ]]; then
                 rpc_err "$id" -32602 "Invalid params: params must be an object"
                 return
             fi
             # RT-349: validate arguments type before extraction — non-object arguments (e.g., number,
             # array) pass jq's '// {}' coercion (truthy values skip the default) and reach
             # invoke_ledger where field extraction produces MISSING_FLAG instead of -32602.
-            if ! jq -e '.params.arguments | . == null or type == "object"' >/dev/null 2>&1 <<< "$line"; then
+            if [[ "${_arr[6]}" != "YES" ]]; then
                 rpc_err "$id" -32602 "Invalid params: params.arguments must be an object"
                 return
             fi
             # V339: reject non-string params.name (e.g. array) — consistent with RT-349 for params.arguments.
-            if ! jq -e '.params.name | . == null or type == "string"' >/dev/null 2>&1 <<< "$line"; then
+            if [[ "${_arr[7]}" != "YES" ]]; then
                 rpc_err "$id" -32602 "Invalid params: params.name must be a string"
                 return
             fi
             local tool_name tool_args ledger_out content_json
-            tool_name=$(jq -r '.params.name // ""' <<< "$line")
-            tool_args=$(jq -c '.params.arguments // {}' <<< "$line")
+            tool_name="${_arr[8]}"
+            tool_args="${_arr[9]}"
 
             if [[ -z "$tool_name" ]]; then
                 rpc_err "$id" -32602 "Invalid params: missing tool name in params.name"

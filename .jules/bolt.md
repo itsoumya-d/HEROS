@@ -1,0 +1,3 @@
+## 2025-06-05 - Optimize repeated jq parsing via single pass array mapping
+**Learning:** In bash scripts processing high-throughput JSON lines, repeated invocations of `jq` on the same payload create substantial subprocess spawning overhead (e.g. over 10 times per line).
+**Action:** Combine validation logic and multiple field extractions into a single `jq` query that produces a shell-escaped array using `| @sh`. Evaluate the result string once inside the script (`eval "arr=($parsed)"`), drastically reducing parsing time while handling quoting/newlines natively.
