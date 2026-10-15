@@ -83,6 +83,25 @@ if [[ -n "${HEROS_API_KEY:-}" ]]; then
     fi
 fi
 
+# V318 port: fail-closed symlink check — a symlink replacing a security-critical data file
+# redirects writes to an attacker-chosen target. Check at startup before any tool calls.
+for _v318_f in ".heros-keys"; do
+    if [[ -L "${HEROS_DATA_DIR}/${_v318_f}" ]]; then
+        # V321 port: use jq --arg to safely embed path
+        jq -cn --arg p "${HEROS_DATA_DIR}/${_v318_f}" \
+            '{"jsonrpc":"2.0","id":null,"error":{"code":-32603,"message":("Security: "+$p+" is a symlink — data files must be regular files to prevent write-redirect attacks. Remove the symlink and restart.")}}'
+        exit 1
+    fi
+done
+unset _v318_f
+# RT-648 port: check audit files (warn-only — operators may legitimately symlink audit to centralized log).
+for _v318_warn in ".heros-audit" ".heros-audit-failed"; do
+    if [[ -L "${HEROS_DATA_DIR}/${_v318_warn}" ]]; then
+        echo "[forge-security] WARNING: ${HEROS_DATA_DIR}/${_v318_warn} is a symlink; audit writes will follow the link. Ensure the target path is trusted and operator-controlled." >&2
+    fi
+done
+unset _v318_warn
+
 # ── Load manifest ─────────────────────────────────────────────────────────
 MANIFEST="${SCRIPT_DIR}/mcp-manifest.json"
 if [[ ! -f "$MANIFEST" ]]; then
@@ -206,6 +225,10 @@ _validate_api_key() {
        [[ ! "$secret" =~ ^[0-9a-f]{32}$ ]]; then
         return 1
     fi
+
+    # RT-364 port: require regular file before awk — FIFO/directory/missing file would block or error;
+    # -f follows symlinks, so symlink→FIFO also fails. Absent file returns INVALID_API_KEY directly.
+    [[ ! -f "${HEROS_DATA_DIR}/.heros-keys" ]] && return 1
 
     # RT-135: awk field-exact lookup; RT-134: first match exits (duplicate key_id safe)
     local record
