@@ -1,0 +1,3 @@
+## 2024-05-18 - Optimized JSON parsing by combining `jq` calls
+**Learning:** In bash scripts, calling `jq` multiple times on the same input (e.g. to parse JSON properties iteratively) adds significant overhead due to subprocess creation. This is a common performance bottleneck in event-loop-style scripts like the MCP bridge.
+**Action:** Use a single `jq` query combined with the `@sh` filter to parse multiple fields at once, outputting a shell-safe array string. Extract the fields into bash variables using `eval "arr=($parsed)"`. This eliminates redundant `jq` invocations and avoids bash subprocess penalties.
