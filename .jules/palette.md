@@ -1,0 +1,3 @@
+## 2024-06-08 - Keyboard Navigation and Readability
+**Learning:** Adding `:focus-visible` styles enhances keyboard accessibility without negatively impacting mouse users. Interactive elements like logos should be wrapped in links to provide a quick way back to the home page, which is a standard UX pattern. Increasing contrast for secondary text (`--muted`) significantly improves readability for visually impaired users.
+**Action:** Always wrap application logos in anchor tags linking to the root path. Consistently implement `:focus-visible` styles for all interactive elements to support keyboard navigation. Ensure all text colors, including muted/secondary text, meet WCAG contrast guidelines against their background.
