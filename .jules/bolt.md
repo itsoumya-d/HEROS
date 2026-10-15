@@ -1,0 +1,3 @@
+## 2024-06-03 - [Bash JSON Parsing Overhead]
+**Learning:** Sequential `jq` subprocess calls in bash loops or heavily invoked functions create significant overhead (e.g., parsing 5 fields separately via `jq` takes ~4x longer than doing it in one pass).
+**Action:** Optimize repeated JSON parsing by combining operations into a single `jq` call using the `@sh` filter to output shell-quoted strings, and safely deserializing them in Bash using `eval "arr=($parsed)"`.
