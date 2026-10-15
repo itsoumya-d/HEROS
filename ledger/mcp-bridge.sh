@@ -814,22 +814,40 @@ invoke_ledger() {
 handle_message() {
     local line="$1"
 
+    local parsed id method
+    # ⚡ Bolt: Combine 7 jq invocations into 1 to reduce subprocess overhead.
+    # Uses @sh to safely serialize values for bash eval, preventing RCE.
+    parsed=$(jq -er '
+        if type != "object" then
+            "err_not_object"
+        else
+            (.id // null | tojson | @sh) + " " +
+            (if (.method | type) == "string" then .method else (.method // "" | tostring) end | @sh) + " " +
+            (has("id") | tostring | @sh) + " " +
+            ((.jsonrpc == "2.0") | tostring | @sh) + " " +
+            ((.method | type == "string") | tostring | @sh)
+        end
+    ' <<< "$line" 2>/dev/null)
+
     # Validate JSON (also catches empty lines)
-    if ! jq -e . >/dev/null 2>&1 <<< "$line"; then
+    if [[ $? -ne 0 ]]; then
         rpc_err "null" -32700 "Parse error: message is not valid JSON"
         return
     fi
 
     # RT-38: reject non-object JSON-RPC (arrays and primitives are not valid requests/notifications)
-    if ! jq -e 'type == "object"' >/dev/null 2>&1 <<< "$line"; then
+    if [[ "$parsed" == "err_not_object" ]]; then
         rpc_err "null" -32600 "Invalid Request: message must be a JSON object, not an array or primitive"
         return
     fi
 
-    # Extract id as raw JSON (preserves type: null, number, string)
-    local id method
-    id=$(jq -c '.id // null' <<< "$line")
-    method=$(jq -r '.method // ""' <<< "$line")
+    local arr
+    eval "arr=($parsed)"
+    id="${arr[0]}"
+    method="${arr[1]}"
+    local has_id="${arr[2]}"
+    local is_2_0="${arr[3]}"
+    local is_method_string="${arr[4]}"
 
     # RT-389: guard oversized id values — jq's --argjson passes id as an execve argv string;
     # Linux MAX_ARG_STRLEN = 131072 bytes; a >4KB id cannot be a legitimate MCP id (UUIDs are
@@ -840,7 +858,7 @@ handle_message() {
     fi
 
     # Notifications: absent "id" key means no response expected
-    if ! jq -e 'has("id")' >/dev/null 2>&1 <<< "$line"; then
+    if [[ "$has_id" != "true" ]]; then
         # V119 fix: only accept notifications/initialized after initialize was processed
         # to prevent bypassing the initialize handshake via notification spoofing
         [[ "$method" == "notifications/initialized" && "$INIT_REQUESTED" == "true" ]] && INITIALIZED=true
@@ -848,14 +866,14 @@ handle_message() {
     fi
 
     # RT-292: reject requests missing or mismatching jsonrpc version (mcp-security-spec.md §5.2)
-    if ! jq -e '.jsonrpc == "2.0"' >/dev/null 2>&1 <<< "$line"; then
+    if [[ "$is_2_0" != "true" ]]; then
         rpc_err "$id" -32600 "Invalid Request: jsonrpc field must be \"2.0\""
         return
     fi
 
     # V154: method must be a non-null string — null/number/object method is an invalid request,
     # not "method not found". Correct code is -32600 (Invalid Request), not -32601 (Method not found).
-    if ! jq -e '.method | type == "string"' >/dev/null 2>&1 <<< "$line"; then
+    if [[ "$is_method_string" != "true" ]]; then
         rpc_err "$id" -32600 "Invalid Request: method must be a string"
         return
     fi
