@@ -1,5 +1,5 @@
 {
-  "name": "@heros/agentic",
+  "name": "@soumyadebnath1619/agentic",
   "version": "0.2.0",
   "description": "Explicit action-registry SDK for safe, authenticated, auditable AI agent actions.",
   "type": "module",

@@ -1,25 +1,25 @@
-# @heros/agentic
+# @soumyadebnath1619/agentic
 
-`@heros/agentic` is the first HEROS web SDK surface: an explicit action registry that lets an app expose safe, authenticated, auditable actions to AI agents.
+`@soumyadebnath1619/agentic` is the first HEROS web SDK surface: an explicit action registry that lets an app expose safe, authenticated, auditable actions to AI agents.
 
 It does not try to make any UI magically clickable. Developers declare the actions they want agents to use, attach schemas and safety policy, and expose a deterministic JSON manifest plus an execute endpoint.
 
 ## Install
 
 ```bash
-npm install @heros/agentic
+npm install @soumyadebnath1619/agentic
 ```
 
 Create a starter site:
 
 ```bash
-npx @heros/agentic init my-agentic-site
+npx @soumyadebnath1619/agentic init my-agentic-site
 ```
 
 Check the local environment:
 
 ```bash
-npx @heros/agentic doctor
+npx @soumyadebnath1619/agentic doctor
 ```
 
 For repository development, use the local workspace:
@@ -32,7 +32,7 @@ node packages/agentic/bin/heros-agentic.mjs doctor
 ## Import
 
 ```js
-import { createAgenticApp, createFileReceiptStore } from "@heros/agentic";
+import { createAgenticApp, createFileReceiptStore } from "@soumyadebnath1619/agentic";
 ```
 
 Type declarations are included with the package.
@@ -188,7 +188,7 @@ import {
   createAgenticApp,
   createFileReceiptStore,
   createMerkleReceiptStore
-} from "@heros/agentic";
+} from "@soumyadebnath1619/agentic";
 
 const store = createMerkleReceiptStore({
   store: createFileReceiptStore({ path: ".heros/receipts.json" })
@@ -248,7 +248,7 @@ import {
   createAgenticApp,
   createFileApprovalStore,
   createFileReceiptStore
-} from "@heros/agentic";
+} from "@soumyadebnath1619/agentic";
 
 const heros = createAgenticApp({
   receiptStore: createFileReceiptStore({ path: ".heros/receipts.json" }),

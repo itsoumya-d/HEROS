@@ -23,7 +23,7 @@ arch="$(uname -m)"
 
 if [[ "$os" != "Linux" ]]; then
   printf 'ERROR: forge and ledger release binaries currently target Linux x86-64. Detected %s.\n' "$os" >&2
-  printf 'Use @heros/agentic through npm on macOS/Windows, or use Linux/WSL for forge and ledger.\n' >&2
+  printf 'Use @soumyadebnath1619/agentic through npm on macOS/Windows, or use Linux/WSL for forge and ledger.\n' >&2
   exit 1
 fi
 

@@ -17,7 +17,7 @@ HEROS's core thesis — explicit actions, receipts, idempotency keys, append-onl
 
 | Ecosystem expectation | HEROS today | Gap / queued idea |
 |---|---|---|
-| Per-step tool invocation record | `@heros/agentic` action registry + execute endpoint; explicit named actions | Emit a structured receipt per action invocation (action name, schema version, principal, decision, result digest) |
+| Per-step tool invocation record | `@soumyadebnath1619/agentic` action registry + execute endpoint; explicit named actions | Emit a structured receipt per action invocation (action name, schema version, principal, decision, result digest) |
 | Decision record (allow/block) | Auth gate (`authorize` callback), risk gate in forge | The authorize/risk *decision itself* isn't currently part of any emitted receipt — add `decision: allow\|deny\|rewrite` + policy id to receipts |
 | Idempotency / replay safety | Idempotency keys on ledger invoices, idempotent annotations | Replay-detection events (duplicate key seen → rejected) should also be receipted; they're evidence the control worked |
 | Append-only, tamper-evident log | Ledger v2 spec scopes full audit JSONL to v0.3+ (`docs/ledger-v2-spec.md`) | Hash-chain receipts (each receipt includes prev-hash) — cheap, aligns with CertiFlow's evidence-hash approach |

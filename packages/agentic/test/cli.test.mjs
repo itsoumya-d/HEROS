@@ -16,7 +16,7 @@ test("doctor reports a usable SDK environment", () => {
   assert.equal(result.status, 0, result.stderr);
   const body = JSON.parse(result.stdout);
   assert.equal(body.ok, true);
-  assert.equal(body.package, "@heros/agentic");
+  assert.equal(body.package, "@soumyadebnath1619/agentic");
   assert.equal(body.checks.node_20_or_newer, true);
   assert.equal(body.checks.action_registry, true);
   assert.equal(body.checks.execute, true);
@@ -114,7 +114,7 @@ async function createStarter(t) {
   assert.equal(packageJson.scripts.start, "node server.mjs");
   assert.equal(packageJson.scripts.doctor, "node server.mjs --doctor");
   assert.equal(packageJson.engines.node, "^20.12.0 || >=21.7.0");
-  const installed = join(target, "node_modules", "@heros", "agentic");
+  const installed = join(target, "node_modules", "@soumyadebnath1619", "agentic");
   await mkdir(join(installed, "src"), { recursive: true });
   await copyFile(join(sdkPath, "package.json"), join(installed, "package.json"));
   for (const file of ["index.js", "canonical.js", "merkle.js"]) {
@@ -189,7 +189,7 @@ test("init creates a starter site without overwriting non-empty directories", as
 
   const packageJson = JSON.parse(await readFile(join(target, "package.json"), "utf8"));
   assert.equal(packageJson.name, "starter-site");
-  assert.equal(packageJson.dependencies["@heros/agentic"], "^0.2.0");
+  assert.equal(packageJson.dependencies["@soumyadebnath1619/agentic"], "^0.2.0");
   await stat(join(target, "server.mjs"));
   await stat(join(target, ".env.example"));
 

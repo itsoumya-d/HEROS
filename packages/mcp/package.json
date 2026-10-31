@@ -1,5 +1,5 @@
 {
-  "name": "@heros/mcp",
+  "name": "@soumyadebnath1619/mcp",
   "version": "0.3.0",
   "description": "Cross-platform MCP bridge for HEROS forge and ledger over stdio and Streamable HTTP.",
   "type": "module",

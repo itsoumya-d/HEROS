@@ -15,8 +15,8 @@ Core CLI primitives are built in [Zero lang](https://github.com/vercel-labs/zero
 
 | Tool | What it does | Status |
 |---|---|---|
-| [@heros/agentic](packages/agentic/README.md) | Installable web SDK surface for explicit, authenticated, auditable agent actions, Merkle receipts, and score-triggered reflection | v0.2.0 |
-| [@heros/mcp](packages/mcp/README.md) | MCP 2025-11-25 bridge, shadow migration gate, and Receipt Inspector | v0.3.0 |
+| [@soumyadebnath1619/agentic](packages/agentic/README.md) | Installable web SDK surface for explicit, authenticated, auditable agent actions, Merkle receipts, and score-triggered reflection | v0.2.0 |
+| [@soumyadebnath1619/mcp](packages/mcp/README.md) | MCP 2025-11-25 bridge, shadow migration gate, and Receipt Inspector | v0.3.0 |
 | [forge](forge/README.md) | Agent-safe database migration risk gate - risk-scores schema changes before they run | v0.1.4 |
 | [ledger](ledger/README.md) | Agent accounting receipt primitive - register an org and create/list invoices with idempotency keys | v0.1.11 |
 | [rlvr](rlvr/README.md) | Verifiable-reasoning post-training primitives: GRPO, Dr.GRPO, DAPO, verifier audit | v0.1.0 core |
@@ -46,18 +46,18 @@ the documented failure boundaries.
 
 ## Quick Start
 
-### @heros/agentic - Make a Website Safely Agentic
+### @soumyadebnath1619/agentic - Make a Website Safely Agentic
 
 The first web SDK surface is an explicit action registry. Developers choose what agents may do, attach schemas and safety policy, then expose a manifest plus an execute endpoint.
 
 ```bash
-npm install @heros/agentic
-npx @heros/agentic doctor
-npx @heros/agentic init my-agentic-site
+npm install @soumyadebnath1619/agentic
+npx @soumyadebnath1619/agentic doctor
+npx @soumyadebnath1619/agentic init my-agentic-site
 ```
 
 ```js
-import { createAgenticApp } from "@heros/agentic";
+import { createAgenticApp } from "@soumyadebnath1619/agentic";
 
 const heros = createAgenticApp({
   name: "shop",
@@ -248,8 +248,8 @@ The bridge owns I/O and session state. The binary owns business logic. This sepa
 
 | Component | Tests | Security Cycles | Zero Version |
 |---|---|---|---|
-| @heros/agentic v0.2.0 | 33 Node tests (unit, CLI, Merkle, reflection) + 5 demo route tests | Schema validation, auth denial, approval flow, durable stores, idempotency, Merkle inclusion/tamper detection, score-triggered reflection | N/A |
-| @heros/mcp v0.3.0 | 46 Node tests including a 289-case adversarial corpus and browser smoke audit | stdio/HTTP, auth, approvals, rate limits, shadow gate, list-wise scoring, receipt inspector | N/A |
+| @soumyadebnath1619/agentic v0.2.0 | 33 Node tests (unit, CLI, Merkle, reflection) + 5 demo route tests | Schema validation, auth denial, approval flow, durable stores, idempotency, Merkle inclusion/tamper detection, score-triggered reflection | N/A |
+| @soumyadebnath1619/mcp v0.3.0 | 46 Node tests including a 289-case adversarial corpus and browser smoke audit | stdio/HTTP, auth, approvals, rate limits, shadow gate, list-wise scoring, receipt inspector | N/A |
 | forge v0.1.4 | 33 binary-testable eval cases; 970-line eval log | 239+ cycles (all P2+ resolved) | v0.1.3 |
 | ledger v0.1.11 | 25 binary-testable cases plus MCP bridge/auth evals | 239+ cycles (all P2+ resolved) | v0.1.3 |
 

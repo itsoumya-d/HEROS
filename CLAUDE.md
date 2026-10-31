@@ -13,8 +13,8 @@ npm run test:agentic
 npm run test:mcp
 npm run test:agentic-site
 npm run demo:agentic
-npm pack --dry-run --workspace @heros/agentic
-npm pack --dry-run --workspace @heros/mcp
+npm pack --dry-run --workspace @soumyadebnath1619/agentic
+npm pack --dry-run --workspace @soumyadebnath1619/mcp
 ```
 
 Pass conditions:
