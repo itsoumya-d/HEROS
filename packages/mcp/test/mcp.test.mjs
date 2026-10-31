@@ -24,6 +24,7 @@ describe("MCP protocol", () => {
     const names = list.result.tools.map((tool) => tool.name);
     assert.deepEqual(names.sort(), [
       "forge_analyze",
+      "forge_shadow_analyze",
       "ledger_invoice_count",
       "ledger_invoice_create",
       "ledger_invoice_list",
@@ -63,7 +64,7 @@ describe("MCP protocol", () => {
     await handleLine("{not json");
     assert.equal(lines.length, 3);
     assert.equal(JSON.parse(lines[0]).result.protocolVersion, "2025-11-25");
-    assert.equal(JSON.parse(lines[1]).result.tools.length, 5);
+    assert.equal(JSON.parse(lines[1]).result.tools.length, 6);
     assert.equal(JSON.parse(lines[2]).error.code, -32700);
   });
 });

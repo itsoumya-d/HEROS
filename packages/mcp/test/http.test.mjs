@@ -55,7 +55,7 @@ describe("Streamable HTTP transport", () => {
     );
     assert.equal(list.status, 200);
     const listBody = await list.json();
-    assert.equal(listBody.result.tools.length, 5);
+    assert.equal(listBody.result.tools.length, 6);
     assert.equal(list.headers.get("mcp-session-id"), sessionId);
 
     const call = await post(
@@ -123,7 +123,7 @@ describe("Streamable HTTP transport", () => {
       .find((line) => line.startsWith("data: "));
     assert.ok(dataLine);
     const payload = JSON.parse(dataLine.slice(6));
-    assert.equal(payload.result.tools.length, 5);
+    assert.equal(payload.result.tools.length, 6);
   });
 
   test("GET opens an SSE stream with a keepalive comment", async (t) => {
