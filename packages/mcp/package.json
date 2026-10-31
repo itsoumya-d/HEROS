@@ -1,0 +1,41 @@
+{
+  "name": "@heros/mcp",
+  "version": "0.2.0",
+  "description": "Cross-platform MCP bridge for HEROS forge and ledger over stdio and Streamable HTTP.",
+  "type": "module",
+  "main": "./src/server.js",
+  "exports": {
+    ".": "./src/server.js",
+    "./http": "./src/http.js",
+    "./stdio": "./src/stdio.js"
+  },
+  "bin": {
+    "heros-mcp": "./bin/heros-mcp.mjs"
+  },
+  "files": [
+    "bin",
+    "src",
+    "python",
+    "README.md"
+  ],
+  "scripts": {
+    "test": "node --test test/*.test.mjs"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "keywords": [
+    "mcp",
+    "agents",
+    "heros",
+    "forge",
+    "ledger",
+    "streamable-http"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/itsoumya-d/HEROS.git",
+    "directory": "packages/mcp"
+  },
+  "license": "MIT"
+}

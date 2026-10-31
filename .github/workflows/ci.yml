@@ -41,6 +41,9 @@ jobs:
       - name: SDK unit tests
         run: npm run test:agentic
 
+      - name: MCP bridge tests
+        run: npm run test:mcp
+
       - name: Demo route tests
         run: npm run test:agentic-site
 
@@ -49,6 +52,9 @@ jobs:
 
       - name: Agentic package dry-run
         run: npm run pack:agentic
+
+      - name: MCP package dry-run
+        run: npm run pack:mcp
 
       - name: Agentic CLI doctor
         run: node packages/agentic/bin/heros-agentic.mjs doctor

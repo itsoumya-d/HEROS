@@ -130,29 +130,57 @@ For stateful accounting operations, use the MCP bridge. The Zero binary stays pu
 
 ## MCP Integration
 
-Both tools ship as MCP servers (stdio transport). Add to any MCP-compatible orchestrator:
+HEROS ships a cross-platform MCP bridge in [`packages/mcp`](packages/mcp/README.md)
+that exposes both `forge` and `ledger` from one process over **stdio** and
+**Streamable HTTP** (MCP 2025-11-25). It has no bash, jq, awk, or flock
+dependency and runs on macOS, Linux, and Windows with Node 22+.
 
-**`~/.claude/settings.json`:**
+**stdio (Claude Desktop, Claude Code, Cursor, Cline):**
+
 ```json
 {
   "mcpServers": {
-    "forge": {
-      "command": "/path/to/forge/mcp-bridge.sh",
-      "args": [],
-      "transport": "stdio"
-    },
-    "ledger": {
-      "command": "/path/to/ledger/mcp-bridge.sh",
-      "args": [],
-      "transport": "stdio"
+    "heros": {
+      "command": "node",
+      "args": ["/path/to/HEROS/packages/mcp/bin/heros-mcp.mjs", "--stdio"],
+      "env": {
+        "HEROS_FORGE_BIN": "/path/to/forge",
+        "HEROS_LEDGER_BIN": "/path/to/ledger",
+        "HEROS_DATA_DIR": "/path/to/heros-data"
+      }
     }
   }
 }
 ```
 
-Both bridges implement the MCP 2025-11-25 protocol. Run `--describe` on either binary for the full self-describing API schema — no documentation fetch needed.
+**Streamable HTTP (remote agents, LangGraph services):**
 
-For the web SDK demo path, see [docs/agentic-web-sdk-demo.md](docs/agentic-web-sdk-demo.md).
+```bash
+node packages/mcp/bin/heros-mcp.mjs --http --port 8787 --data-dir ~/.heros
+# POST http://127.0.0.1:8787/mcp   (Mcp-Session-Id is returned by initialize)
+# GET  http://127.0.0.1:8787/mcp   (text/event-stream)
+# GET  http://127.0.0.1:8787/healthz
+```
+
+**Python / LangGraph:**
+
+```python
+from heros_mcp_client import HerosMcpClient
+
+client = HerosMcpClient(env={"HEROS_DATA_DIR": "/tmp/heros"})
+client.initialize()
+print(client.list_tools()["result"]["tools"])
+client.close()
+```
+
+Tool names are unchanged: `forge_analyze`, `ledger_register`,
+`ledger_invoice_create`, `ledger_invoice_list`, `ledger_invoice_count`.
+Human approval nonces, idempotency, rate limits, HMAC API-key auth, and audit
+receipts are enforced by the bridge.
+
+The original bash bridges (`forge/mcp-bridge.sh`, `ledger/mcp-bridge.sh`) remain
+available for deployments that still require bash/jq.
+
 For install paths across npm, pnpm, yarn, Linux, and MCP clients, see [docs/distribution.md](docs/distribution.md).
 For the full launch checklist, see [docs/launch-checklist.md](docs/launch-checklist.md).
 
@@ -178,11 +206,11 @@ HEROS tools share a two-layer architecture:
 
 ```
 ┌─────────────────────────────────────────────┐
-│  MCP Bridge (bash)                          │
+│  MCP bridge (Node 22+, packages/mcp)        │
+│  • stdio + Streamable HTTP transports       │
 │  • JSON-RPC 2.0 session management          │
-│  • File I/O (read/write state files)        │
-│  • Rate limiting, idempotency               │
-│  • API key auth (optional)                  │
+│  • File I/O, approvals, idempotency         │
+│  • Rate limiting, API key auth, audit       │
 └─────────────────┬───────────────────────────┘
                   │ CLI args (validated, array-constructed)
 ┌─────────────────▼───────────────────────────┐

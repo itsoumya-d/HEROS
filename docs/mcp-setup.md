@@ -1,3 +1,8 @@
+> **Recommended: cross-platform bridge.** `packages/mcp` exposes both forge
+> and ledger from one Node process over stdio and Streamable HTTP, with no
+> bash/jq/flock dependency. See [`packages/mcp/README.md`](../packages/mcp/README.md).
+> The bash bridge configurations below remain supported for legacy deployments.
+
 # MCP Setup Guide
 
 Configure forge and ledger as MCP servers in an MCP-compatible client. Setup takes under 5 minutes.
