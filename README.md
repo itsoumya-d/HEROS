@@ -18,6 +18,28 @@ Core CLI primitives are built in [Zero lang](https://github.com/vercel-labs/zero
 | [@heros/agentic](packages/agentic/README.md) | Installable web SDK surface for explicit, authenticated, auditable agent actions | v0.1.0 |
 | [forge](forge/README.md) | Agent-safe database migration risk gate - risk-scores schema changes before they run | v0.1.4 |
 | [ledger](ledger/README.md) | Agent accounting receipt primitive - register an org and create/list invoices with idempotency keys | v0.1.11 |
+| [rlvr](rlvr/README.md) | Verifiable-reasoning post-training primitives: GRPO, Dr.GRPO, DAPO, verifier audit | v0.1.0 core |
+
+---
+
+## Verifiable Reasoning (`rlvr/`)
+
+`HEROS-RLVR` is the post-training layer for verifier-driven reasoning. It
+implements group-relative advantages (vanilla GRPO and Dr.GRPO), DAPO
+dynamic sampling and token-level loss, a JSON verifier adapter intended for
+`forge`, and audit helpers for verifier errors and "miracle steps".
+
+The core is pure Python with no runtime dependencies and 34 CPU tests:
+
+```bash
+PYTHONPATH=rlvr/src python -m unittest discover -s rlvr/tests -v
+```
+
+Status: algorithmic core implemented and tested. Model training and the
+MATH-500/AIME evaluations require GPU access and are not part of this
+repository's CI. No accuracy or length-improvement numbers are claimed. See
+[rlvr/README.md](rlvr/README.md) for the objective, the three reductions, and
+the documented failure boundaries.
 
 ---
 
