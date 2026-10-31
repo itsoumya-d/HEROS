@@ -51,6 +51,24 @@ export interface AuthorizationRequest {
 export type AuthorizeCallback =
   (request: AuthorizationRequest) => boolean | AuthorizationResult | Promise<boolean | AuthorizationResult>;
 
+export interface Deliberation {
+  triggered: boolean;
+  threshold: number;
+  error_codes: string[];
+  attempts: number;
+  initial_score: number;
+  final_score: number;
+  final_error_code: string | null;
+  trace: Array<{
+    step: "execute" | "verify" | "reflect";
+    attempt?: number;
+    score?: number;
+    error_code?: string | null;
+    result_hash?: string;
+  }>;
+  trace_hash: string;
+}
+
 export interface Receipt {
   receipt_id: string;
   action: string;
@@ -63,10 +81,57 @@ export interface Receipt {
     approved_at?: string;
     token_hash?: string;
   };
+  approval_state?: {
+    required: boolean;
+    approved_by?: string;
+    approved_at?: string;
+    token_hash?: string;
+  };
   idempotency_key: string | null;
+  deliberation: Deliberation | null;
+  deliberation_hash: string | null;
   annotations: Required<ActionAnnotations>;
   metadata: JsonObject;
   created_at: string;
+  prev_hash?: string;
+  entry_hash?: string;
+  merkle_root?: string;
+}
+
+export interface VerificationResult {
+  score: number;
+  errorCode?: string | null;
+  error_code?: string | null;
+  detail?: JsonValue;
+}
+
+export interface VerificationRequest {
+  action: PublicAction;
+  input: JsonObject;
+  context: JsonObject;
+  auth: AuthorizationResult & { ok: true; principal: string };
+  approval: null | {
+    ok: true;
+    approved_by: string;
+    approved_at: string;
+    token_hash: string;
+  };
+  result: JsonValue;
+}
+
+export interface ReflectionRequest extends VerificationRequest {
+  verification: VerificationResult;
+  attempt: number;
+}
+
+export interface VerificationConfig {
+  threshold?: number;
+  errorCodes?: string[];
+  maxAttempts?: number;
+  verify(request: VerificationRequest): VerificationResult | Promise<VerificationResult>;
+  reflect?(
+    request: ReflectionRequest
+  ): JsonValue | { result?: JsonValue } | Promise<JsonValue | { result?: JsonValue }>;
 }
 
 export interface SuccessResponse {
@@ -161,6 +226,7 @@ export interface ActionConfig {
   approvalRequired?: boolean;
   annotations?: ActionAnnotations;
   receiptMetadata?: JsonObject;
+  verification?: VerificationConfig;
   handler: ActionHandler;
 }
 
@@ -192,9 +258,36 @@ export class AgenticApp {
   }): Promise<ExecuteResponse>;
 }
 
+export interface MerkleProof {
+  leaf: string;
+  index: number;
+  size: number;
+  root: string;
+  proof: Array<{ hash: string; position: "left" | "right" }>;
+}
+
+export interface MerkleReceiptStore extends ReceiptStore {
+  root(): string;
+  size(): number;
+  inclusionProof(receiptId: string): MerkleProof | null;
+  verify(): Promise<{
+    ok: boolean;
+    size: number;
+    root: string;
+    failures: Array<{ index: number; receipt_id: string; reason: string }>;
+  }>;
+}
+
 export function createAgenticApp(options?: AgenticAppOptions): AgenticApp;
 export function createMemoryReceiptStore(): ReceiptStore;
 export function createFileReceiptStore(options: { path: string }): ReceiptStore;
 export function createMemoryApprovalStore(options?: { ttlMs?: number }): ApprovalStore;
 export function createFileApprovalStore(options: { path: string; ttlMs?: number }): ApprovalStore;
+export function createMerkleReceiptStore(options: { store: ReceiptStore }): MerkleReceiptStore;
 export function canonicalStringify(value: JsonValue): string;
+export function receiptProjection(receipt: Receipt): JsonObject;
+export function leafHash(receipt: Receipt): string;
+export function merkleRoot(leaves: string[]): string;
+export function inclusionProof(leaves: string[], index: number): MerkleProof | null;
+export function verifyInclusionProof(proof: Pick<MerkleProof, "leaf" | "root" | "proof">): boolean;
+export const GENESIS_HASH: string;

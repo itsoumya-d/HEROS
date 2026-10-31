@@ -1,6 +1,6 @@
 {
   "name": "@heros/agentic",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Explicit action-registry SDK for safe, authenticated, auditable AI agent actions.",
   "type": "module",
   "main": "./src/index.js",

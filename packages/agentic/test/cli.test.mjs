@@ -117,7 +117,9 @@ async function createStarter(t) {
   const installed = join(target, "node_modules", "@heros", "agentic");
   await mkdir(join(installed, "src"), { recursive: true });
   await copyFile(join(sdkPath, "package.json"), join(installed, "package.json"));
-  await copyFile(join(sdkPath, "src", "index.js"), join(installed, "src", "index.js"));
+  for (const file of ["index.js", "canonical.js", "merkle.js"]) {
+    await copyFile(join(sdkPath, "src", file), join(installed, "src", file));
+  }
   // Exercise the generated server and real SDK without installing packages or opening sockets.
   await writeFile(join(target, "probe.mjs"), `
 import { Server } from "node:http";
@@ -187,7 +189,7 @@ test("init creates a starter site without overwriting non-empty directories", as
 
   const packageJson = JSON.parse(await readFile(join(target, "package.json"), "utf8"));
   assert.equal(packageJson.name, "starter-site");
-  assert.equal(packageJson.dependencies["@heros/agentic"], "^0.1.0");
+  assert.equal(packageJson.dependencies["@heros/agentic"], "^0.2.0");
   await stat(join(target, "server.mjs"));
   await stat(join(target, ".env.example"));
 

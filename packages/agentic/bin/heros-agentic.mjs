@@ -3,7 +3,7 @@ import { mkdir, readdir, stat, writeFile } from "node:fs/promises";
 import { basename, join, resolve } from "node:path";
 import { createAgenticApp } from "../src/index.js";
 
-const VERSION = "0.1.0";
+const VERSION = "0.2.0";
 
 const [command, ...rest] = process.argv.slice(2);
 
@@ -159,7 +159,7 @@ function packageJson(name) {
       doctor: "node server.mjs --doctor"
     },
     dependencies: {
-      "@heros/agentic": "^0.1.0"
+      "@heros/agentic": "^0.2.0"
     },
     engines: {
       node: "^20.12.0 || >=21.7.0"
