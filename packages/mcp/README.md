@@ -3,7 +3,7 @@
 Cross-platform MCP 2025-11-25 bridge for **forge** and **ledger**. One Node
 process exposes both tool families over:
 
-- **stdio** — for Claude Desktop, Claude Code, Cursor, Cline, and any MCP client
+- **stdio** — for Claude Desktop, Cursor, Cline, and other MCP clients, and any MCP client
   that launches a subprocess.
 - **Streamable HTTP** — a single `/mcp` endpoint with sessions, JSON responses,
   and `text/event-stream` streaming for remote agents and LangGraph services.

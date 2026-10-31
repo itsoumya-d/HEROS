@@ -135,7 +135,7 @@ that exposes both `forge` and `ledger` from one process over **stdio** and
 **Streamable HTTP** (MCP 2025-11-25). It has no bash, jq, awk, or flock
 dependency and runs on macOS, Linux, and Windows with Node 22+.
 
-**stdio (Claude Desktop, Claude Code, Cursor, Cline):**
+**stdio (Claude Desktop, Cursor, Cline, and other MCP clients):**
 
 ```json
 {
