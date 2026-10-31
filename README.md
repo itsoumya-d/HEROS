@@ -15,7 +15,8 @@ Core CLI primitives are built in [Zero lang](https://github.com/vercel-labs/zero
 
 | Tool | What it does | Status |
 |---|---|---|
-| [@heros/agentic](packages/agentic/README.md) | Installable web SDK surface for explicit, authenticated, auditable agent actions | v0.1.0 |
+| [@heros/agentic](packages/agentic/README.md) | Installable web SDK surface for explicit, authenticated, auditable agent actions, Merkle receipts, and score-triggered reflection | v0.2.0 |
+| [@heros/mcp](packages/mcp/README.md) | MCP 2025-11-25 bridge, shadow migration gate, and Receipt Inspector | v0.3.0 |
 | [forge](forge/README.md) | Agent-safe database migration risk gate - risk-scores schema changes before they run | v0.1.4 |
 | [ledger](ledger/README.md) | Agent accounting receipt primitive - register an org and create/list invoices with idempotency keys | v0.1.11 |
 | [rlvr](rlvr/README.md) | Verifiable-reasoning post-training primitives: GRPO, Dr.GRPO, DAPO, verifier audit | v0.1.0 core |
@@ -196,7 +197,9 @@ Every tool and SDK surface in HEROS follows the same contract:
 4. **Self-describing** — `--describe` or `manifest()` emits a complete API contract. Cold LLMs discover the full interface from one invocation.
 5. **Human approval gates** — dangerous actions return explicit approval challenges before side effects.
 6. **Receipts** — successful actions emit audit records with input hashes, result hashes, principal, approval state, and idempotency metadata.
-7. **No human prompts** — no "press Y to continue", no interactive flows, no TTY assumptions.
+7. **Merkle audit log** — receipts chain through `prev_hash`/`entry_hash` and verify against a SHA-256 Merkle root with inclusion proofs.
+8. **Executed migration evidence** — the MCP boundary runs destructive migrations in an ephemeral SQLite shadow before issuing an approval challenge.
+9. **No human prompts** — no "press Y to continue", no interactive flows, no TTY assumptions.
 
 ---
 
@@ -210,6 +213,8 @@ HEROS tools share a two-layer architecture:
 │  • stdio + Streamable HTTP transports       │
 │  • JSON-RPC 2.0 session management          │
 │  • File I/O, approvals, idempotency         │
+│  • SQLite shadow gate + list-wise decision  │
+│  • Merkle receipt log + inclusion proofs    │
 │  • Rate limiting, API key auth, audit       │
 └─────────────────┬───────────────────────────┘
                   │ CLI args (validated, array-constructed)
@@ -243,9 +248,10 @@ The bridge owns I/O and session state. The binary owns business logic. This sepa
 
 | Component | Tests | Security Cycles | Zero Version |
 |---|---|---|---|
-| @heros/agentic v0.1.0 | 11 Node unit tests, 5 demo route tests, plus `examples/agentic-site/agent-demo.mjs` integration proof | Current proof covers schema validation, auth denial, approval token flow, durable file stores, idempotency replay/conflict, receipts, HTTP route errors, and demo action flow | N/A |
-| forge v0.1.4 | 38 eval_log tests; 33 binary-testable cases covered by release CI when Zero compiler variables are configured | 239+ cycles (all P2+ resolved) | v0.1.3 |
-| ledger v0.1.11 | 25 binary-testable cases plus MCP bridge/auth evals covered by release CI when Zero compiler variables are configured | 239+ cycles (all P2+ resolved) | v0.1.3 |
+| @heros/agentic v0.2.0 | 33 Node tests (unit, CLI, Merkle, reflection) + 5 demo route tests | Schema validation, auth denial, approval flow, durable stores, idempotency, Merkle inclusion/tamper detection, score-triggered reflection | N/A |
+| @heros/mcp v0.3.0 | 46 Node tests including a 289-case adversarial corpus and browser smoke audit | stdio/HTTP, auth, approvals, rate limits, shadow gate, list-wise scoring, receipt inspector | N/A |
+| forge v0.1.4 | 33 binary-testable eval cases; 970-line eval log | 239+ cycles (all P2+ resolved) | v0.1.3 |
+| ledger v0.1.11 | 25 binary-testable cases plus MCP bridge/auth evals | 239+ cycles (all P2+ resolved) | v0.1.3 |
 
 Binary compilation requires Linux x86-64 (Zero ELF64 backend). Source compiles with the Zero compiler at [zero.vercel.app](https://zero.vercel.app).
 

@@ -6,6 +6,18 @@ All notable changes to forge and ledger. Follows [Keep a Changelog](https://keep
 
 ## [Unreleased]
 
+### Added — HEROS v2 (2026-10-31)
+- **@heros/agentic 0.2.0**: `createMerkleReceiptStore` adds `prev_hash`, `entry_hash`, `merkle_root`, inclusion proofs, and full-log verification. Leaf hashes bind input, result, principal, approval state, idempotency key, metadata, and deliberation hash.
+- **@heros/agentic 0.2.0**: opt-in score-triggered reflection. Verifier scores below threshold or configured stable error codes trigger bounded reflection; no trigger means no reflector call. Verifier/reflector failures fail closed.
+- **@heros/mcp 0.3.0**: `forge_shadow_analyze` executes migrations in an ephemeral SQLite database, seeds deterministic rows, reports per-operation data loss/errors, and returns a deterministic list-wise recommendation.
+- **forge_analyze shadow gate**: destructive migrations now require shadow evidence before an approval nonce is issued. Shadow `deny` cannot be overridden by approval (`SHADOW_DENY`).
+- **Receipt Inspector**: static Web Crypto UI with leaf/root/proof verification, deliberation traces, responsive layouts, and a tamper-detection browser audit.
+- **Adversarial corpus**: 289 cases across JSON-RPC, agentic validation, auth, forge schemas, shadow schemas, and approval replay/binding.
+
+### Fixed — HEROS v2
+- An explicit empty `human_acknowledgment_token` is now rejected instead of being treated as absent; null remains "no token".
+- Merkle verification excludes self-referential fields from the leaf projection and checks the deliberation trace hash.
+
 ### Security (2026-05-25 — Launch Hardening Round)
 - **CRIT-1**: `ledger/key-gen.sh` — HMAC seed was passed via `openssl dgst -hmac <seed>` CLI arg, exposing it in `/proc/<pid>/cmdline`. Replaced with `python3` env-based computation (same pattern as both bridges). Eliminated `xxd` dependency.
 - **CRIT-2**: `zero-ecosystem/eval-harness/zeval.sh` — Four error messages used raw shell variable interpolation into JSON string contexts (`echo "{...\"$line\"...}"`). Replaced all four with `jq -cn --arg` calls. A crafted non-JSON line in eval-cases.jsonl could previously inject `"status":"ok"` into the CI pass/fail JSON.
