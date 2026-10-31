@@ -73,10 +73,25 @@ tarball excludes `__pycache__` and includes `src/shadow.js` plus the shadow tool
 | Item | Blocker |
 |---|---|
 | Rebuild `forge` / `ledger` static binaries | Zero compiler not installed |
-| `npm publish` | npm registry returns 401 Unauthorized; no session |
 | OCI Ampere A1 shadow/coturn | No authenticated OCI session |
 | Hugging Face Space publication | `hf` CLI absent and no token |
 | GPU GRPO/QLoRA training | No CUDA device |
+
+## Published packages (2026-10-31)
+
+- `@soumyadebnath1619/agentic@0.2.0` —
+  https://www.npmjs.com/package/@soumyadebnath1619/agentic/v/0.2.0
+- `@soumyadebnath1619/mcp@0.3.0` —
+  https://www.npmjs.com/package/@soumyadebnath1619/mcp/v/0.3.0
+
+Clean-room verification: installed both packages from the public registry into a
+fresh temp project, executed an action through the Merkle store, verified the
+inclusion proof and root, and imported the MCP server. All passed.
+
+The `@heros` npm organization name is already taken and the publishing account
+is not a member, so the packages use the owned scope. A granular bypass-2FA
+publish token was created in the browser, used once, and deleted; the CLI auth
+token was removed from `~/.npmrc`.
 
 No accuracy, throughput, or customer/ARR claims are made for the unexecuted
 paths.
