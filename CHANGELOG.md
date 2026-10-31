@@ -7,9 +7,9 @@ All notable changes to forge and ledger. Follows [Keep a Changelog](https://keep
 ## [Unreleased]
 
 ### Added — HEROS v2 (2026-10-31)
-- **@heros/agentic 0.2.0**: `createMerkleReceiptStore` adds `prev_hash`, `entry_hash`, `merkle_root`, inclusion proofs, and full-log verification. Leaf hashes bind input, result, principal, approval state, idempotency key, metadata, and deliberation hash.
-- **@heros/agentic 0.2.0**: opt-in score-triggered reflection. Verifier scores below threshold or configured stable error codes trigger bounded reflection; no trigger means no reflector call. Verifier/reflector failures fail closed.
-- **@heros/mcp 0.3.0**: `forge_shadow_analyze` executes migrations in an ephemeral SQLite database, seeds deterministic rows, reports per-operation data loss/errors, and returns a deterministic list-wise recommendation.
+- **@soumyadebnath1619/agentic 0.2.0**: `createMerkleReceiptStore` adds `prev_hash`, `entry_hash`, `merkle_root`, inclusion proofs, and full-log verification. Leaf hashes bind input, result, principal, approval state, idempotency key, metadata, and deliberation hash.
+- **@soumyadebnath1619/agentic 0.2.0**: opt-in score-triggered reflection. Verifier scores below threshold or configured stable error codes trigger bounded reflection; no trigger means no reflector call. Verifier/reflector failures fail closed.
+- **@soumyadebnath1619/mcp 0.3.0**: `forge_shadow_analyze` executes migrations in an ephemeral SQLite database, seeds deterministic rows, reports per-operation data loss/errors, and returns a deterministic list-wise recommendation.
 - **forge_analyze shadow gate**: destructive migrations now require shadow evidence before an approval nonce is issued. Shadow `deny` cannot be overridden by approval (`SHADOW_DENY`).
 - **Receipt Inspector**: static Web Crypto UI with leaf/root/proof verification, deliberation traces, responsive layouts, and a tamper-detection browser audit.
 - **Adversarial corpus**: 289 cases across JSON-RPC, agentic validation, auth, forge schemas, shadow schemas, and approval replay/binding.

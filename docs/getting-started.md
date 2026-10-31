@@ -6,7 +6,7 @@ Get HEROS running locally. The web SDK works with Node.js. The `forge` and `ledg
 
 ## Prerequisites
 
-- Node.js 20+ for `@heros/agentic`
+- Node.js 20+ for `@soumyadebnath1619/agentic`
 - Any MCP-compatible client for `forge` and `ledger`
 - Linux x86-64 or Docker for binaries
 - `jq >= 1.6` in PATH for bridges
@@ -17,13 +17,13 @@ Get HEROS running locally. The web SDK works with Node.js. The `forge` and `ledg
 ## Web SDK: Make A Website Agent-Ready
 
 ```bash
-npm install @heros/agentic
-npx @heros/agentic doctor
-npx @heros/agentic init my-agentic-site
+npm install @soumyadebnath1619/agentic
+npx @soumyadebnath1619/agentic doctor
+npx @soumyadebnath1619/agentic init my-agentic-site
 ```
 
 ```js
-import { createAgenticApp, createFileReceiptStore } from "@heros/agentic";
+import { createAgenticApp, createFileReceiptStore } from "@soumyadebnath1619/agentic";
 
 const heros = createAgenticApp({
   name: "shop",

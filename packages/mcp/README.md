@@ -1,4 +1,4 @@
-# @heros/mcp
+# @soumyadebnath1619/mcp
 
 Cross-platform MCP 2025-11-25 bridge for **forge** and **ledger**. One Node
 process exposes both tool families over:
@@ -190,5 +190,5 @@ audit writes, and SSE.
 ## Compatibility
 
 The legacy `forge/mcp-bridge.sh` and `ledger/mcp-bridge.sh` remain available for
-deployments that require bash/jq. `@heros/mcp` exposes the same tool names and
+deployments that require bash/jq. `@soumyadebnath1619/mcp` exposes the same tool names and
 response shapes, so clients can switch by changing the launch command.

@@ -54,10 +54,10 @@ append-only hash chain and a Merkle tree over the same leaves.
 4. A receipt cannot be silently removed from the middle of the log: the
    `prev_hash` chain and root recomputation both fail.
 
-### 1.3 API (`@heros/agentic`)
+### 1.3 API (`@soumyadebnath1619/agentic`)
 
 ```js
-import { createMerkleReceiptStore } from "@heros/agentic";
+import { createMerkleReceiptStore } from "@soumyadebnath1619/agentic";
 
 const store = createMerkleReceiptStore({ store: baseStore });
 await store.append(receipt);       // adds entry_hash, prev_hash, merkle_root

@@ -2,15 +2,21 @@
 
 HEROS ships through two install paths:
 
-- `@heros/agentic` for web apps on Node.js 20+
+- `@soumyadebnath1619/agentic` for web apps on Node.js 20+
 - Linux x86-64 release binaries for `forge` and `ledger`
+
+> Scope note (2026-10-31): the original `@heros` npm scope is not owned by the
+> publishing account, so the public packages use the owner's npm scope:
+> `@soumyadebnath1619/agentic` and `@soumyadebnath1619/mcp`. The GitHub project
+> remains HEROS. A future transfer to `@heros` only changes the package names,
+> not the API.
 
 ## NPM
 
 ```bash
-npm install @heros/agentic
-npx @heros/agentic doctor
-npx @heros/agentic init my-agentic-site
+npm install @soumyadebnath1619/agentic
+npx @soumyadebnath1619/agentic doctor
+npx @soumyadebnath1619/agentic init my-agentic-site
 ```
 
 The generated starter exposes:
@@ -22,25 +28,25 @@ The generated starter exposes:
 ## PNPM
 
 ```bash
-pnpm add @heros/agentic
-pnpm dlx @heros/agentic doctor
-pnpm dlx @heros/agentic init my-agentic-site
+pnpm add @soumyadebnath1619/agentic
+pnpm dlx @soumyadebnath1619/agentic doctor
+pnpm dlx @soumyadebnath1619/agentic init my-agentic-site
 ```
 
 ## Yarn
 
 ```bash
-yarn add @heros/agentic
-yarn dlx @heros/agentic doctor
-yarn dlx @heros/agentic init my-agentic-site
+yarn add @soumyadebnath1619/agentic
+yarn dlx @soumyadebnath1619/agentic doctor
+yarn dlx @soumyadebnath1619/agentic init my-agentic-site
 ```
 
 ## Bun
 
 ```bash
-bun add @heros/agentic
-bunx @heros/agentic doctor
-bunx @heros/agentic init my-agentic-site
+bun add @soumyadebnath1619/agentic
+bunx @soumyadebnath1619/agentic doctor
+bunx @soumyadebnath1619/agentic init my-agentic-site
 ```
 
 ## Local Workspace
@@ -89,7 +95,7 @@ The installer writes:
 
 ## macOS And Windows
 
-Use `@heros/agentic` through npm-compatible package managers on macOS and Windows.
+Use `@soumyadebnath1619/agentic` through npm-compatible package managers on macOS and Windows.
 
 `forge` and `ledger` release binaries currently target Linux x86-64. Use Linux, WSL, or a Linux CI runner for binary and MCP bridge workflows.
 
@@ -100,19 +106,19 @@ Before publishing:
 ```bash
 npm test
 npm run pack:agentic
-npm publish --dry-run --workspace @heros/agentic --access public
+npm publish --dry-run --workspace @soumyadebnath1619/agentic --access public
 ```
 
 Manual first publish, after logging in with `npm login --auth-type=web`:
 
 ```bash
 npm whoami
-npm publish --workspace @heros/agentic --access public
+npm publish --workspace @soumyadebnath1619/agentic --access public
 ```
 
 Recommended provenance publish path:
 
-1. In npm, configure `@heros/agentic` for GitHub Actions trusted publishing from `itsoumya-d/HEROS` and `.github/workflows/npm-publish.yml`.
+1. In npm, configure `@soumyadebnath1619/agentic` for GitHub Actions trusted publishing from `itsoumya-d/HEROS` and `.github/workflows/npm-publish.yml`.
 2. Push a tag like `agentic-v0.1.0`, or run the `Publish Agentic SDK` workflow manually.
 3. The workflow runs tests, packs the package, and publishes with `--provenance`.
 

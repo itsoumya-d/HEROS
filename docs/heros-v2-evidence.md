@@ -12,9 +12,9 @@ npm test
 
 | Suite | Tests | Result |
 |---|---:|---|
-| `@heros/agentic` (unit, CLI, Merkle, reflection) | 33 | 33 pass |
+| `@soumyadebnath1619/agentic` (unit, CLI, Merkle, reflection) | 33 | 33 pass |
 | `examples/agentic-site` routes | 5 | 5 pass |
-| `@heros/mcp` (protocol, auth, shadow, UI source, adversarial) | 46 | 46 pass |
+| `@soumyadebnath1619/mcp` (protocol, auth, shadow, UI source, adversarial) | 46 | 46 pass |
 | Adversarial cases inside `adversarial.test.mjs` | 289 | 0 failures |
 
 Adversarial distribution:
@@ -62,8 +62,8 @@ npm run pack:mcp
 
 | Package | Version | Tarball | Unpacked | Files |
 |---|---|---:|---:|---:|
-| `@heros/agentic` | 0.2.0 | 15.9 kB | 61.7 kB | 7 |
-| `@heros/mcp` | 0.3.0 | 27.4 kB | 104.2 kB | 14 |
+| `@soumyadebnath1619/agentic` | 0.2.0 | 15.9 kB | 61.7 kB | 7 |
+| `@soumyadebnath1619/mcp` | 0.3.0 | 27.4 kB | 104.2 kB | 14 |
 
 The agentic tarball includes `src/canonical.js` and `src/merkle.js`; the MCP
 tarball excludes `__pycache__` and includes `src/shadow.js` plus the shadow tool.
@@ -80,3 +80,10 @@ tarball excludes `__pycache__` and includes `src/shadow.js` plus the shadow tool
 
 No accuracy, throughput, or customer/ARR claims are made for the unexecuted
 paths.
+
+## npm scope note
+
+The `@heros` npm organization name is already taken and the publishing account
+(`soumyadebnath1619`) is not a member, so the package names were moved to the
+owned scope: `@soumyadebnath1619/agentic` and `@soumyadebnath1619/mcp`. The API,
+source, tests, and GitHub project name are unchanged.
