@@ -172,6 +172,75 @@ Every successful action emits a receipt with:
 
 Receipts are stored in memory by default. Use `createFileReceiptStore()` for dependency-free single-process persistence, or provide a database-backed `receiptStore` for multi-process production deployments.
 
+## Merkle receipts
+
+Wrap any receipt store to turn independent receipts into an append-only SHA-256
+Merkle log. Each receipt gains `prev_hash`, `entry_hash`, and `merkle_root`.
+The leaf binds the unsigned projection:
+
+```
+receipt_id, action, input_hash, result_hash, principal, approval_state,
+idempotency_key, deliberation_hash, annotations, metadata, created_at
+```
+
+```js
+import {
+  createAgenticApp,
+  createFileReceiptStore,
+  createMerkleReceiptStore
+} from "@heros/agentic";
+
+const store = createMerkleReceiptStore({
+  store: createFileReceiptStore({ path: ".heros/receipts.json" })
+});
+const heros = createAgenticApp({ receiptStore: store });
+
+const result = await heros.execute({ name: "cart.add_item", input });
+console.log(result.receipt.entry_hash);
+console.log(store.root());
+console.log(store.inclusionProof(result.receipt.receipt_id));
+console.log(await store.verify());
+```
+
+Guarantees:
+
+- Changing any bound field changes the leaf and the root.
+- `merkle_root` and `inclusion_proof` are excluded from the leaf projection so
+  they can be attached without invalidating the leaf.
+- `verify()` recomputes every leaf, checks the `prev_hash` chain, checks the
+  deliberation trace hash, and recomputes the root.
+- Odd tree levels promote the final node unchanged.
+
+## Score-triggered reflection
+
+Reflection is opt-in and conditional. It runs only when a verifier returns a
+score below the threshold or a configured stable error code.
+
+```js
+heros.action({
+  name: "migration.apply",
+  inputSchema,
+  verification: {
+    threshold: 0.72,
+    errorCodes: ["SHADOW_RISK_HIGH"],
+    maxAttempts: 1,
+    verify: async ({ result }) => ({
+      score: result.risk_score < 0.4 ? 0.91 : 0.31,
+      errorCode: result.risk_score < 0.4 ? null : "SHADOW_RISK_HIGH"
+    }),
+    reflect: async () => ({
+      result: { plan: "expand -> backfill -> contract", risk_score: 0.22 }
+    })
+  },
+  handler: async () => ({ plan: "drop immediately", risk_score: 0.82 })
+});
+```
+
+The receipt gains a `deliberation` object with the trigger decision, scores,
+attempt count, and a bounded execute/verify/reflect trace. `deliberation_hash`
+is the SHA-256 of that trace and is bound into the Merkle leaf. Verifier or
+reflector failures fail closed with `VERIFIER_FAILED` or `REFLECTION_FAILED`.
+
 ## Durable Stores
 
 ```js
@@ -196,4 +265,6 @@ The file stores persist receipts, idempotency records, and approval tokens acros
 - Require approval for destructive or high-value actions.
 - Use strict schemas with `additionalProperties: false`, length limits, charset limits, and `safeText: true` on user-facing strings.
 - Persist receipts and idempotency records outside process memory.
+- Wrap the receipt store with `createMerkleReceiptStore` and verify the log on a schedule.
+- Use score-triggered reflection only for actions with a real verifier; never enable it unconditionally.
 - Run `npm run test:agentic`, `npm run test:agentic-site`, and `npm run demo:agentic` before shipping.

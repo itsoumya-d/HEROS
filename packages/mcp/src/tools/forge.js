@@ -3,6 +3,7 @@
 
 import { ToolError } from "../errors.js";
 import { auditSuccess } from "../security.js";
+import { analyzeShadow, ShadowError } from "../shadow.js";
 
 const MAX_SCHEMA_BYTES = 65_536;
 const MAX_REQUEST_ID = 512;
@@ -88,6 +89,11 @@ function normalizeBinaryError(result) {
     };
   }
   return result;
+}
+
+function shadowErrorMessage(error) {
+  const message = error instanceof Error ? error.message : String(error);
+  return message.replace(/[\u0000-\u001f\u007f]/g, " ").slice(0, 240);
 }
 
 function rateLimitField(limit) {
@@ -218,7 +224,51 @@ export function createForgeTools({
           return result;
         }
 
-        if (acknowledgmentToken) {
+        try {
+          const shadow = await analyzeShadow({
+            fromSchema,
+            toSchema,
+            staticRisk:
+              typeof result.risk_score === "number"
+                ? result.risk_score
+                : undefined
+          });
+          result = {
+            ...result,
+            shadow,
+            decision_required:
+              result.decision_required === true || shadow.decision_required === true
+          };
+        } catch (error) {
+          const code = error instanceof ShadowError
+            ? error.code
+            : "SHADOW_FAILED";
+          result = {
+            ...result,
+            shadow: {
+              ok: false,
+              error_code: code,
+              error: shadowErrorMessage(error),
+              retryable: code === "SHADOW_FAILED"
+            }
+          };
+        }
+
+        if (
+          result.shadow &&
+          result.shadow.ok !== false &&
+          result.shadow.recommended_decision === "deny"
+        ) {
+          return {
+            ...result,
+            error_code: "SHADOW_DENY",
+            error:
+              "Shadow sandbox reports a migration execution error. Human approval cannot override a non-executable migration.",
+            retryable: false
+          };
+        }
+
+        if (acknowledgmentToken !== undefined) {
           const redemption = approvals.consume(
             acknowledgmentToken,
             fromSchema,

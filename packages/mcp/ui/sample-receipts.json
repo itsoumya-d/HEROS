@@ -1,0 +1,136 @@
+{
+  "generated_at": "2026-10-31T12:00:00.000Z",
+  "schema_version": 2,
+  "merkle_root": "4749d166cd1308222caba020acb9fb2c5e3c65f2bbb82485f2c0e75bdcac6c1f",
+  "receipts": [
+    {
+      "receipt_id": "hr_fc51f2cbec08a9e8b736f0626305cca4",
+      "action": "catalog.search",
+      "input_hash": "27b04322740eddea8ad3ea123669dd125d0ca312f43c99357e8950f11b0964d2",
+      "result_hash": "8a59059879048260f6400b7652438808a64a990fe97c30696b22365ed12271bd",
+      "principal": "agent:release-bot",
+      "approval": {
+        "required": false
+      },
+      "idempotency_key": null,
+      "deliberation": null,
+      "deliberation_hash": null,
+      "annotations": {
+        "readOnly": true,
+        "destructive": false,
+        "idempotent": true,
+        "decisionRequired": false
+      },
+      "metadata": {
+        "surface": "catalog",
+        "risk": "none"
+      },
+      "created_at": "2026-10-31T12:00:00.000Z",
+      "approval_state": {
+        "required": false
+      },
+      "prev_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+      "entry_hash": "398f77b094fdcc12966a3a963ecd7a84606555d640d55ebad7cecb8b47d809f9",
+      "merkle_root": "398f77b094fdcc12966a3a963ecd7a84606555d640d55ebad7cecb8b47d809f9"
+    },
+    {
+      "receipt_id": "hr_78d76cae111b8d84b32a310d8eeee82e",
+      "action": "migration.apply",
+      "input_hash": "4b6ade6b89a0da95e84ef7603b3b197f0c656c846cd726ea8125cb251208795d",
+      "result_hash": "6d3aeab61b9863a27e4a94bbdb0237a1da6cd06be0df9d88b376373fbc4ee6bd",
+      "principal": "agent:release-bot",
+      "approval": {
+        "required": true,
+        "approved_by": "agent:release-bot",
+        "approved_at": "2026-10-31T12:00:02.000Z",
+        "token_hash": "6d16172d4b39d71b408f6cefc7eae8f9964dc00621e7a140fb21ce83dec9a867"
+      },
+      "idempotency_key": null,
+      "deliberation": {
+        "triggered": true,
+        "threshold": 0.72,
+        "error_codes": [
+          "SHADOW_RISK_HIGH"
+        ],
+        "attempts": 1,
+        "initial_score": 0.31,
+        "final_score": 0.91,
+        "final_error_code": null,
+        "trace": [
+          {
+            "step": "execute",
+            "result_hash": "63b16d0fbfb654a71fb1c14dd3c6eca089c2c36f10b7e5302faecb98387f1025"
+          },
+          {
+            "step": "verify",
+            "attempt": 0,
+            "score": 0.31,
+            "error_code": "SHADOW_RISK_HIGH"
+          },
+          {
+            "step": "reflect",
+            "attempt": 1,
+            "result_hash": "6d3aeab61b9863a27e4a94bbdb0237a1da6cd06be0df9d88b376373fbc4ee6bd"
+          },
+          {
+            "step": "verify",
+            "attempt": 1,
+            "score": 0.91,
+            "error_code": null
+          }
+        ],
+        "trace_hash": "5b5e172507997d75e81ce44b03d935962f3bb36d53a37f16de482dfe90b58eb1"
+      },
+      "deliberation_hash": "5b5e172507997d75e81ce44b03d935962f3bb36d53a37f16de482dfe90b58eb1",
+      "annotations": {
+        "readOnly": false,
+        "destructive": true,
+        "idempotent": false,
+        "decisionRequired": true
+      },
+      "metadata": {
+        "surface": "forge",
+        "gate": "shadow+listwise"
+      },
+      "created_at": "2026-10-31T12:00:02.000Z",
+      "approval_state": {
+        "required": true,
+        "approved_by": "agent:release-bot",
+        "approved_at": "2026-10-31T12:00:02.000Z",
+        "token_hash": "6d16172d4b39d71b408f6cefc7eae8f9964dc00621e7a140fb21ce83dec9a867"
+      },
+      "prev_hash": "398f77b094fdcc12966a3a963ecd7a84606555d640d55ebad7cecb8b47d809f9",
+      "entry_hash": "93a8b1a1de5c9acd03557159350314596385ef89cdec33982318f07852fedbbe",
+      "merkle_root": "f893de49a25d7111a7ebe9061990cf06e9d22ce28bfa5f08c87e25a69f96dcd4"
+    },
+    {
+      "receipt_id": "hr_b2b41e5e6c636fc8d1eb3ca8b6581f89",
+      "action": "invoice.create",
+      "input_hash": "41e8e29bcd7b60a93249f786e2f9a78e62adc6c1c3d015613d436ae50b729d5e",
+      "result_hash": "4aba5a55f9b4131d52ef8c940254eeb274909e3e81742909b37475763fd95fe0",
+      "principal": "agent:release-bot",
+      "approval": {
+        "required": false
+      },
+      "idempotency_key": "invoice-demo-001",
+      "deliberation": null,
+      "deliberation_hash": null,
+      "annotations": {
+        "readOnly": false,
+        "destructive": false,
+        "idempotent": true,
+        "decisionRequired": false
+      },
+      "metadata": {
+        "surface": "ledger"
+      },
+      "created_at": "2026-10-31T12:00:03.000Z",
+      "approval_state": {
+        "required": false
+      },
+      "prev_hash": "93a8b1a1de5c9acd03557159350314596385ef89cdec33982318f07852fedbbe",
+      "entry_hash": "017fbca043a6563f3c6046c19a589596f339f2562e65a9b04fc0b7e8ee459b8c",
+      "merkle_root": "4749d166cd1308222caba020acb9fb2c5e3c65f2bbb82485f2c0e75bdcac6c1f"
+    }
+  ]
+}

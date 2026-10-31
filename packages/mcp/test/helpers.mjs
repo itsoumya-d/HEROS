@@ -101,6 +101,7 @@ export async function makeHarness(options = {}) {
     runLedger: options.runLedger ?? createFakeLedger(),
     dataDir,
     hmacSeed: options.hmacSeed,
+    ...(options.rateLimiter ? { rateLimiter: options.rateLimiter } : {}),
   });
   const session = createSession({ id: options.sessionId ?? "test-session" });
   if (options.apiKey !== undefined) session.apiKey = options.apiKey;

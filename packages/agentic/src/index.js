@@ -1,6 +1,27 @@
 import { createHash, randomBytes } from "node:crypto";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
+import { canonicalStringify } from "./canonical.js";
+import {
+  createMerkleReceiptStore,
+  GENESIS_HASH,
+  inclusionProof,
+  leafHash,
+  merkleRoot,
+  receiptProjection,
+  verifyInclusionProof
+} from "./merkle.js";
+
+export {
+  createMerkleReceiptStore,
+  GENESIS_HASH,
+  inclusionProof,
+  leafHash,
+  merkleRoot,
+  receiptProjection,
+  verifyInclusionProof
+};
+export { canonicalStringify };
 
 const DEFAULT_PROTOCOL_VERSION = "2025-11-25";
 const ACTION_NAME_RE = /^[A-Za-z0-9_.:-]{1,96}$/;
@@ -14,7 +35,9 @@ const ERROR = {
   APPROVAL_REQUIRED: "APPROVAL_REQUIRED",
   INVALID_APPROVAL_TOKEN: "INVALID_APPROVAL_TOKEN",
   IDEMPOTENCY_CONFLICT: "IDEMPOTENCY_CONFLICT",
-  ACTION_FAILED: "ACTION_FAILED"
+  ACTION_FAILED: "ACTION_FAILED",
+  VERIFIER_FAILED: "VERIFIER_FAILED",
+  REFLECTION_FAILED: "REFLECTION_FAILED"
 };
 
 export function createAgenticApp(options = {}) {
@@ -251,10 +274,6 @@ export function createFileApprovalStore({ path, ttlMs = 5 * 60 * 1000 }) {
   };
 }
 
-export function canonicalStringify(value) {
-  return JSON.stringify(canonicalize(value));
-}
-
 export class AgenticApp {
   constructor(options = {}) {
     this.name = assertSafeText(options.name || "heros-agentic-app", "app name", 80);
@@ -376,7 +395,26 @@ export class AgenticApp {
         approval: approval ? cloneJson(approval) : null,
         action: publicAction(action)
       });
-      const safeResult = cloneJson(result ?? {});
+
+      let verified;
+      try {
+        verified = await this.verifyAndReflect(action, {
+          input,
+          context,
+          auth,
+          approval,
+          result: cloneJson(result ?? {})
+        });
+      } catch (error) {
+        const code = error && error.verificationCode
+          ? error.verificationCode
+          : ERROR.VERIFIER_FAILED;
+        return failure(code, "Verification or reflection failed closed.", false, {
+          message: safeErrorMessage(error)
+        });
+      }
+
+      const safeResult = cloneJson(verified.result ?? {});
       const receipt = {
         receipt_id: `hr_${randomBytes(16).toString("hex")}`,
         action: action.name,
@@ -394,18 +432,22 @@ export class AgenticApp {
               required: false
             },
         idempotency_key: idempotencyKey || null,
+        deliberation: cloneJson(verified.deliberation),
+        deliberation_hash: verified.deliberation
+          ? verified.deliberation.trace_hash
+          : null,
         annotations: cloneJson(action.annotations),
         metadata: cloneJson(action.receiptMetadata),
         created_at: now.toISOString()
       };
 
-      await this.receiptStore.append(receipt);
+      const persistedReceipt = (await this.receiptStore.append(receipt)) ?? receipt;
 
       const response = {
         ok: true,
         action: action.name,
         result: safeResult,
-        receipt,
+        receipt: persistedReceipt,
         _idempotent: false
       };
 
@@ -419,6 +461,104 @@ export class AgenticApp {
         message: safeErrorMessage(error)
       });
     }
+  }
+
+  async verifyAndReflect(action, { input, context, auth, approval, result }) {
+    const config = action.verification;
+    if (!config) {
+      return { result, deliberation: null };
+    }
+
+    const trace = [
+      {
+        step: "execute",
+        result_hash: hashValue(result)
+      }
+    ];
+
+    let current = result;
+    let verification = await runVerifier(config, action, {
+      input,
+      context,
+      auth,
+      approval,
+      result: current
+    });
+    const initialScore = verification.score;
+    let triggered = shouldReflect(config, verification);
+
+    trace.push({
+      step: "verify",
+      attempt: 0,
+      score: verification.score,
+      error_code: verification.errorCode
+    });
+
+    let attempts = 0;
+    while (triggered && config.reflect && attempts < config.maxAttempts) {
+      attempts += 1;
+      let revised;
+      try {
+        revised = await config.reflect({
+          action: publicAction(action),
+          input: cloneJson(input),
+          context: cloneJson(context),
+          auth: cloneJson(auth),
+          approval: approval ? cloneJson(approval) : null,
+          result: cloneJson(current),
+          verification: cloneJson(verification),
+          attempt: attempts
+        });
+      } catch (error) {
+        error.verificationCode = ERROR.REFLECTION_FAILED;
+        throw error;
+      }
+
+      if (revised && typeof revised === "object" && Object.hasOwn(revised, "result")) {
+        current = cloneJson(revised.result ?? {});
+      } else if (revised !== undefined) {
+        current = cloneJson(revised ?? {});
+      }
+
+      trace.push({
+        step: "reflect",
+        attempt: attempts,
+        result_hash: hashValue(current)
+      });
+
+      verification = await runVerifier(config, action, {
+        input,
+        context,
+        auth,
+        approval,
+        result: current
+      });
+      trace.push({
+        step: "verify",
+        attempt: attempts,
+        score: verification.score,
+        error_code: verification.errorCode
+      });
+      triggered = shouldReflect(config, verification);
+    }
+
+    return {
+      result: current,
+      deliberation: {
+        triggered: shouldReflect(config, {
+          score: initialScore,
+          errorCode: trace[1].error_code
+        }),
+        threshold: config.threshold,
+        error_codes: [...config.errorCodes],
+        attempts,
+        initial_score: initialScore,
+        final_score: verification.score,
+        final_error_code: verification.errorCode,
+        trace,
+        trace_hash: hashValue(trace)
+      }
+    };
   }
 
   async resolveAuthorization(action, input, context) {
@@ -472,7 +612,55 @@ function normalizeAction(config) {
     approvalRequired: config.approvalRequired === true,
     annotations: normalizeAnnotations(config.annotations || {}, config.approvalRequired === true),
     receiptMetadata: cloneJson(config.receiptMetadata || {}),
+    verification: normalizeVerification(config.verification),
     handler: config.handler
+  };
+}
+
+function normalizeVerification(verification) {
+  if (verification === undefined || verification === null) {
+    return null;
+  }
+  if (typeof verification !== "object" || Array.isArray(verification)) {
+    throw new Error("verification must be an object.");
+  }
+  if (typeof verification.verify !== "function") {
+    throw new Error("verification.verify must be a function.");
+  }
+
+  const threshold =
+    verification.threshold === undefined ? 0.7 : verification.threshold;
+  if (typeof threshold !== "number" || !Number.isFinite(threshold)) {
+    throw new Error("verification.threshold must be a finite number.");
+  }
+
+  const errorCodes = verification.errorCodes === undefined
+    ? []
+    : verification.errorCodes;
+  if (
+    !Array.isArray(errorCodes) ||
+    errorCodes.some((code) => typeof code !== "string" || code.length === 0)
+  ) {
+    throw new Error("verification.errorCodes must be an array of non-empty strings.");
+  }
+
+  const maxAttempts = verification.maxAttempts === undefined
+    ? 1
+    : verification.maxAttempts;
+  if (!Number.isInteger(maxAttempts) || maxAttempts < 0 || maxAttempts > 3) {
+    throw new Error("verification.maxAttempts must be an integer from 0 to 3.");
+  }
+
+  if (verification.reflect !== undefined && typeof verification.reflect !== "function") {
+    throw new Error("verification.reflect must be a function when provided.");
+  }
+
+  return {
+    threshold,
+    errorCodes: [...errorCodes],
+    maxAttempts,
+    verify: verification.verify,
+    reflect: verification.reflect || null
   };
 }
 
@@ -493,7 +681,68 @@ function publicAction(action) {
     inputSchema: cloneJson(action.inputSchema),
     authRequired: action.authRequired,
     approvalRequired: action.approvalRequired,
-    annotations: cloneJson(action.annotations)
+    annotations: cloneJson(action.annotations),
+    verification: action.verification
+      ? {
+          threshold: action.verification.threshold,
+          errorCodes: [...action.verification.errorCodes],
+          maxAttempts: action.verification.maxAttempts
+        }
+      : null
+  };
+}
+
+function shouldReflect(config, verification) {
+  return (
+    verification.score < config.threshold ||
+    (verification.errorCode !== null &&
+      config.errorCodes.includes(verification.errorCode))
+  );
+}
+
+async function runVerifier(config, action, { input, context, auth, approval, result }) {
+  let raw;
+  try {
+    raw = await config.verify({
+      action: publicAction(action),
+      input: cloneJson(input),
+      context: cloneJson(context),
+      auth: cloneJson(auth),
+      approval: approval ? cloneJson(approval) : null,
+      result: cloneJson(result)
+    });
+  } catch (error) {
+    error.verificationCode = ERROR.VERIFIER_FAILED;
+    throw error;
+  }
+
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    const error = new Error("verification.verify must return an object.");
+    error.verificationCode = ERROR.VERIFIER_FAILED;
+    throw error;
+  }
+
+  const score = raw.score;
+  if (typeof score !== "number" || !Number.isFinite(score)) {
+    const error = new Error("verification.verify must return a finite numeric score.");
+    error.verificationCode = ERROR.VERIFIER_FAILED;
+    throw error;
+  }
+
+  const errorCode = raw.errorCode ?? raw.error_code ?? null;
+  if (
+    errorCode !== null &&
+    (typeof errorCode !== "string" || errorCode.length === 0)
+  ) {
+    const error = new Error("verification error code must be a non-empty string.");
+    error.verificationCode = ERROR.VERIFIER_FAILED;
+    throw error;
+  }
+
+  return {
+    score,
+    errorCode,
+    detail: raw.detail ?? null
   };
 }
 
@@ -625,20 +874,6 @@ function assertSafeText(value, label, maxLength) {
 
 function hashValue(value) {
   return createHash("sha256").update(canonicalStringify(value)).digest("hex");
-}
-
-function canonicalize(value) {
-  if (Array.isArray(value)) {
-    return value.map(canonicalize);
-  }
-  if (value && typeof value === "object") {
-    return Object.fromEntries(
-      Object.entries(value)
-        .sort(([left], [right]) => left.localeCompare(right))
-        .map(([key, item]) => [key, canonicalize(item)])
-    );
-  }
-  return value;
 }
 
 function cloneJson(value) {

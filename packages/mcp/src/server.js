@@ -18,10 +18,11 @@ import {
 } from "./security.js";
 import { createForgeTools } from "./tools/forge.js";
 import { createLedgerTools } from "./tools/ledger.js";
+import { createShadowTools } from "./tools/shadow.js";
 
 export const MCP_PROTOCOL_VERSION = "2025-11-25";
 export const SERVER_NAME = "heros";
-export const SERVER_VERSION = "0.2.0";
+export const SERVER_VERSION = "0.3.0";
 const MAX_ID_BYTES = 4096;
 const TOOL_NAME_PATTERN = /^[a-z][a-z0-9_]*$/;
 
@@ -57,6 +58,7 @@ export function createMcpServer({
 
   const tools = [
     ...createForgeTools({ manifest: forgeManifest, runForge, approvals, rateLimiter }),
+    ...createShadowTools({ rateLimiter }),
     ...createLedgerTools({ manifest: ledgerManifest, runLedger, rateLimiter }),
   ];
   const byName = new Map(tools.map((tool) => [tool.definition.name, tool]));

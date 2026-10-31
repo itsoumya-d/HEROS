@@ -1,6 +1,6 @@
 {
   "name": "@heros/mcp",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Cross-platform MCP bridge for HEROS forge and ledger over stdio and Streamable HTTP.",
   "type": "module",
   "main": "./src/server.js",
@@ -15,8 +15,8 @@
   "files": [
     "bin",
     "src",
-    "python",
-    "README.md"
+    "README.md",
+    "python/*.py"
   ],
   "scripts": {
     "test": "node --test test/*.test.mjs"

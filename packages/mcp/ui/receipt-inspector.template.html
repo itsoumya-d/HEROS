@@ -1,0 +1,1204 @@
+<!doctype html>
+<html lang="en" data-df-color-scale="detailed" data-df-density="compact">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="color-scheme" content="dark">
+  <title>HEROS Receipt Inspector</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: oklch(0.17 0.012 260);
+      --panel: oklch(0.21 0.014 260);
+      --panel-2: oklch(0.245 0.016 260);
+      --line: oklch(0.34 0.018 260);
+      --line-soft: oklch(0.28 0.016 260);
+      --text: oklch(0.95 0.008 260);
+      --muted: oklch(0.72 0.018 260);
+      --faint: oklch(0.58 0.02 260);
+      --accent: oklch(0.76 0.16 155);
+      --accent-soft: oklch(0.32 0.06 155);
+      --warn: oklch(0.82 0.14 82);
+      --warn-soft: oklch(0.3 0.05 82);
+      --danger: oklch(0.72 0.19 28);
+      --danger-soft: oklch(0.31 0.07 28);
+      --info: oklch(0.78 0.11 245);
+      --info-soft: oklch(0.3 0.05 245);
+      --radius: 10px;
+      --radius-sm: 7px;
+      --font: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body {
+      margin: 0;
+      min-block-size: 100dvh;
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--font);
+      font-size: 13px;
+      line-height: 1.45;
+    }
+
+    body {
+      padding-block-end: env(safe-area-inset-bottom);
+      text-rendering: optimizeLegibility;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    h1, h2, h3, p { margin: 0; }
+    h1, h2, h3 { text-wrap: balance; }
+    p { text-wrap: pretty; }
+
+    button, input, select {
+      font: inherit;
+      color: inherit;
+    }
+
+    button, select, input[type="search"], .file-button {
+      min-block-size: 44px;
+    }
+
+    :focus-visible {
+      outline: 2px solid var(--accent);
+      outline-offset: 2px;
+    }
+
+    .skip-link {
+      position: absolute;
+      inset-inline-start: 12px;
+      inset-block-start: -80px;
+      z-index: 20;
+      background: var(--accent);
+      color: oklch(0.16 0.02 155);
+      padding: 10px 14px;
+      border-radius: var(--radius-sm);
+      font-weight: 650;
+      transition: inset-block-start 120ms ease;
+    }
+    .skip-link:focus { inset-block-start: 12px; }
+
+    .topbar {
+      position: sticky;
+      inset-block-start: 0;
+      z-index: 10;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 12px max(16px, env(safe-area-inset-left)) 12px max(16px, env(safe-area-inset-right));
+      background: var(--bg);
+      border-block-end: 1px solid var(--line-soft);
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-inline-size: 0;
+    }
+
+    .brand-mark {
+      display: grid;
+      place-items: center;
+      inline-size: 30px;
+      block-size: 30px;
+      border-radius: 8px;
+      background: var(--accent-soft);
+      color: var(--accent);
+      font-family: var(--mono);
+      font-weight: 700;
+      font-size: 12px;
+    }
+
+    .brand-title {
+      font-weight: 680;
+      font-size: 14px;
+    }
+
+    .brand-sub {
+      color: var(--muted);
+      font-size: 12px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      min-block-size: 22px;
+      padding: 2px 8px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      color: var(--muted);
+      font-family: var(--mono);
+      font-size: 10.5px;
+      white-space: nowrap;
+    }
+
+    .top-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .button, .file-button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 7px;
+      padding: 0 14px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius-sm);
+      background: var(--panel);
+      cursor: pointer;
+      transition: background 120ms ease, border-color 120ms ease;
+    }
+
+    .button:hover, .file-button:hover { background: var(--panel-2); }
+    .button:active, .file-button:active { background: var(--line-soft); }
+
+    .button.primary {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: oklch(0.15 0.02 155);
+      font-weight: 660;
+    }
+    .button.primary:hover { background: oklch(0.8 0.16 155); }
+
+    .button.ghost {
+      background: transparent;
+    }
+
+    .icon {
+      inline-size: 15px;
+      block-size: 15px;
+      flex: none;
+    }
+
+    .app-shell {
+      display: grid;
+      grid-template-columns: minmax(230px, 286px) minmax(0, 1fr);
+      min-block-size: calc(100dvh - 61px);
+    }
+
+    .sidebar {
+      border-inline-end: 1px solid var(--line-soft);
+      padding: 16px max(14px, env(safe-area-inset-left)) 28px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      min-inline-size: 0;
+    }
+
+    .panel {
+      border: 1px solid var(--line-soft);
+      border-radius: var(--radius);
+      background: var(--panel);
+      padding: 12px;
+      min-inline-size: 0;
+    }
+
+    .panel h2 {
+      font-size: 11px;
+      font-weight: 650;
+      color: var(--muted);
+      text-transform: uppercase;
+      margin-block-end: 10px;
+    }
+
+    .status {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      font-weight: 620;
+      font-size: 12.5px;
+      margin-block-end: 10px;
+    }
+
+    .status-dot {
+      inline-size: 8px;
+      block-size: 8px;
+      margin-block-start: 5px;
+      border-radius: 50%;
+      background: var(--faint);
+      flex: none;
+    }
+    .status.ok .status-dot { background: var(--accent); }
+    .status.warn .status-dot { background: var(--warn); }
+    .status.bad .status-dot { background: var(--danger); }
+    .status.ok { color: var(--accent); }
+    .status.warn { color: var(--warn); }
+    .status.bad { color: var(--danger); }
+
+    .status-detail {
+      display: block;
+      color: var(--muted);
+      font-weight: 400;
+      font-size: 12px;
+      margin-block-start: 2px;
+    }
+
+    .metrics {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1px;
+      margin: 0;
+      border: 1px solid var(--line-soft);
+      border-radius: var(--radius-sm);
+      overflow: hidden;
+      background: var(--line-soft);
+    }
+
+    .metric {
+      background: var(--panel);
+      padding: 8px 9px;
+      min-inline-size: 0;
+    }
+    .metric dt {
+      color: var(--faint);
+      font-size: 10.5px;
+      margin-block-end: 2px;
+    }
+    .metric dd {
+      margin: 0;
+      font-family: var(--mono);
+      font-size: 13px;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .field { display: grid; gap: 5px; margin-block-end: 9px; }
+    .field:last-child { margin-block-end: 0; }
+    .field label { color: var(--muted); font-size: 11.5px; }
+
+    .field input, .field select {
+      inline-size: 100%;
+      border: 1px solid var(--line);
+      border-radius: var(--radius-sm);
+      background: var(--bg);
+      padding: 0 10px;
+    }
+
+    .field-error {
+      color: var(--danger);
+      font-size: 11.5px;
+      margin-block-start: 6px;
+    }
+    .field-error:empty { display: none; }
+
+    .root {
+      display: block;
+      font-family: var(--mono);
+      font-size: 10.5px;
+      line-height: 1.5;
+      color: var(--muted);
+      overflow-wrap: anywhere;
+    }
+
+    .main {
+      display: grid;
+      grid-template-columns: minmax(300px, 0.92fr) minmax(340px, 1.08fr);
+      min-inline-size: 0;
+    }
+
+    .list-pane {
+      border-inline-end: 1px solid var(--line-soft);
+      min-inline-size: 0;
+      display: flex;
+      flex-direction: column;
+      max-block-size: calc(100dvh - 61px);
+    }
+
+    .list-header {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 16px 16px 10px;
+      border-block-end: 1px solid var(--line-soft);
+    }
+
+    .list-header h1 { font-size: 14px; font-weight: 680; }
+    .muted { color: var(--muted); }
+    .mono { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+
+    .receipt-list {
+      list-style: none;
+      margin: 0;
+      padding: 6px;
+      overflow: auto;
+      min-block-size: 0;
+    }
+
+    .receipt-row {
+      inline-size: 100%;
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr) auto;
+      gap: 10px;
+      align-items: start;
+      text-align: start;
+      background: transparent;
+      border: 1px solid transparent;
+      border-radius: var(--radius-sm);
+      padding: 10px;
+      cursor: pointer;
+    }
+
+    .receipt-row:hover { background: var(--panel); }
+    .receipt-row[aria-pressed="true"] {
+      background: var(--info-soft);
+      border-color: oklch(0.45 0.08 245);
+    }
+
+    .row-icon {
+      display: grid;
+      place-items: center;
+      inline-size: 26px;
+      block-size: 26px;
+      border-radius: 7px;
+      background: var(--panel-2);
+      color: var(--muted);
+      font-family: var(--mono);
+      font-size: 11px;
+      font-weight: 700;
+    }
+
+    .row-main { min-inline-size: 0; }
+    .row-title {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      flex-wrap: wrap;
+      font-weight: 620;
+      font-size: 12.5px;
+    }
+    .row-meta {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+      color: var(--faint);
+      font-size: 11px;
+      margin-block-start: 3px;
+    }
+    .row-hash {
+      color: var(--faint);
+      font-family: var(--mono);
+      font-size: 10.5px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      max-inline-size: 100%;
+    }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      min-block-size: 20px;
+      padding: 1px 7px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      font-size: 10.5px;
+      color: var(--muted);
+      white-space: nowrap;
+    }
+    .pill.ok { color: var(--accent); border-color: oklch(0.42 0.08 155); background: var(--accent-soft); }
+    .pill.warn { color: var(--warn); border-color: oklch(0.44 0.07 82); background: var(--warn-soft); }
+    .pill.bad { color: var(--danger); border-color: oklch(0.44 0.08 28); background: var(--danger-soft); }
+    .pill.info { color: var(--info); border-color: oklch(0.44 0.07 245); background: var(--info-soft); }
+
+    .empty {
+      padding: 26px 16px;
+      color: var(--muted);
+      font-size: 12.5px;
+      text-align: center;
+    }
+
+    .detail-pane {
+      padding: 16px max(16px, env(safe-area-inset-right)) 32px 16px;
+      overflow: auto;
+      max-block-size: calc(100dvh - 61px);
+      container-type: inline-size;
+      min-inline-size: 0;
+    }
+
+    .detail-head {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 12px;
+      margin-block-end: 14px;
+    }
+
+    .detail-title { font-size: 16px; font-weight: 700; }
+    .detail-sub { color: var(--muted); font-size: 12px; margin-block-start: 2px; }
+
+    .detail-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+
+    @container (max-width: 520px) {
+      .detail-grid { grid-template-columns: 1fr; }
+    }
+
+    .detail-card {
+      border: 1px solid var(--line-soft);
+      border-radius: var(--radius);
+      background: var(--panel);
+      padding: 12px;
+      min-inline-size: 0;
+    }
+    .detail-card.full { grid-column: 1 / -1; }
+    .detail-card h3 {
+      font-size: 11px;
+      color: var(--muted);
+      text-transform: uppercase;
+      margin-block-end: 9px;
+    }
+
+    .kv {
+      display: grid;
+      grid-template-columns: minmax(90px, 0.4fr) minmax(0, 1fr);
+      gap: 7px 10px;
+      margin: 0;
+    }
+    .kv dt { color: var(--faint); font-size: 11.5px; }
+    .kv dd { margin: 0; min-inline-size: 0; overflow-wrap: anywhere; }
+
+    .hash-block {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      background: var(--bg);
+      border: 1px solid var(--line-soft);
+      border-radius: var(--radius-sm);
+      padding: 7px 8px;
+      min-inline-size: 0;
+    }
+    .hash-block code {
+      font-family: var(--mono);
+      font-size: 10.5px;
+      line-height: 1.5;
+      overflow-wrap: anywhere;
+      flex: 1;
+      min-inline-size: 0;
+    }
+
+    .copy {
+      flex: none;
+      min-block-size: 44px;
+      min-inline-size: 44px;
+      display: grid;
+      place-items: center;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: var(--panel-2);
+      cursor: pointer;
+      color: var(--muted);
+    }
+    .copy:hover { color: var(--text); }
+
+    .trace {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+      display: grid;
+      gap: 6px;
+    }
+    .trace li {
+      display: grid;
+      grid-template-columns: 66px minmax(0, 1fr) auto;
+      gap: 8px;
+      align-items: center;
+      padding: 6px 8px;
+      border: 1px solid var(--line-soft);
+      border-radius: var(--radius-sm);
+      background: var(--bg);
+    }
+    .trace-step {
+      font-family: var(--mono);
+      font-size: 10.5px;
+      color: var(--muted);
+      text-transform: uppercase;
+    }
+    .trace-score {
+      font-family: var(--mono);
+      font-size: 11px;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .proof {
+      display: grid;
+      gap: 5px;
+      margin-block-start: 8px;
+    }
+    .proof-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      padding: 5px 7px;
+      border: 1px solid var(--line-soft);
+      border-radius: 6px;
+      background: var(--bg);
+      font-family: var(--mono);
+      font-size: 10.5px;
+    }
+    .proof-row span:last-child { color: var(--faint); }
+
+    .notice {
+      border: 1px solid var(--line);
+      border-radius: var(--radius-sm);
+      padding: 9px 10px;
+      color: var(--muted);
+      background: var(--panel-2);
+      font-size: 12px;
+    }
+
+    .verified-banner {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 10px;
+      border-radius: var(--radius-sm);
+      border: 1px solid oklch(0.42 0.08 155);
+      background: var(--accent-soft);
+      color: var(--accent);
+      font-weight: 620;
+      font-size: 12px;
+      margin-block-end: 12px;
+    }
+    .verified-banner.bad {
+      border-color: oklch(0.44 0.08 28);
+      background: var(--danger-soft);
+      color: var(--danger);
+    }
+
+    .sr-only {
+      position: absolute;
+      inline-size: 1px;
+      block-size: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+      border: 0;
+    }
+
+    @media (max-width: 1040px) {
+      .app-shell { grid-template-columns: 1fr; }
+      .sidebar {
+        border-inline-end: 0;
+        border-block-end: 1px solid var(--line-soft);
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+      }
+      .sidebar .panel:last-child { grid-column: 1 / -1; }
+      .main { grid-template-columns: 1fr; }
+      .list-pane {
+        border-inline-end: 0;
+        border-block-end: 1px solid var(--line-soft);
+        max-block-size: none;
+      }
+      .detail-pane { max-block-size: none; }
+    }
+
+    @media (max-width: 640px) {
+      .sidebar { grid-template-columns: 1fr; }
+      .sidebar .panel:last-child { grid-column: auto; }
+      .topbar { align-items: flex-start; }
+      .brand-sub { max-inline-size: 180px; }
+      .list-header { padding-inline: 12px; }
+      .detail-pane { padding-inline: 12px; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+        scroll-behavior: auto !important;
+      }
+    }
+  </style>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to receipt log</a>
+
+  <header class="topbar">
+    <div class="brand">
+      <div class="brand-mark" aria-hidden="true">H</div>
+      <div>
+        <div class="brand-title">Receipt Inspector</div>
+        <div class="brand-sub">SHA-256 Merkle log · MCP 2025-11-25</div>
+      </div>
+      <span class="badge">verify-only</span>
+    </div>
+    <div class="top-actions">
+      <label class="file-button" for="receipt-file">
+        <svg class="icon" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.4">
+          <path d="M3 2.5h6l4 4v7H3z"/><path d="M9 2.5v4h4"/>
+        </svg>
+        Load JSON
+      </label>
+      <input id="receipt-file" class="sr-only" type="file" accept="application/json,.json">
+      <button id="verify" class="button primary" type="button">
+        <svg class="icon" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5">
+          <path d="M3 8.5l3 3 7-7"/>
+        </svg>
+        Verify log
+      </button>
+    </div>
+  </header>
+
+  <div class="app-shell">
+    <aside class="sidebar" aria-label="Log summary and filters">
+      <section class="panel" aria-labelledby="integrity-title">
+        <h2 id="integrity-title">Log integrity</h2>
+        <p id="integrity" class="status" role="status" aria-live="polite">
+          <span class="status-dot" aria-hidden="true"></span>
+          <span>Not verified<span class="status-detail" id="integrity-detail">Load a receipt log or verify the sample.</span></span>
+        </p>
+        <dl class="metrics">
+          <div class="metric"><dt>Receipts</dt><dd id="metric-count">0</dd></div>
+          <div class="metric"><dt>Approved</dt><dd id="metric-approved">0</dd></div>
+          <div class="metric"><dt>Reflected</dt><dd id="metric-reflected">0</dd></div>
+          <div class="metric"><dt>Failures</dt><dd id="metric-failures">0</dd></div>
+        </dl>
+      </section>
+
+      <section class="panel" aria-labelledby="filter-title">
+        <h2 id="filter-title">Filter</h2>
+        <div class="field">
+          <label for="filter-action">Action</label>
+          <select id="filter-action">
+            <option value="">All actions</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="filter-search">Search principal or hash</label>
+          <input id="filter-search" type="search" placeholder="agent:release-bot" autocomplete="off">
+        </div>
+        <p id="file-error" class="field-error" role="alert"></p>
+      </section>
+
+      <section class="panel" aria-labelledby="root-title">
+        <h2 id="root-title">Merkle root</h2>
+        <code id="root" class="root">—</code>
+      </section>
+    </aside>
+
+    <main id="main" class="main">
+      <section class="list-pane" aria-labelledby="receipts-title">
+        <div class="list-header">
+          <h1 id="receipts-title">Action receipts</h1>
+          <span id="count" class="muted mono">0</span>
+        </div>
+        <ol id="receipt-list" class="receipt-list"></ol>
+      </section>
+
+      <section id="detail" class="detail-pane" aria-label="Receipt detail" aria-live="polite">
+        <div class="notice">Select a receipt to inspect its hashes, approval state, and deliberation trace.</div>
+      </section>
+    </main>
+  </div>
+
+  <script type="application/json" id="sample-data">__SAMPLE_RECEIPTS__</script>
+  <script>
+    "use strict";
+
+    const SAMPLE = JSON.parse(document.getElementById("sample-data").textContent);
+    const state = {
+      payload: SAMPLE,
+      receipts: [],
+      leaves: [],
+      verification: null,
+      selectedId: null,
+      actionFilter: "",
+      query: ""
+    };
+
+    const els = {
+      integrity: document.getElementById("integrity"),
+      integrityDetail: document.getElementById("integrity-detail"),
+      metricCount: document.getElementById("metric-count"),
+      metricApproved: document.getElementById("metric-approved"),
+      metricReflected: document.getElementById("metric-reflected"),
+      metricFailures: document.getElementById("metric-failures"),
+      filterAction: document.getElementById("filter-action"),
+      filterSearch: document.getElementById("filter-search"),
+      fileError: document.getElementById("file-error"),
+      receiptFile: document.getElementById("receipt-file"),
+      verify: document.getElementById("verify"),
+      root: document.getElementById("root"),
+      count: document.getElementById("count"),
+      list: document.getElementById("receipt-list"),
+      detail: document.getElementById("detail")
+    };
+
+    function canonicalize(value) {
+      if (Array.isArray(value)) return value.map(canonicalize);
+      if (value && typeof value === "object") {
+        const out = {};
+        for (const key of Object.keys(value).sort((a, b) => a < b ? -1 : a > b ? 1 : 0)) {
+          out[key] = canonicalize(value[key]);
+        }
+        return out;
+      }
+      return value;
+    }
+
+    function canonicalStringify(value) {
+      return JSON.stringify(canonicalize(value));
+    }
+
+    const encoder = new TextEncoder();
+
+    function hexToBytes(hex) {
+      const out = new Uint8Array(hex.length / 2);
+      for (let i = 0; i < out.length; i += 1) {
+        out[i] = Number.parseInt(hex.slice(i * 2, i * 2 + 2), 16);
+      }
+      return out;
+    }
+
+    function bytesToHex(bytes) {
+      return [...bytes].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+    }
+
+    async function sha256(bytes) {
+      return bytesToHex(new Uint8Array(await crypto.subtle.digest("SHA-256", bytes)));
+    }
+
+    function receiptProjection(receipt) {
+      return {
+        schema_version: 2,
+        receipt_id: receipt.receipt_id,
+        action: receipt.action,
+        input_hash: receipt.input_hash,
+        result_hash: receipt.result_hash,
+        principal: receipt.principal,
+        approval_state: receipt.approval_state ?? receipt.approval ?? { required: false },
+        idempotency_key: receipt.idempotency_key ?? null,
+        deliberation_hash: receipt.deliberation_hash ?? null,
+        annotations: receipt.annotations ?? {},
+        metadata: receipt.metadata ?? {},
+        created_at: receipt.created_at
+      };
+    }
+
+    async function leafHash(receipt) {
+      const json = canonicalStringify(receiptProjection(receipt));
+      const body = encoder.encode(json);
+      const data = new Uint8Array(body.length + 1);
+      data[0] = 0;
+      data.set(body, 1);
+      return sha256(data);
+    }
+
+    async function parentHash(left, right) {
+      const leftBytes = hexToBytes(left);
+      const rightBytes = hexToBytes(right);
+      const data = new Uint8Array(1 + leftBytes.length + rightBytes.length);
+      data[0] = 1;
+      data.set(leftBytes, 1);
+      data.set(rightBytes, 1 + leftBytes.length);
+      return sha256(data);
+    }
+
+    async function merkleRoot(leaves) {
+      if (leaves.length === 0) return "0".repeat(64);
+      let level = leaves.slice();
+      while (level.length > 1) {
+        const next = [];
+        for (let i = 0; i < level.length; i += 2) {
+          next.push(i + 1 < level.length ? await parentHash(level[i], level[i + 1]) : level[i]);
+        }
+        level = next;
+      }
+      return level[0];
+    }
+
+    async function inclusionProof(leaves, index) {
+      if (index < 0 || index >= leaves.length) return null;
+      const proof = [];
+      let level = leaves.slice();
+      let cursor = index;
+      while (level.length > 1) {
+        const isRight = cursor % 2 === 1;
+        const sibling = isRight ? cursor - 1 : cursor + 1;
+        if (sibling >= 0 && sibling < level.length) {
+          proof.push({ hash: level[sibling], position: isRight ? "left" : "right" });
+        }
+        const next = [];
+        for (let i = 0; i < level.length; i += 2) {
+          next.push(i + 1 < level.length ? await parentHash(level[i], level[i + 1]) : level[i]);
+        }
+        level = next;
+        cursor = Math.floor(cursor / 2);
+      }
+      return { leaf: leaves[index], index, size: leaves.length, root: level[0], proof };
+    }
+
+    async function verifyInclusion(proof) {
+      let cursor = proof.leaf;
+      for (const step of proof.proof) {
+        cursor = step.position === "left"
+          ? await parentHash(step.hash, cursor)
+          : await parentHash(cursor, step.hash);
+      }
+      return cursor === proof.root;
+    }
+
+    async function verifyPayload(payload) {
+      const receipts = Array.isArray(payload) ? payload : payload.receipts;
+      if (!Array.isArray(receipts)) {
+        throw new Error("Expected a receipts array or a payload with a receipts array.");
+      }
+
+      const leaves = [];
+      const failures = [];
+      let previous = "0".repeat(64);
+
+      for (const [index, receipt] of receipts.entries()) {
+        const leaf = await leafHash(receipt);
+        leaves.push(leaf);
+        if (receipt.entry_hash !== undefined && receipt.entry_hash !== leaf) {
+          failures.push({ index, receipt_id: receipt.receipt_id, reason: "ENTRY_HASH_MISMATCH" });
+        }
+        if (receipt.prev_hash !== undefined && receipt.prev_hash !== previous) {
+          failures.push({ index, receipt_id: receipt.receipt_id, reason: "PREV_HASH_MISMATCH" });
+        }
+        if (receipt.deliberation && receipt.deliberation_hash !== undefined) {
+          const traceHash = await sha256(encoder.encode(canonicalStringify(receipt.deliberation.trace)));
+          if (traceHash !== receipt.deliberation_hash) {
+            failures.push({ index, receipt_id: receipt.receipt_id, reason: "DELIBERATION_TRACE_MISMATCH" });
+          }
+        }
+        previous = leaf;
+      }
+
+      const root = await merkleRoot(leaves);
+      const expectedRoot = Array.isArray(payload) ? null : payload.merkle_root;
+      if (expectedRoot && expectedRoot !== root) {
+        failures.push({ index: receipts.length - 1, receipt_id: receipts.at(-1)?.receipt_id ?? "", reason: "MERKLE_ROOT_MISMATCH" });
+      }
+      if (receipts.length > 0 && receipts.at(-1).merkle_root !== undefined && receipts.at(-1).merkle_root !== root) {
+        failures.push({ index: receipts.length - 1, receipt_id: receipts.at(-1).receipt_id, reason: "TAIL_ROOT_MISMATCH" });
+      }
+
+      return { receipts, leaves, root, failures, ok: failures.length === 0 };
+    }
+
+    function formatTime(value) {
+      if (!value) return "—";
+      const date = new Date(value);
+      if (Number.isNaN(date.getTime())) return String(value);
+      return new Intl.DateTimeFormat(undefined, {
+        month: "short",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit"
+      }).format(date);
+    }
+
+    function shortHash(value, size = 14) {
+      if (!value) return "—";
+      return value.length <= size * 2 ? value : `${value.slice(0, size)}…${value.slice(-size)}`;
+    }
+
+    function pill(label, tone) {
+      return `<span class="pill ${tone}">${escapeHtml(label)}</span>`;
+    }
+
+    function escapeHtml(value) {
+      return String(value)
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#39;");
+    }
+
+    function filteredReceipts() {
+      const query = state.query.trim().toLowerCase();
+      return state.receipts.filter((receipt) => {
+        if (state.actionFilter && receipt.action !== state.actionFilter) return false;
+        if (!query) return true;
+        return [receipt.principal, receipt.action, receipt.input_hash, receipt.result_hash, receipt.receipt_id, receipt.entry_hash]
+          .filter(Boolean)
+          .some((value) => String(value).toLowerCase().includes(query));
+      });
+    }
+
+    function renderSummary() {
+      const verification = state.verification;
+      els.integrity.className = "status";
+      if (!verification) {
+        els.integrity.querySelector("span:last-child").firstChild.textContent = "Not verified";
+        els.integrityDetail.textContent = "Load a receipt log or verify the sample.";
+      } else if (verification.ok) {
+        els.integrity.classList.add("ok");
+        els.integrity.querySelector("span:last-child").firstChild.textContent = "Integrity verified";
+        els.integrityDetail.textContent = `${verification.receipts.length} leaves · root matches the log tail.`;
+      } else {
+        els.integrity.classList.add("bad");
+        els.integrity.querySelector("span:last-child").firstChild.textContent = "Integrity failed";
+        els.integrityDetail.textContent = `${verification.failures.length} failure(s). Inspect the receipt detail.`;
+      }
+
+      els.metricCount.textContent = String(state.receipts.length);
+      els.metricApproved.textContent = String(state.receipts.filter((receipt) => receipt.approval?.required).length);
+      els.metricReflected.textContent = String(state.receipts.filter((receipt) => receipt.deliberation?.triggered).length);
+      els.metricFailures.textContent = String(verification?.failures.length ?? 0);
+      els.root.textContent = verification?.root ?? "—";
+      els.count.textContent = String(filteredReceipts().length);
+    }
+
+    function renderFilters() {
+      const actions = [...new Set(state.receipts.map((receipt) => receipt.action))].sort();
+      const current = els.filterAction.value;
+      els.filterAction.innerHTML = '<option value="">All actions</option>' +
+        actions.map((action) => `<option value="${escapeHtml(action)}">${escapeHtml(action)}</option>`).join("");
+      if (actions.includes(current)) els.filterAction.value = current;
+    }
+
+    function renderList() {
+      const receipts = filteredReceipts();
+      if (receipts.length === 0) {
+        els.list.innerHTML = '<li class="empty">No receipts match the current filter.</li>';
+        return;
+      }
+      els.list.innerHTML = receipts.map((receipt) => {
+        const selected = receipt.receipt_id === state.selectedId;
+        const badges = [];
+        if (receipt.approval?.required) badges.push(pill("approved", "info"));
+        if (receipt.deliberation?.triggered) badges.push(pill("reflected", "warn"));
+        if (receipt.annotations?.destructive) badges.push(pill("destructive", "bad"));
+        if (receipt.annotations?.idempotent) badges.push(pill("idempotent", "ok"));
+        return `
+          <li>
+            <button class="receipt-row" type="button" data-id="${escapeHtml(receipt.receipt_id)}" aria-pressed="${selected}">
+              <span class="row-icon" aria-hidden="true">${escapeHtml(receipt.action.slice(0, 1).toUpperCase())}</span>
+              <span class="row-main">
+                <span class="row-title">${escapeHtml(receipt.action)} ${badges.join("")}</span>
+                <span class="row-meta">
+                  <span>${escapeHtml(receipt.principal)}</span>
+                  <span>·</span>
+                  <span>${escapeHtml(formatTime(receipt.created_at))}</span>
+                </span>
+                <span class="row-hash">${escapeHtml(shortHash(receipt.entry_hash))}</span>
+              </span>
+              <span class="mono muted">${escapeHtml(receipt.idempotency_key ? "idem" : "")}</span>
+            </button>
+          </li>
+        `;
+      }).join("");
+    }
+
+    async function renderDetail() {
+      const receipt = state.receipts.find((item) => item.receipt_id === state.selectedId);
+      if (!receipt) {
+        els.detail.innerHTML = '<div class="notice">Select a receipt to inspect its hashes, approval state, and deliberation trace.</div>';
+        return;
+      }
+
+      const index = state.receipts.findIndex((item) => item.receipt_id === receipt.receipt_id);
+      const proof = await inclusionProof(state.leaves, index);
+      const proofValid = proof ? await verifyInclusion(proof) : false;
+      const failures = (state.verification?.failures ?? []).filter((failure) => failure.receipt_id === receipt.receipt_id);
+      const ok = failures.length === 0 && proofValid;
+
+      const trace = receipt.deliberation?.trace ?? [];
+      const approval = receipt.approval_state ?? receipt.approval ?? { required: false };
+
+      els.detail.innerHTML = `
+        <div class="detail-head">
+          <div>
+            <div class="detail-title">${escapeHtml(receipt.action)}</div>
+            <div class="detail-sub">${escapeHtml(receipt.receipt_id)} · ${escapeHtml(formatTime(receipt.created_at))}</div>
+          </div>
+          ${pill(ok ? "proof valid" : "proof failed", ok ? "ok" : "bad")}
+        </div>
+
+        ${ok
+          ? `<div class="verified-banner"><svg class="icon" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 8.5l3 3 7-7"/></svg>Leaf hash, hash chain, and inclusion proof verify against the current root.</div>`
+          : `<div class="verified-banner bad">Verification failed: ${escapeHtml(failures.map((failure) => failure.reason).join(", ") || "INCLUSION_PROOF_MISMATCH")}</div>`}
+
+        <div class="detail-grid">
+          <section class="detail-card" aria-labelledby="identity-title">
+            <h3 id="identity-title">Identity</h3>
+            <dl class="kv">
+              <dt>Principal</dt><dd>${escapeHtml(receipt.principal)}</dd>
+              <dt>Action</dt><dd>${escapeHtml(receipt.action)}</dd>
+              <dt>Created</dt><dd>${escapeHtml(formatTime(receipt.created_at))}</dd>
+              <dt>Index</dt><dd class="mono">${index} / ${state.receipts.length - 1}</dd>
+            </dl>
+          </section>
+
+          <section class="detail-card" aria-labelledby="approval-title">
+            <h3 id="approval-title">Approval</h3>
+            <dl class="kv">
+              <dt>State</dt><dd>${approval.required ? pill("approved", "info") : pill("not required", "ok")}</dd>
+              <dt>Approved by</dt><dd>${escapeHtml(approval.approved_by ?? "—")}</dd>
+              <dt>Approved at</dt><dd>${escapeHtml(formatTime(approval.approved_at))}</dd>
+              <dt>Token hash</dt><dd class="mono">${escapeHtml(shortHash(approval.token_hash, 10))}</dd>
+            </dl>
+          </section>
+
+          <section class="detail-card full" aria-labelledby="hashes-title">
+            <h3 id="hashes-title">Hashes</h3>
+            <div class="hash-block">
+              <code>input_hash ${escapeHtml(receipt.input_hash)}</code>
+              <button class="copy" type="button" data-copy="${escapeHtml(receipt.input_hash)}" aria-label="Copy input hash">⧉</button>
+            </div>
+            <div class="hash-block" style="margin-block-start:7px">
+              <code>result_hash ${escapeHtml(receipt.result_hash)}</code>
+              <button class="copy" type="button" data-copy="${escapeHtml(receipt.result_hash)}" aria-label="Copy result hash">⧉</button>
+            </div>
+            <div class="hash-block" style="margin-block-start:7px">
+              <code>deliberation_hash ${escapeHtml(receipt.deliberation_hash ?? "—")}</code>
+              ${receipt.deliberation_hash ? `<button class="copy" type="button" data-copy="${escapeHtml(receipt.deliberation_hash)}" aria-label="Copy deliberation hash">⧉</button>` : ""}
+            </div>
+            <div class="hash-block" style="margin-block-start:7px">
+              <code>entry_hash ${escapeHtml(receipt.entry_hash ?? "—")}</code>
+              ${receipt.entry_hash ? `<button class="copy" type="button" data-copy="${escapeHtml(receipt.entry_hash)}" aria-label="Copy entry hash">⧉</button>` : ""}
+            </div>
+            <div class="hash-block" style="margin-block-start:7px">
+              <code>prev_hash ${escapeHtml(receipt.prev_hash ?? "—")}</code>
+            </div>
+          </section>
+
+          <section class="detail-card full" aria-labelledby="deliberation-title">
+            <h3 id="deliberation-title">Deliberation</h3>
+            ${receipt.deliberation
+              ? `<dl class="kv">
+                   <dt>Triggered</dt><dd>${receipt.deliberation.triggered ? pill("yes", "warn") : pill("no", "ok")}</dd>
+                   <dt>Attempts</dt><dd class="mono">${escapeHtml(receipt.deliberation.attempts)}</dd>
+                   <dt>Score</dt><dd class="mono">${escapeHtml(receipt.deliberation.initial_score)} → ${escapeHtml(receipt.deliberation.final_score)}</dd>
+                   <dt>Trace hash</dt><dd class="mono">${escapeHtml(shortHash(receipt.deliberation.trace_hash, 12))}</dd>
+                 </dl>
+                 <ul class="trace" style="margin-block-start:10px">
+                   ${trace.map((step) => `
+                     <li>
+                       <span class="trace-step">${escapeHtml(step.step)}</span>
+                       <span class="mono muted">${escapeHtml(step.result_hash ? shortHash(step.result_hash) : step.error_code ?? "—")}</span>
+                       <span class="trace-score">${step.score === undefined ? "" : escapeHtml(step.score)}</span>
+                     </li>`).join("")}
+                 </ul>`
+              : '<div class="notice">No verifier configured; this action executed without reflection.</div>'}
+          </section>
+
+          <section class="detail-card full" aria-labelledby="proof-title">
+            <h3 id="proof-title">Merkle inclusion proof</h3>
+            <div class="proof">
+              ${(proof?.proof ?? []).map((step, proofIndex) => `
+                <div class="proof-row">
+                  <span>${proofIndex + 1}. ${escapeHtml(shortHash(step.hash, 12))}</span>
+                  <span>${escapeHtml(step.position)}</span>
+                </div>`).join("") || '<div class="notice">Single-leaf tree: the leaf is the root.</div>'}
+            </div>
+            <p class="muted" style="margin-block-start:8px;font-size:11.5px">Root ${escapeHtml(shortHash(proof?.root, 16))} · ${proofValid ? "valid" : "invalid"}</p>
+          </section>
+        </div>
+      `;
+
+      els.detail.querySelectorAll("[data-copy]").forEach((button) => {
+        button.addEventListener("click", async () => {
+          const value = button.getAttribute("data-copy");
+          try {
+            await navigator.clipboard.writeText(value);
+            button.textContent = "✓";
+            setTimeout(() => { button.textContent = "⧉"; }, 900);
+          } catch {
+            button.textContent = "!";
+          }
+        });
+      });
+    }
+
+    function renderAll() {
+      renderSummary();
+      renderFilters();
+      renderList();
+      renderDetail();
+    }
+
+    async function verifyAndRender() {
+      els.fileError.textContent = "";
+      try {
+        const verification = await verifyPayload(state.payload);
+        state.verification = verification;
+        state.receipts = verification.receipts;
+        state.leaves = verification.leaves;
+        if (!state.selectedId || !state.receipts.some((receipt) => receipt.receipt_id === state.selectedId)) {
+          state.selectedId = state.receipts[0]?.receipt_id ?? null;
+        }
+        renderAll();
+      } catch (error) {
+        els.fileError.textContent = error.message;
+        state.verification = { ok: false, failures: [{ reason: "LOAD_FAILED" }], receipts: [], root: "" };
+        renderSummary();
+      }
+    }
+
+    els.verify.addEventListener("click", verifyAndRender);
+
+    els.receiptFile.addEventListener("change", async (event) => {
+      const file = event.target.files?.[0];
+      if (!file) return;
+      els.fileError.textContent = "";
+      try {
+        const text = await file.text();
+        const parsed = JSON.parse(text);
+        state.payload = parsed;
+        state.selectedId = null;
+        await verifyAndRender();
+      } catch (error) {
+        els.fileError.textContent = `Could not load ${file.name}: ${error.message}`;
+      } finally {
+        event.target.value = "";
+      }
+    });
+
+    els.filterAction.addEventListener("change", () => {
+      state.actionFilter = els.filterAction.value;
+      renderList();
+      renderSummary();
+      const first = filteredReceipts()[0];
+      if (first) {
+        state.selectedId = first.receipt_id;
+        renderList();
+        renderDetail();
+      }
+    });
+
+    els.filterSearch.addEventListener("input", () => {
+      state.query = els.filterSearch.value;
+      renderList();
+      renderSummary();
+    });
+
+    els.list.addEventListener("click", (event) => {
+      const row = event.target.closest("[data-id]");
+      if (!row) return;
+      state.selectedId = row.getAttribute("data-id");
+      renderList();
+      renderDetail();
+    });
+
+    verifyAndRender();
+  </script>
+</body>
+</html>
