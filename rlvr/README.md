@@ -152,6 +152,23 @@ verifier and schema-bridge tests still run. The 10-step 1.5B smoke exercised
 optimizer steps, and adapter save at 4.15 GB peak. The full 500-step run and a
 held-out evaluation remain pending; see `BENCHMARKS.md`.
 
+### Held-out evaluation
+
+`scripts/evaluate_heldout.py` compares a base model and a saved PEFT adapter on a
+deterministic slice with greedy decoding. It is resumable and writes per-task
+completions plus a summary, so a result can be audited rather than trusted.
+
+```bash
+python rlvr/scripts/evaluate_heldout.py \
+  --run-dir ../runs/2026-11-02-a3-500-qwen1.5b \
+  --checkpoint checkpoint-450 \
+  --dataset ../HEROS-RL/data/heros_migration_500.jsonl \
+  --start 450 --limit 50
+```
+
+Rows 451-500 are held out with respect to `checkpoint-450`. The final 500-step
+adapter may have trained on them later, so it is not used for the held-out claim.
+
 #### Reward contract
 
 | Term | Weight | Condition |
@@ -186,8 +203,8 @@ PYTHONPATH=rlvr/src python -m unittest discover -s rlvr/tests -v
 
 The suite is plain `unittest`. The core has no runtime dependencies; the
 optional GPU-trainer and runner tests require PyTorch and report `skipped`
-without it. The current suite is **79 tests**: 79 pass with CPU torch, and 79
-total with 13 skips and 66 passes without torch.
+without it. The current suite is **85 tests**: 85 pass with CPU torch, and 85
+total with 13 skips and 72 passes without torch.
 
 ---
 
