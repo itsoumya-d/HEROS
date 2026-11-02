@@ -27,3 +27,26 @@ jobs:
         env:
           PYTHONPATH: rlvr/src
         run: python -m unittest discover -s rlvr/tests -v
+
+  gpu-trainer-cpu:
+    name: GPU trainer smoke tests (CPU torch)
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install CPU PyTorch
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+
+      - name: Run shadow verifier and Dr.GRPO loss tests
+        env:
+          PYTHONPATH: rlvr/src
+        run: python -m unittest discover -s rlvr/tests -p "test_gpu_rlvr_pipeline.py" -v
