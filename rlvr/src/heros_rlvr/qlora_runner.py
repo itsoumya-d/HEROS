@@ -331,6 +331,12 @@ def build_prompt(task: MigrationTask) -> str:
         "- has_data_loss describes the requested change, not only your SQL.\n"
         "- decision_required is true when a human must approve the change.\n"
         f"- Hazard class: {task.hazard or 'unspecified'}\n\n"
+        "Example output (syntax only; choose the labels for the actual task):\n"
+        "<think>Adding a nullable column preserves existing rows.</think>\n"
+        "<sql_migration>ALTER TABLE widgets ADD COLUMN note TEXT;</sql_migration>\n"
+        '<forge_manifest>{"risk_tier": "SAFE", "has_data_loss": false, '
+        '"decision_required": false}</forge_manifest>\n'
+        "Do not wrap these tags in Markdown headings or code fences.\n\n"
         f"CURRENT SCHEMA:\n{source}\n\n"
         f"TARGET SCHEMA:\n{target}\n"
     )
