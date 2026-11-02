@@ -8,6 +8,7 @@ from .audit import (
     detect_miracle_step,
     verifier_error_rates,
 )
+from .evaluation import EvalItem, select_eval_tasks, summarize_evaluations
 from .gpu_trainer import (
     TORCH_AVAILABLE,
     DapoDynamicSampler,
@@ -52,6 +53,7 @@ __all__ = [
     "Completion",
     "DapoDynamicSampler",
     "DeterministicForgeShadowVerifier",
+    "EvalItem",
     "HFPolicy",
     "LossConfig",
     "LossResult",
@@ -86,5 +88,7 @@ __all__ = [
     "has_think_answer_format",
     "load_dataset",
     "rejection_rate",
+    "select_eval_tasks",
+    "summarize_evaluations",
     "verifier_error_rates",
 ]

@@ -14,13 +14,14 @@ they say nothing about model quality or benchmark improvement.
 
 | Measurement | Environment | Result | Kind |
 |---|---|---|---|
-| `rlvr` unit suite | Python 3.11.13, PyTorch 2.15.0+cpu, Windows | 79 tests, 0 failures | correctness |
-| `rlvr` unit suite, no torch | Python 3.11.13, Windows | 79 tests, 66 pass, 13 skip | correctness |
+| `rlvr` unit suite | Python 3.11.13, PyTorch 2.15.0+cpu, Windows | 85 tests, 0 failures | correctness |
+| `rlvr` unit suite, no torch | Python 3.11.13, Windows | 85 tests, 72 pass, 13 skip | correctness |
 | QLoRA runner | fake policy, real SQLite verifier | orchestration tested | correctness |
 | 500-row dataset dry-run | Python 3.11.13, Windows | 500/500 rows mapped | correctness |
 | 0.5B GPU smoke | RTX 2060, fp16 | 10 steps, 0 optimizer steps, all `MISSING_BLOCKS` | correctness |
 | 1.5B GPU smoke | RTX 2060, NF4 4-bit | 10 steps, 7 optimizer steps, mean reward 0.339, 4.15 GB | correctness |
 | 500-step single-arm | RTX 2060, NF4 4-bit | **in progress** | training |
+| Held-out eval | rows 451-500, base vs checkpoint-450 | **pending run** | correctness |
 | Shadow verifier throughput | — | not measured | performance |
 | Training throughput | — | ~18.5 s/step in the 1.5B smoke; not a benchmark | performance |
 | MATH-500 pass@1 | — | not measured | quality |
