@@ -7,10 +7,11 @@ modes can be tested on CPU. A PyTorch policy adapter can call these functions
 with per-token log-probabilities.
 
 This is the first layer of the `HEROS-RLVR` project. The core does **not** train
-a model and no benchmark numbers are claimed. An opt-in PyTorch trainer layer
-(`gpu_trainer.py`) now implements the deterministic SQLite shadow verifier and
-the Dr.GRPO/DAPO token loss used by the QLoRA runner; it is tested on CPU and
-requires the `gpu` extra.
+a model and no benchmark numbers are claimed. An opt-in PyTorch layer
+(`gpu_trainer.py`) implements the deterministic SQLite shadow verifier and the
+Dr.GRPO/DAPO token loss, and `qlora_runner.py` orchestrates rollouts, rewards,
+gradient accumulation, and checkpoints. The verifier and runner are tested on
+CPU; a real 500-step GPU run has not been executed.
 
 ---
 
@@ -91,16 +92,62 @@ false positives and false negatives against ground truth.
   (`eps_low=0.2`, `eps_high=0.28`) and the k3 KL estimator. A parity test pins
   it to the pure-Python `grpo_loss` reference.
 
-Install the optional dependency and run the full suite:
+### QLoRA rollout runner (opt-in)
+
+`qlora_runner.py` connects a policy to the verifier without making the core
+depend on a model framework:
+
+- `parse_forge_schema`, `build_sqlite_ddl`, and `build_seed_sql` convert a
+  `heros_migration_500` row's Forge schema into an executable SQLite fixture.
+  The parser is strict: unknown types, duplicate tables, and malformed lines
+  fail before a training step.
+- `dataset_row_to_task` validates the five forge tiers
+  (`SAFE`, `NOTABLE`, `MEDIUM`, `HIGH`, `CRITICAL`) and keeps the original
+  schemas for the prompt. Expected labels are **not** placed in the prompt; the
+  model must infer the tier, data-loss flag, and approval flag.
+- `QLoRARunner` samples `G` completions, scores them with the shadow verifier,
+  rejects zero-variance groups, computes the Dr.GRPO/DAPO token loss, and applies
+  one optimizer step per informative task. Loss is divided by
+  `gradient_accumulation` so eight micro-batches have the same effective scale as
+  one batch.
+- `RunRecorder` writes `run.json`, `steps.jsonl`, `checkpoints.jsonl`, and
+  `summary.json`. A run without these files is not a result.
+- `HFPolicy` is the thin Transformers + PEFT + bitsandbytes adapter. It loads a
+  4-bit NF4 base model, attaches LoRA, and provides `generate`,
+  `token_logprobs`, and `optimizer`. It is **not** exercised by the default test
+  suite because those packages and a GPU are absent from CI.
+- `scripts/train_qlora.py` is the CLI. `--dry-run` validates all 500 rows and
+  prints the plan without importing torch.
+
+Install the optional dependencies and run the full suite:
 
 ```bash
+# Verifier + loss + CPU runner tests only
 python -m pip install -e "rlvr[gpu]"
 PYTHONPATH=rlvr/src python -m unittest discover -s rlvr/tests -v
+
+# Real QLoRA run (also installs transformers, peft, accelerate, bitsandbytes)
+python -m pip install -e "rlvr[train]"
 ```
 
-Without PyTorch, the loss tests are skipped and the dependency-free verifier
-tests still run. The trainer is not yet wired to a model checkpoint; see
-`BENCHMARKS.md` for the GPU-run gate.
+The runner can be validated without a GPU:
+
+```bash
+python rlvr/scripts/train_qlora.py \
+  --dataset ../HEROS-RL/data/heros_migration_500.jsonl --dry-run
+```
+
+A real run is owner-operated and writes to `outputs/project-01/`:
+
+```bash
+python rlvr/scripts/train_qlora.py \
+  --dataset ../HEROS-RL/data/heros_migration_500.jsonl \
+  --max-steps 500 --output-dir outputs/project-01
+```
+
+Without PyTorch, the loss and runner tests are skipped and the dependency-free
+verifier and schema-bridge tests still run. The adapter has not been validated
+on a GPU; see `BENCHMARKS.md` for the run gate.
 
 #### Reward contract
 
@@ -108,7 +155,7 @@ tests still run. The trainer is not yet wired to a model checkpoint; see
 | --- | ---: | --- |
 | Format | `+0.25` | all three blocks present; manifest is a JSON object |
 | Shadow execution | `+0.75` | migration executes without a SQLite error |
-| Risk tier | `+0.50` | predicted tier equals the task's expected tier |
+| Risk tier | `+0.50` | predicted tier equals the expected forge tier (`SAFE` … `CRITICAL`) |
 | Data loss | `+0.25` | predicted flag equals `expected OR observed` row loss |
 | Approval | `+0.25` | predicted `decision_required` equals the task |
 | Miracle step | `-0.40` | destructive claim/SQL with fewer than 20 characters of reasoning |
@@ -120,8 +167,11 @@ stdlib-only; the reward is not a learned judge.
 
 Known limits: row counts do not detect delete-and-reinsert with the same count,
 a table rename is a false-positive loss, and a no-op migration can score `2.00`
-on a safe task because requirement satisfaction is not checked yet. These are
-documented rather than hidden; a requirement check is future work.
+on a safe task because requirement satisfaction is not checked yet. The shadow
+gate executes SQLite, which is a subset of PostgreSQL DDL/DML; a PostgreSQL
+parity check is a separate gate. `HFPolicy` is untested in CI, and the runner
+does not yet parallelize shadow workers. These are documented rather than
+hidden; a requirement check and a PostgreSQL evaluation are future work.
 
 ---
 
@@ -132,7 +182,9 @@ PYTHONPATH=rlvr/src python -m unittest discover -s rlvr/tests -v
 ```
 
 The suite is plain `unittest`. The core has no runtime dependencies; the
-optional GPU-trainer tests require PyTorch and report `skipped` without it.
+optional GPU-trainer and runner tests require PyTorch and report `skipped`
+without it. The current suite is **78 tests**: 78 pass with CPU torch, and 78
+total with 13 skips and 65 passes without torch.
 
 ---
 

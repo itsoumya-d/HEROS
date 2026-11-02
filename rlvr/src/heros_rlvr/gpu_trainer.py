@@ -57,9 +57,12 @@ class MigrationTask:
     from_ddl: str
     seed_sql: str
     requirement: str
-    expected_risk_tier: str  # "SAFE" | "WARN" | "CRITICAL"
+    expected_risk_tier: str  # "SAFE" | "NOTABLE" | "MEDIUM" | "HIGH" | "CRITICAL"
     expected_data_loss: bool
     decision_required: bool
+    source_schema: str = ""  # human-readable original schema, for the prompt
+    target_schema: str = ""  # human-readable requested schema, for the prompt
+    hazard: str = ""  # dataset hazard class, e.g. "drop_column"
 
 
 @dataclass(frozen=True)

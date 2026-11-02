@@ -46,7 +46,7 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
 
-      - name: Run shadow verifier and Dr.GRPO loss tests
+      - name: Run shadow verifier, loss, and runner tests
         env:
           PYTHONPATH: rlvr/src
-        run: python -m unittest discover -s rlvr/tests -p "test_gpu_rlvr_pipeline.py" -v
+        run: python -m unittest discover -s rlvr/tests -v
