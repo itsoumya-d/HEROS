@@ -18,6 +18,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import sys
 import time
 from pathlib import Path
@@ -78,6 +79,21 @@ def generate_one(model, tokenizer, prompt: str, max_new_tokens: int, max_prompt_
     return tokenizer.decode(output[0, encoded["input_ids"].shape[1] :], skip_special_tokens=True)
 
 
+def manifest_matches(task, completion: str) -> tuple[bool | None, bool | None, bool | None]:
+    match = re.search(r"<forge_manifest>(.*?)</forge_manifest>", completion, re.S)
+    if not match:
+        return None, None, None
+    try:
+        manifest = json.loads(match.group(1))
+    except json.JSONDecodeError:
+        return None, None, None
+    return (
+        str(manifest.get("risk_tier", "")).upper() == task.expected_risk_tier,
+        bool(manifest.get("has_data_loss")) == task.expected_data_loss,
+        bool(manifest.get("decision_required")) == task.decision_required,
+    )
+
+
 def evaluate(model, tokenizer, tasks, path: Path, max_new_tokens: int, max_prompt_tokens: int) -> list[dict]:
     done = {item["task_id"]: item for item in read_jsonl(path)}
     verifier = DeterministicForgeShadowVerifier()
@@ -89,6 +105,7 @@ def evaluate(model, tokenizer, tasks, path: Path, max_new_tokens: int, max_promp
                 model, tokenizer, build_prompt(task), max_new_tokens, max_prompt_tokens
             )
             receipt = verifier.verify_rollout(task, completion)
+            risk_match, loss_match, decision_match = manifest_matches(task, completion)
             item = {
                 "task_id": task.task_id,
                 "hazard": task.hazard,
@@ -99,6 +116,9 @@ def evaluate(model, tokenizer, tasks, path: Path, max_new_tokens: int, max_promp
                 "risk_calibration_reward": receipt.risk_calibration_reward,
                 "shadow_row_loss_detected": receipt.shadow_row_loss_detected,
                 "error_code": receipt.error_code,
+                "risk_match": risk_match,
+                "loss_match": loss_match,
+                "decision_match": decision_match,
                 "completion": completion,
             }
             handle.write(json.dumps(item, sort_keys=True) + "\n")
