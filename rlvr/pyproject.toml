@@ -13,6 +13,7 @@ authors = [{ name = "Soumya Debnath" }]
 dependencies = []
 
 [project.optional-dependencies]
+gpu = ["torch>=2.4"]
 dev = ["pytest>=8"]
 
 [tool.setuptools.packages.find]
