@@ -169,6 +169,19 @@ python rlvr/scripts/evaluate_heldout.py \
 Rows 451-500 are held out with respect to `checkpoint-450`. The final 500-step
 adapter may have trained on them later, so it is not used for the held-out claim.
 
+### SFT target generation
+
+`heros_rlvr.sft_data` derives a deterministic target-satisfying SQL script from
+the old and target Forge schemas. It handles add/drop column, add-not-null with a
+default, single-column rename, and table rebuilds for type/NOT NULL/primary-key
+changes. `target_completion` wraps the SQL and the task's expected manifest in
+the verifier's tag format.
+
+450 of the 500 dataset rows produce a target-matching script. The 50
+`type_narrowing` rows collapse to the same SQLite affinity and are deliberately
+excluded; SQLite cannot verify that distinction. This is SFT data generation, not
+a trained model.
+
 #### Reward contract
 
 | Term | Weight | Condition |
@@ -207,8 +220,8 @@ PYTHONPATH=rlvr/src python -m unittest discover -s rlvr/tests -v
 
 The suite is plain `unittest`. The core has no runtime dependencies; the
 optional GPU-trainer and runner tests require PyTorch and report `skipped`
-without it. The current suite is **87 tests**: 87 pass with CPU torch, and 87
-total with 13 skips and 74 passes without torch.
+without it. The current suite is **93 tests**: 93 pass with CPU torch, and 93
+total with 13 skips and 80 passes without torch.
 
 ---
 
