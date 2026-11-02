@@ -65,6 +65,37 @@ intermediate step. It is a heuristic, not proof of unfaithful reasoning: the
 invalid indices are reported for inspection. `verifier_error_rates` tracks
 false positives and false negatives against ground truth.
 
+### Deterministic shadow gate and PyTorch objective
+
+`heros_rlvr.gpu_trainer` adds the bridge between a proposed migration and the
+`forge` risk contract:
+
+- `DeterministicForgeShadowVerifier` extracts a `<think>`, a `<sql_migration>`
+  and a `<forge_manifest>` block, applies the SQL to an ephemeral
+  `sqlite3.connect(":memory:")` database, and scores format (0.25), execution
+  (0.75), risk calibration (1.0) and a miracle-step penalty (0.4). Data loss is
+  detected for both row loss and column loss (a dropped column with unchanged
+  row counts).
+- The shadow gate rejects `ATTACH`, `DETACH`, `PRAGMA`, `VACUUM`,
+  `load_extension`, `BACKUP` and `RESTORE` so a rollout cannot write outside the
+  in-memory database. This is defence in depth, not a process sandbox.
+- `DapoDynamicSampler` implements the DAPO zero-variance group filter and the
+  Dr.GRPO advantage (`r_i - mean(r)`, no std division).
+- `compute_dr_grpo_token_loss` implements the asymmetric-clipped objective with
+  the unbiased k3 KL estimator and divides by `group_size * max_completion_len`,
+  which is the constant-horizon normalization that removes the length bias.
+
+The new module needs PyTorch:
+
+```bash
+pip install -e "rlvr[train]"
+PYTHONPATH=rlvr/src python -m unittest discover -s rlvr/tests -v
+```
+
+Without PyTorch the 20 GPU-module tests skip and the original 34 dependency-free
+tests still pass. The PyTorch objective is verified on CPU; no GPU training run
+or model-quality claim is made here.
+
 ---
 
 ## Testing
@@ -73,7 +104,8 @@ false positives and false negatives against ground truth.
 PYTHONPATH=rlvr/src python -m unittest discover -s rlvr/tests -v
 ```
 
-The suite is plain `unittest`; there are no runtime dependencies.
+The suite is plain `unittest`. The 34 core tests have no runtime dependencies;
+the 20 `gpu_trainer` tests require `torch` and skip when it is absent.
 
 ---
 
