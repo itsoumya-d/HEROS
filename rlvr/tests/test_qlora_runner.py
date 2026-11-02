@@ -55,11 +55,11 @@ ROW = {
     "requires_expand_contract": True,
 }
 
-SAFE_COMPLETION = (
-    "<think>Add a nullable column; the seeded row is preserved.</think>"
-    "<sql_migration>ALTER TABLE users ADD COLUMN bio TEXT;</sql_migration>"
-    '<forge_manifest>{"risk_tier": "SAFE", "has_data_loss": false, '
-    '"decision_required": false}</forge_manifest>'
+MATCHING_COMPLETION = (
+    "<think>Drop legacy_note to reach the target schema while preserving rows.</think>"
+    "<sql_migration>ALTER TABLE users DROP COLUMN legacy_note;</sql_migration>"
+    '<forge_manifest>{"risk_tier": "CRITICAL", "has_data_loss": true, '
+    '"decision_required": true}</forge_manifest>'
 )
 MISSING_COMPLETION = "<think>incomplete</think>"
 
@@ -203,11 +203,11 @@ class RolloutBatchTests(unittest.TestCase):
         batch = build_rollout_batch(
             task,
             prompt,
-            [SAFE_COMPLETION, MISSING_COMPLETION, SAFE_COMPLETION, MISSING_COMPLETION],
+            [MATCHING_COMPLETION, MISSING_COMPLETION, MATCHING_COMPLETION, MISSING_COMPLETION],
             DeterministicForgeShadowVerifier(),
         )
         self.assertEqual(len(batch.receipts), 4)
-        self.assertEqual(batch.rewards[0], 1.0)
+        self.assertEqual(batch.rewards[0], 2.0)
         self.assertEqual(batch.rewards[1], -1.0)
         self.assertTrue(batch.informative)
 
@@ -218,7 +218,7 @@ class RolloutBatchTests(unittest.TestCase):
         batch = build_rollout_batch(
             task,
             build_prompt(task),
-            [SAFE_COMPLETION, SAFE_COMPLETION],
+            [MATCHING_COMPLETION, MATCHING_COMPLETION],
             DeterministicForgeShadowVerifier(),
         )
         self.assertFalse(batch.informative)
@@ -308,7 +308,7 @@ class RunnerTests(unittest.TestCase):
         )
 
     def test_train_step_updates_parameter(self) -> None:
-        runner, policy, _ = self._runner([SAFE_COMPLETION, MISSING_COMPLETION])
+        runner, policy, _ = self._runner([MATCHING_COMPLETION, MISSING_COMPLETION])
         before = float(policy.parameter.detach())
         result = runner.train_step(self.task, 1)
         after = float(policy.parameter.detach())
@@ -318,7 +318,7 @@ class RunnerTests(unittest.TestCase):
         self.assertNotEqual(before, after)
 
     def test_zero_variance_group_skips_optimizer(self) -> None:
-        runner, policy, _ = self._runner([SAFE_COMPLETION, SAFE_COMPLETION])
+        runner, policy, _ = self._runner([MATCHING_COMPLETION, MATCHING_COMPLETION])
         before = float(policy.parameter.detach())
         result = runner.train_step(self.task, 1)
         after = float(policy.parameter.detach())
@@ -338,7 +338,7 @@ class RunnerTests(unittest.TestCase):
             max_steps=2,
         )
         runner, policy, _ = self._runner(
-            [SAFE_COMPLETION, MISSING_COMPLETION], config=config
+            [MATCHING_COMPLETION, MISSING_COMPLETION], config=config
         )
         before = float(policy.parameter.detach())
         runner.train_step(self.task, 1)
@@ -366,10 +366,10 @@ class RunnerTests(unittest.TestCase):
             max_steps=1,
         )
         runner_a, policy_a, _ = self._runner(
-            [SAFE_COMPLETION, MISSING_COMPLETION], config=accumulated
+            [MATCHING_COMPLETION, MISSING_COMPLETION], config=accumulated
         )
         runner_b, policy_b, _ = self._runner(
-            [SAFE_COMPLETION, MISSING_COMPLETION], config=single
+            [MATCHING_COMPLETION, MISSING_COMPLETION], config=single
         )
         runner_a.train_step(self.task, 1)
         runner_a.train_step(self.task, 2)
@@ -391,8 +391,8 @@ class RunnerTests(unittest.TestCase):
                 save_final=True,
                 max_steps=2,
             )
-            policy = FakePolicy([SAFE_COMPLETION, MISSING_COMPLETION])
-            reference = FakePolicy([SAFE_COMPLETION, MISSING_COMPLETION])
+            policy = FakePolicy([MATCHING_COMPLETION, MISSING_COMPLETION])
+            reference = FakePolicy([MATCHING_COMPLETION, MISSING_COMPLETION])
             optimizer = torch.optim.SGD([policy.parameter], lr=0.1)
             runner = QLoRARunner(config, policy, reference, optimizer)
             results = runner.run([self.task, self.task], max_steps=2)
@@ -406,7 +406,7 @@ class RunnerTests(unittest.TestCase):
             self.assertTrue(any("final" in path for path in policy.saved))
 
     def test_run_rejects_empty_tasks(self) -> None:
-        runner, _, _ = self._runner([SAFE_COMPLETION, MISSING_COMPLETION])
+        runner, _, _ = self._runner([MATCHING_COMPLETION, MISSING_COMPLETION])
         with self.assertRaises(ValueError):
             runner.run([], max_steps=1)
 

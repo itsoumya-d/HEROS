@@ -76,7 +76,8 @@ class VerificationReceipt:
     risk_calibration_reward: float
     miracle_step_penalty: float
     shadow_row_loss_detected: bool
-    error_code: str  # "OK" | "MISSING_BLOCKS" | "INVALID_JSON" | "SQL_EXEC_ERROR"
+    error_code: str  # "OK" | "MISSING_BLOCKS" | "INVALID_JSON" | "SQL_EXEC_ERROR" | "REQUIREMENT_MISS"
+    target_schema_matched: bool | None = None
 
 
 class DeterministicForgeShadowVerifier:
@@ -134,8 +135,8 @@ class DeterministicForgeShadowVerifier:
             )
 
         format_reward = 0.25
-        exec_ok, row_loss_detected = self._run_sqlite_shadow_gate(
-            task.from_ddl, task.seed_sql, proposed_sql
+        exec_ok, row_loss_detected, schema_matched = self._run_sqlite_shadow_gate(
+            task.from_ddl, task.seed_sql, proposed_sql, task.target_schema
         )
 
         if not exec_ok:
@@ -150,7 +151,11 @@ class DeterministicForgeShadowVerifier:
                 error_code="SQL_EXEC_ERROR",
             )
 
-        shadow_exec_reward = 0.75
+        # Executing valid SQL is not the same as performing the requested
+        # migration. A no-op or unrelated ADD COLUMN is a failed migration, not
+        # a partial success; this closes the loophole observed in the 500-step
+        # run. Without this, the model learns format compliance and nothing else.
+        shadow_exec_reward = 0.75 if schema_matched else -0.75
 
         pred_risk = str(manifest.get("risk_tier", "")).upper()
         pred_loss = bool(manifest.get("has_data_loss", False))
@@ -181,7 +186,8 @@ class DeterministicForgeShadowVerifier:
             risk_calibration_reward=calibration_score,
             miracle_step_penalty=miracle_penalty,
             shadow_row_loss_detected=row_loss_detected,
-            error_code="OK",
+            error_code="OK" if schema_matched else "REQUIREMENT_MISS",
+            target_schema_matched=schema_matched,
         )
 
     @staticmethod
@@ -197,12 +203,15 @@ class DeterministicForgeShadowVerifier:
 
     @classmethod
     def _run_sqlite_shadow_gate(
-        cls, from_ddl: str, seed_sql: str, migration_sql: str
-    ) -> Tuple[bool, bool]:
+        cls, from_ddl: str, seed_sql: str, migration_sql: str, target_schema: str = ""
+    ) -> Tuple[bool, bool, bool]:
         """Apply a migration to an ephemeral DB and detect row loss.
 
-        Returns ``(executed, row_loss_detected)``. Any SQLite error, including a
-        denied authorizer action, returns ``(False, False)``.
+        Returns ``(executed, row_loss_detected, schema_matched)``. Any SQLite
+        error, including a denied authorizer action, returns
+        ``(False, False, False)``. When ``target_schema`` is empty the schema
+        check is skipped and the third value is ``True`` for compatibility with
+        hand-built tasks that only specify DDL and rows.
         """
         conn = sqlite3.connect(":memory:")
         try:
@@ -219,11 +228,142 @@ class DeterministicForgeShadowVerifier:
                 after_counts.get(table, 0) < count_before
                 for table, count_before in before_counts.items()
             )
-            return True, row_loss
+            schema_matched = (
+                True
+                if not target_schema.strip()
+                else cls._schema_matches(conn, target_schema)
+            )
+            return True, row_loss, schema_matched
         except (sqlite3.Error, sqlite3.Warning):
-            return False, False
+            return False, False, False
         finally:
             conn.close()
+
+    @classmethod
+    def _schema_matches(cls, conn: sqlite3.Connection, target_schema: str) -> bool:
+        """Compare the post-migration SQLite schema to a Forge target schema."""
+        target = cls._parse_target_schema(target_schema)
+        if target is None:
+            return False
+        actual_tables = {
+            str(row[0])
+            for row in conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%';"
+            ).fetchall()
+        }
+        if actual_tables != set(target):
+            return False
+        for table, expected_columns in target.items():
+            quoted = table.replace('"', '""')
+            rows = conn.execute(f'PRAGMA table_info("{quoted}");').fetchall()
+            actual = {
+                str(row[1]): (
+                    cls._sqlite_affinity(str(row[2])),
+                    bool(row[3]) or bool(row[5]),
+                    bool(row[5]),
+                )
+                for row in rows
+            }
+            if set(actual) != set(expected_columns):
+                return False
+            for name, (expected_type, expected_not_null, expected_pk) in expected_columns.items():
+                actual_type, actual_not_null, actual_pk = actual[name]
+                if actual_type != expected_type or actual_pk != expected_pk:
+                    return False
+                if actual_not_null != (expected_not_null or expected_pk):
+                    return False
+        return True
+
+    @classmethod
+    def _parse_target_schema(
+        cls, text: str
+    ) -> Dict[str, Dict[str, Tuple[str, bool, bool]]] | None:
+        """Parse the small Forge ``TABLE``/``COLUMN`` subset used by the dataset."""
+        tables: Dict[str, Dict[str, Tuple[str, bool, bool]]] = {}
+        current: str | None = None
+        for raw_line in text.splitlines():
+            line = raw_line.strip()
+            if not line:
+                continue
+            upper = line.upper()
+            if upper.startswith("TABLE "):
+                name = line[6:].strip()
+                if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", name):
+                    return None
+                if name in tables:
+                    return None
+                tables[name] = {}
+                current = name
+                continue
+            if upper.startswith("COLUMN "):
+                if current is None:
+                    return None
+                parts = line[7:].split()
+                if len(parts) < 2:
+                    return None
+                name = parts[0]
+                if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", name):
+                    return None
+                source_type = re.sub(r"\(.*\)$", "", parts[1].upper())
+                sqlite_type = cls._target_sqlite_type(source_type)
+                if sqlite_type is None:
+                    return None
+                flags = " ".join(parts[2:]).upper().replace("_", " ")
+                not_null = "NOT NULL" in flags
+                primary_key = "PRIMARY KEY" in flags
+                if name in tables[current]:
+                    return None
+                tables[current][name] = (sqlite_type, not_null, primary_key)
+                continue
+            return None
+        if not tables or any(not columns for columns in tables.values()):
+            return None
+        return tables
+
+    @staticmethod
+    def _target_sqlite_type(source_type: str) -> str | None:
+        mapping = {
+            "BIGINT": "INTEGER",
+            "BIGSERIAL": "INTEGER",
+            "INT": "INTEGER",
+            "INTEGER": "INTEGER",
+            "SERIAL": "INTEGER",
+            "SMALLINT": "INTEGER",
+            "TEXT": "TEXT",
+            "VARCHAR": "TEXT",
+            "CHAR": "TEXT",
+            "CHARACTER": "TEXT",
+            "UUID": "TEXT",
+            "JSON": "TEXT",
+            "JSONB": "TEXT",
+            "TIMESTAMP": "TEXT",
+            "TIMESTAMPTZ": "TEXT",
+            "DATE": "TEXT",
+            "TIME": "TEXT",
+            "BOOLEAN": "INTEGER",
+            "BOOL": "INTEGER",
+            "NUMERIC": "REAL",
+            "DECIMAL": "REAL",
+            "REAL": "REAL",
+            "DOUBLE": "REAL",
+            "FLOAT": "REAL",
+            "BYTEA": "BLOB",
+            "BLOB": "BLOB",
+        }
+        return mapping.get(source_type)
+
+    @staticmethod
+    def _sqlite_affinity(declared_type: str) -> str:
+        value = declared_type.upper()
+        if "INT" in value:
+            return "INTEGER"
+        if "CHAR" in value or "CLOB" in value or "TEXT" in value:
+            return "TEXT"
+        if "BLOB" in value or not value.strip():
+            return "BLOB"
+        if "REAL" in value or "FLOA" in value or "DOUB" in value:
+            return "REAL"
+        return "NUMERIC"
 
     @staticmethod
     def _snapshot_table_counts(conn: sqlite3.Connection) -> Dict[str, int]:
