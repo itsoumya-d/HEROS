@@ -38,6 +38,7 @@ from .qlora_runner import (
     load_dataset,
 )
 from .sampling import dynamic_sample, group_std, has_learning_signal, rejection_rate
+from .sft_data import target_completion, target_sql_for_task
 from .trainer import Completion, Rollout, build_rollout
 from .verifier import (
     CommandVerifier,
@@ -90,5 +91,7 @@ __all__ = [
     "rejection_rate",
     "select_eval_tasks",
     "summarize_evaluations",
+    "target_completion",
+    "target_sql_for_task",
     "verifier_error_rates",
 ]
