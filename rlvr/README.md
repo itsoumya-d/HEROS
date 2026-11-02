@@ -11,7 +11,8 @@ a model and no benchmark numbers are claimed. An opt-in PyTorch layer
 (`gpu_trainer.py`) implements the deterministic SQLite shadow verifier and the
 Dr.GRPO/DAPO token loss, and `qlora_runner.py` orchestrates rollouts, rewards,
 gradient accumulation, and checkpoints. The verifier and runner are tested on
-CPU; a real 500-step GPU run has not been executed.
+CPU. A 10-step 1.5B GPU smoke completed 7 optimizer steps on an RTX 2060; a
+500-step run is in progress. No model-quality benchmark is claimed.
 
 ---
 
@@ -146,8 +147,10 @@ python rlvr/scripts/train_qlora.py \
 ```
 
 Without PyTorch, the loss and runner tests are skipped and the dependency-free
-verifier and schema-bridge tests still run. The adapter has not been validated
-on a GPU; see `BENCHMARKS.md` for the run gate.
+verifier and schema-bridge tests still run. The 10-step 1.5B smoke exercised
+`HFPolicy` on the RTX 2060: 4-bit load, generation, literal tag parsing, 7
+optimizer steps, and adapter save at 4.15 GB peak. The full 500-step run and a
+held-out evaluation remain pending; see `BENCHMARKS.md`.
 
 #### Reward contract
 
@@ -183,8 +186,8 @@ PYTHONPATH=rlvr/src python -m unittest discover -s rlvr/tests -v
 
 The suite is plain `unittest`. The core has no runtime dependencies; the
 optional GPU-trainer and runner tests require PyTorch and report `skipped`
-without it. The current suite is **78 tests**: 78 pass with CPU torch, and 78
-total with 13 skips and 65 passes without torch.
+without it. The current suite is **79 tests**: 79 pass with CPU torch, and 79
+total with 13 skips and 66 passes without torch.
 
 ---
 
@@ -208,9 +211,10 @@ These are properties of the implementation, not claims about model quality.
 - **`CommandVerifier` trusts the command's sandbox.** The adapter enforces a
   timeout and parses JSON, but it cannot make an unsafe verifier safe. Isolation
   belongs to the caller (container, seccomp, no network).
-- **No model, no benchmark.** Training `DeepSeek-R1-Distill-Qwen-1.5B` and the
-  MATH-500/AIME evaluations require GPU access that is not part of this
-  repository's CI. No accuracy or length-improvement numbers are fabricated.
+- **A smoke is not a benchmark.** The 10-step 1.5B run proves the adapter and
+  runner path, not model quality. The 500-step run, MATH-500/AIME evaluation,
+  and held-out shadow evaluation remain required. No accuracy or
+  length-improvement numbers are fabricated.
 
 ---
 
