@@ -5,7 +5,7 @@ from __future__ import annotations
 import unittest
 
 from heros_rlvr.gpu_trainer import DeterministicForgeShadowVerifier, MigrationTask
-from heros_rlvr.sft_data import target_completion, target_sql_for_task
+from heros_rlvr.sft_data import build_sft_examples, target_completion, target_sql_for_task
 
 
 def task(source: str, target: str, from_ddl: str, seed: str, hazard: str) -> MigrationTask:
@@ -89,6 +89,27 @@ class SftTargetTests(unittest.TestCase):
             "type_narrowing",
         )
         self.assertEqual(target_sql_for_task(item), "")
+
+    def test_build_sft_examples_skips_unrepresentable_tasks(self) -> None:
+        good = task(
+            "TABLE users\nCOLUMN id bigint NOT_NULL",
+            "TABLE users\nCOLUMN id bigint NOT_NULL\nCOLUMN email text NULLABLE",
+            "CREATE TABLE users (id INTEGER NOT NULL);",
+            "INSERT INTO users (id) VALUES (1);",
+            "add_nullable_column",
+        )
+        bad = task(
+            "TABLE users\nCOLUMN id bigint NOT_NULL",
+            "TABLE users\nCOLUMN id int NOT_NULL",
+            "CREATE TABLE users (id INTEGER NOT NULL);",
+            "INSERT INTO users (id) VALUES (1);",
+            "type_narrowing",
+        )
+        examples = build_sft_examples([good, bad])
+        self.assertEqual(len(examples), 1)
+        self.assertEqual(examples[0].task_id, "sft-test")
+        self.assertIn("<think>", examples[0].completion)
+        self.assertIn("<forge_manifest>", examples[0].completion)
 
     def test_completion_has_required_tags(self) -> None:
         item = task(

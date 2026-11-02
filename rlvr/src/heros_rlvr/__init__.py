@@ -38,7 +38,12 @@ from .qlora_runner import (
     load_dataset,
 )
 from .sampling import dynamic_sample, group_std, has_learning_signal, rejection_rate
-from .sft_data import target_completion, target_sql_for_task
+from .sft_data import (
+    SFTExample,
+    build_sft_examples,
+    target_completion,
+    target_sql_for_task,
+)
 from .trainer import Completion, Rollout, build_rollout
 from .verifier import (
     CommandVerifier,
@@ -65,6 +70,7 @@ __all__ = [
     "RolloutBatch",
     "RunRecorder",
     "RunnerConfig",
+    "SFTExample",
     "Step",
     "StepResult",
     "TORCH_AVAILABLE",
@@ -73,6 +79,7 @@ __all__ = [
     "build_prompt",
     "build_rollout",
     "build_rollout_batch",
+    "build_sft_examples",
     "compose_reward",
     "compute_dr_grpo_token_loss",
     "dapo_config",
