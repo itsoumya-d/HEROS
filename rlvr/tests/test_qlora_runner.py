@@ -169,6 +169,15 @@ class SchemaBridgeTests(unittest.TestCase):
         self.assertNotIn("Data-loss change", prompt)
         self.assertNotIn("expected_tier", prompt)
 
+    def test_prompt_contains_literal_tag_example(self) -> None:
+        prompt = build_prompt(dataset_row_to_task(ROW))
+        self.assertIn("<think>Adding a nullable column", prompt)
+        self.assertIn("<sql_migration>ALTER TABLE widgets", prompt)
+        self.assertIn("<forge_manifest>", prompt)
+        self.assertIn("Do not wrap these tags in Markdown headings or code fences", prompt)
+        # The exemplar must not leak this task's expected labels.
+        self.assertNotIn('"risk_tier": "CRITICAL"', prompt)
+
     def test_load_dataset_round_trip(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "rows.jsonl"
