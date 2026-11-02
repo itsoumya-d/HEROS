@@ -15,6 +15,9 @@ class EvalItem:
     risk_calibration_reward: float
     shadow_row_loss_detected: bool
     error_code: str
+    risk_match: bool | None = None
+    loss_match: bool | None = None
+    decision_match: bool | None = None
 
     @classmethod
     def from_mapping(cls, value: Mapping[str, Any]) -> "EvalItem":
@@ -26,6 +29,9 @@ class EvalItem:
             risk_calibration_reward=float(value.get("risk_calibration_reward", 0.0)),
             shadow_row_loss_detected=bool(value.get("shadow_row_loss_detected", False)),
             error_code=str(value.get("error_code", "")),
+            risk_match=value.get("risk_match"),
+            loss_match=value.get("loss_match"),
+            decision_match=value.get("decision_match"),
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -67,14 +73,42 @@ def summarize_evaluations(
         error_codes[item.error_code] = error_codes.get(item.error_code, 0) + 1
         hazards[item.hazard] = hazards.get(item.hazard, 0) + 1
 
+    risk_matches = [item.risk_match for item in parsed if item.risk_match is not None]
+    loss_matches = [item.loss_match for item in parsed if item.loss_match is not None]
+    decision_matches = [
+        item.decision_match for item in parsed if item.decision_match is not None
+    ]
+
     return {
         "tasks": len(parsed),
         "mean_reward": round(sum(rewards) / len(rewards), 4),
         "ok_rate": round(
             sum(1 for item in parsed if item.error_code == "OK") / len(parsed), 4
         ),
-        "risk_accuracy": round(
-            sum(1 for item in parsed if item.risk_calibration_reward == 0.5) / len(parsed),
+        "risk_accuracy": (
+            round(sum(1 for value in risk_matches if value) / len(risk_matches), 4)
+            if risk_matches
+            else None
+        ),
+        "loss_accuracy": (
+            round(sum(1 for value in loss_matches if value) / len(loss_matches), 4)
+            if loss_matches
+            else None
+        ),
+        "decision_accuracy": (
+            round(
+                sum(1 for value in decision_matches if value)
+                / len(decision_matches),
+                4,
+            )
+            if decision_matches
+            else None
+        ),
+        "calibration_mean": round(
+            sum(item.risk_calibration_reward for item in parsed) / len(parsed), 4
+        ),
+        "calibration_full_rate": round(
+            sum(1 for item in parsed if item.risk_calibration_reward == 1.0) / len(parsed),
             4,
         ),
         "row_loss_rate": round(

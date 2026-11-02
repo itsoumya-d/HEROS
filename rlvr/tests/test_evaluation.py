@@ -10,10 +10,10 @@ from heros_rlvr.evaluation import EvalItem, select_eval_tasks, summarize_evaluat
 class EvaluationSummaryTests(unittest.TestCase):
     def test_mixed_items_are_aggregated(self) -> None:
         items = [
-            EvalItem("a", "drop_column", "CRITICAL", 1.5, 0.5, False, "OK"),
-            EvalItem("b", "drop_column", "CRITICAL", -1.0, 0.0, False, "MISSING_BLOCKS"),
-            EvalItem("c", "create_table", "SAFE", 2.0, 0.5, False, "OK"),
-            EvalItem("d", "drop_table", "CRITICAL", 0.5, 0.0, True, "OK"),
+            EvalItem("a", "drop_column", "CRITICAL", 1.5, 0.5, False, "OK", True),
+            EvalItem("b", "drop_column", "CRITICAL", -1.0, 0.0, False, "MISSING_BLOCKS", False),
+            EvalItem("c", "create_table", "SAFE", 2.0, 0.5, False, "OK", True),
+            EvalItem("d", "drop_table", "CRITICAL", 0.5, 0.0, True, "OK", False),
         ]
         summary = summarize_evaluations(items, elapsed_sec=12.345, vram_mb=4100.55)
         self.assertEqual(summary["tasks"], 4)
@@ -30,6 +30,8 @@ class EvaluationSummaryTests(unittest.TestCase):
         summary = summarize_evaluations([item.to_dict()])
         self.assertEqual(summary["tasks"], 1)
         self.assertEqual(summary["mean_reward"], 2.0)
+        self.assertIsNone(summary["risk_accuracy"])
+        self.assertEqual(summary["calibration_mean"], 0.5)
 
     def test_empty_summary_is_rejected(self) -> None:
         with self.assertRaises(ValueError):
