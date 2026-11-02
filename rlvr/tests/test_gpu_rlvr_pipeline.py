@@ -46,6 +46,54 @@ class ShadowVerifierTests(unittest.TestCase):
             expected_data_loss=True,
             decision_required=True,
         )
+        self.target_task = MigrationTask(
+            task_id="mig-003",
+            from_ddl=(
+                "CREATE TABLE users (id INTEGER PRIMARY KEY, email TEXT NOT NULL, "
+                "legacy_note TEXT);"
+            ),
+            seed_sql="INSERT INTO users (id, email, legacy_note) VALUES (1, 'a@b.com', 'x'), (2, 'c@d.com', 'y');",
+            requirement="Drop the legacy_note column without losing rows.",
+            expected_risk_tier="CRITICAL",
+            expected_data_loss=True,
+            decision_required=True,
+            source_schema=(
+                "TABLE users\nCOLUMN id bigint NOT_NULL PRIMARY_KEY\n"
+                "COLUMN email text NOT_NULL\nCOLUMN legacy_note text NULLABLE"
+            ),
+            target_schema=(
+                "TABLE users\nCOLUMN id bigint NOT_NULL PRIMARY_KEY\n"
+                "COLUMN email text NOT_NULL"
+            ),
+            hazard="drop_column",
+        )
+
+    def test_noop_migration_misses_requirement(self) -> None:
+        completion = (
+            "<think>Add a nullable bio column and keep every existing row.</think>"
+            "<sql_migration>ALTER TABLE users ADD COLUMN bio TEXT;</sql_migration>"
+            '<forge_manifest>{"risk_tier": "SAFE", "has_data_loss": false, '
+            '"decision_required": false}</forge_manifest>'
+        )
+        receipt = self.verifier.verify_rollout(self.target_task, completion)
+        self.assertFalse(receipt.target_schema_matched)
+        self.assertEqual(receipt.error_code, "REQUIREMENT_MISS")
+        self.assertEqual(receipt.shadow_exec_reward, -0.75)
+        self.assertLess(receipt.total_reward, 0.0)
+
+    def test_matching_target_schema_earns_execution_reward(self) -> None:
+        completion = (
+            "<think>The target schema removes legacy_note; drop the column and "
+            "preserve both rows.</think>"
+            "<sql_migration>ALTER TABLE users DROP COLUMN legacy_note;</sql_migration>"
+            '<forge_manifest>{"risk_tier": "CRITICAL", "has_data_loss": true, '
+            '"decision_required": true}</forge_manifest>'
+        )
+        receipt = self.verifier.verify_rollout(self.target_task, completion)
+        self.assertTrue(receipt.target_schema_matched)
+        self.assertEqual(receipt.error_code, "OK")
+        self.assertAlmostEqual(receipt.shadow_exec_reward, 0.75, places=4)
+        self.assertAlmostEqual(receipt.total_reward, 2.0, places=4)
 
     def test_safe_migration_receives_maximum_reward(self) -> None:
         completion = (

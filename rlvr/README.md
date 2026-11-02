@@ -174,24 +174,28 @@ adapter may have trained on them later, so it is not used for the held-out claim
 | Term | Weight | Condition |
 | --- | ---: | --- |
 | Format | `+0.25` | all three blocks present; manifest is a JSON object |
-| Shadow execution | `+0.75` | migration executes without a SQLite error |
+| Shadow execution | `+0.75` / `-0.75` | migration executes **and** the post-migration schema matches `target_schema` when supplied; a valid but unrelated/no-op migration gets `-0.75` and `REQUIREMENT_MISS` |
 | Risk tier | `+0.50` | predicted tier equals the expected forge tier (`SAFE` … `CRITICAL`) |
 | Data loss | `+0.25` | predicted flag equals `expected OR observed` row loss |
 | Approval | `+0.25` | predicted `decision_required` equals the task |
 | Miracle step | `-0.40` | destructive claim/SQL with fewer than 20 characters of reasoning |
 
 Maximum `2.00`. Missing blocks return `-1.00`; invalid JSON or a SQL error
-returns `-0.50`. Row loss is observed from table counts before and after the
-migration, so a manifest cannot hide it. The verifier is deterministic and
-stdlib-only; the reward is not a learned judge.
+returns `-0.50`; a requirement miss with otherwise valid SQL returns at most
+`0.50` and is tagged `REQUIREMENT_MISS`. Row loss is observed from table counts
+before and after the migration, so a manifest cannot hide it. The verifier is
+deterministic and stdlib-only; the reward is not a learned judge.
+
+The requirement check compares the post-migration SQLite schema to the Forge
+`target_schema` (tables, column names, SQLite affinity, `NOT NULL`, and primary
+keys). It is skipped only for hand-built tasks that do not supply a target
+schema. This closes the no-op loophole observed in the 2026-11-02 500-step run.
 
 Known limits: row counts do not detect delete-and-reinsert with the same count,
-a table rename is a false-positive loss, and a no-op migration can score `2.00`
-on a safe task because requirement satisfaction is not checked yet. The shadow
-gate executes SQLite, which is a subset of PostgreSQL DDL/DML; a PostgreSQL
-parity check is a separate gate. `HFPolicy` is untested in CI, and the runner
-does not yet parallelize shadow workers. These are documented rather than
-hidden; a requirement check and a PostgreSQL evaluation are future work.
+and a table rename can still be a false-positive row loss. The shadow gate
+executes SQLite, which is a subset of PostgreSQL DDL/DML; a PostgreSQL parity
+check is a separate gate. `HFPolicy` is tested on the RTX 2060 but not in CI,
+and the runner does not yet parallelize shadow workers.
 
 ---
 
@@ -203,8 +207,8 @@ PYTHONPATH=rlvr/src python -m unittest discover -s rlvr/tests -v
 
 The suite is plain `unittest`. The core has no runtime dependencies; the
 optional GPU-trainer and runner tests require PyTorch and report `skipped`
-without it. The current suite is **85 tests**: 85 pass with CPU torch, and 85
-total with 13 skips and 72 passes without torch.
+without it. The current suite is **87 tests**: 87 pass with CPU torch, and 87
+total with 13 skips and 74 passes without torch.
 
 ---
 

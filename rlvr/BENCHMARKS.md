@@ -14,8 +14,8 @@ they say nothing about model quality or benchmark improvement.
 
 | Measurement | Environment | Result | Kind |
 |---|---|---|---|
-| `rlvr` unit suite | Python 3.11.13, PyTorch 2.15.0+cpu, Windows | 85 tests, 0 failures | correctness |
-| `rlvr` unit suite, no torch | Python 3.11.13, Windows | 85 tests, 72 pass, 13 skip | correctness |
+| `rlvr` unit suite | Python 3.11.13, PyTorch 2.15.0+cpu, Windows | 87 tests, 0 failures | correctness |
+| `rlvr` unit suite, no torch | Python 3.11.13, Windows | 87 tests, 74 pass, 13 skip | correctness |
 | QLoRA runner | fake policy, real SQLite verifier | orchestration tested | correctness |
 | 500-row dataset dry-run | Python 3.11.13, Windows | 500/500 rows mapped | correctness |
 | 0.5B GPU smoke | RTX 2060, fp16 | 10 steps, 0 optimizer steps, all `MISSING_BLOCKS` | correctness |
