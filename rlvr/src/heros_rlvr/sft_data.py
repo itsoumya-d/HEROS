@@ -20,10 +20,11 @@ from __future__ import annotations
 
 import json
 import re
+from dataclasses import dataclass
 from typing import Dict, Iterable, List, Sequence
 
 from .gpu_trainer import MigrationTask
-from .qlora_runner import TableSpec, parse_forge_schema
+from .qlora_runner import TableSpec, build_prompt, parse_forge_schema
 
 IDENTIFIER = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
@@ -195,3 +196,30 @@ def target_completion(task: MigrationTask) -> str:
         f"<sql_migration>\n{sql}\n</sql_migration>\n"
         f"<forge_manifest>{json.dumps(manifest, sort_keys=True)}</forge_manifest>"
     )
+
+
+@dataclass(frozen=True)
+class SFTExample:
+    task_id: str
+    hazard: str
+    prompt: str
+    completion: str
+
+
+def build_sft_examples(tasks: Iterable[MigrationTask]) -> List[SFTExample]:
+    """Build supervised examples, skipping tasks without a representable target."""
+    examples: List[SFTExample] = []
+    for task in tasks:
+        try:
+            completion = target_completion(task)
+        except ValueError:
+            continue
+        examples.append(
+            SFTExample(
+                task_id=task.task_id,
+                hazard=task.hazard,
+                prompt=build_prompt(task),
+                completion=completion,
+            )
+        )
+    return examples

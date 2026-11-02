@@ -179,8 +179,21 @@ the verifier's tag format.
 
 450 of the 500 dataset rows produce a target-matching script. The 50
 `type_narrowing` rows collapse to the same SQLite affinity and are deliberately
-excluded; SQLite cannot verify that distinction. This is SFT data generation, not
-a trained model.
+excluded; SQLite cannot verify that distinction.
+
+### SFT warm start CLI
+
+`scripts/sft_warmstart.py` supervises those targets with LoRA and saves a
+`final/` adapter plus `run.json` and `sft_metrics.json`.
+
+```bash
+python rlvr/scripts/sft_warmstart.py \
+  --dataset ../HEROS-RL/data/heros_migration_500.jsonl \
+  --limit 450 --steps 500 --output-dir outputs/sft-warmstart
+```
+
+Use `--dry-run` to validate the target count without importing torch. Keep a
+held-out slice out of `--limit`; the script does not split the data for you.
 
 #### Reward contract
 
@@ -220,8 +233,8 @@ PYTHONPATH=rlvr/src python -m unittest discover -s rlvr/tests -v
 
 The suite is plain `unittest`. The core has no runtime dependencies; the
 optional GPU-trainer and runner tests require PyTorch and report `skipped`
-without it. The current suite is **93 tests**: 93 pass with CPU torch, and 93
-total with 13 skips and 80 passes without torch.
+without it. The current suite is **94 tests**: 94 pass with CPU torch, and 94
+total with 13 skips and 81 passes without torch.
 
 ---
 
