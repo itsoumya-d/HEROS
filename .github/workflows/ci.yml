@@ -186,12 +186,14 @@ jobs:
             scripts/install-heros.sh \
             ledger/mcp-bridge.sh \
             forge/mcp-bridge.sh \
+            forge/eval-bridge.sh \
             ledger/eval-bridge-auth.sh \
             ledger/eval-bridge.sh \
             ledger/key-gen.sh \
             ledger/eval-auth.sh \
             forge/eval-auth.sh \
-            zero-ecosystem/json-schema/eval-runner.sh
+            zero-ecosystem/json-schema/eval-runner.sh \
+            zero-ecosystem/eval-harness/zeval.sh
 
       - name: Diff whitespace check
         run: git diff --check
