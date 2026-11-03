@@ -1,8 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp } from "node:fs/promises";
+import { spawn } from "node:child_process";
+import { mkdtemp, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
+import { fileURLToPath } from "node:url";
 import {
   createAgenticApp,
   createFileApprovalStore,
@@ -366,6 +368,77 @@ test("concurrent idempotency followers reject a different payload", async () => 
   assert.equal(second.ok, false);
   assert.equal(second.error_code, "IDEMPOTENCY_CONFLICT");
   assert.equal(calls, 1);
+});
+
+test("64 worker processes execute one idempotency key once", { timeout: 120_000 }, async () => {
+  const dir = await mkdtemp(join(tmpdir(), "heros-cross-process-"));
+  const storePath = join(dir, "receipts.json");
+  const counterPath = join(dir, "handler.log");
+  const workerPath = fileURLToPath(
+    new URL("./fixtures/idempotency-worker.mjs", import.meta.url)
+  );
+  const env = {
+    ...process.env,
+    HEROS_STORE_PATH: storePath,
+    HEROS_COUNTER_PATH: counterPath,
+    HEROS_IDEMPOTENCY_KEY: "cross-process-64"
+  };
+
+  const children = Array.from({ length: 64 }, () =>
+    spawn(process.execPath, [workerPath], {
+      env,
+      stdio: ["ignore", "pipe", "pipe"],
+      windowsHide: true
+    })
+  );
+  const results = await Promise.all(
+    children.map(
+      (child) =>
+        new Promise((resolve, reject) => {
+          let stdout = "";
+          let stderr = "";
+          child.stdout.setEncoding("utf8");
+          child.stderr.setEncoding("utf8");
+          child.stdout.on("data", (chunk) => {
+            stdout += chunk;
+          });
+          child.stderr.on("data", (chunk) => {
+            stderr += chunk;
+          });
+          child.on("error", reject);
+          child.on("close", (code) => {
+            if (code !== 0) {
+              reject(new Error(`worker exited ${code}: ${stderr.slice(0, 400)}`));
+              return;
+            }
+            try {
+              resolve(JSON.parse(stdout));
+            } catch {
+              reject(new Error(`invalid worker output: ${stdout.slice(0, 200)}`));
+            }
+          });
+        })
+    )
+  );
+
+  assert.equal(results.length, 64);
+  assert.equal(
+    results.filter((result) => result.ok).length,
+    64,
+    JSON.stringify(results.filter((result) => !result.ok))
+  );
+  assert.equal(results.filter((result) => result.idempotent === true).length, 63);
+  assert.equal(results.filter((result) => result.idempotent === false).length, 1);
+  assert.equal(new Set(results.map((result) => result.receipt_id)).size, 1);
+
+  const counterLines = (await readFile(counterPath, "utf8"))
+    .split(/\r?\n/)
+    .filter(Boolean);
+  assert.equal(counterLines.length, 1);
+
+  const state = JSON.parse(await readFile(storePath, "utf8"));
+  assert.equal(state.receipts.length, 1);
+  assert.equal(Object.keys(state.idempotency).length, 1);
 });
 
 test("file receipt store persists receipts and idempotency across app instances", async () => {
