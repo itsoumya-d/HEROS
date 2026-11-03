@@ -282,6 +282,92 @@ test("replays idempotent results and rejects idempotency conflicts", async () =>
   assert.equal(conflict.error_code, "IDEMPOTENCY_CONFLICT");
 });
 
+test("64 concurrent requests with one idempotency key execute once", async () => {
+  let calls = 0;
+  let release;
+  const gate = new Promise((resolve) => {
+    release = resolve;
+  });
+  const app = createAgenticApp();
+  app.action({
+    name: "cart.add_item",
+    inputSchema: addItemSchema,
+    annotations: {
+      idempotent: true
+    },
+    handler: async () => {
+      calls += 1;
+      await gate;
+      return { calls };
+    }
+  });
+
+  const requests = Array.from({ length: 64 }, () =>
+    app.execute({
+      name: "cart.add_item",
+      input: { sku: "BOOK-1", quantity: 1 },
+      idempotencyKey: "cart-add-concurrent"
+    })
+  );
+
+  await new Promise((resolve) => setTimeout(resolve, 10));
+  assert.equal(calls, 1, "handler must only start once while the leader is in flight");
+  release();
+  const results = await Promise.all(requests);
+
+  assert.equal(calls, 1);
+  assert.equal(results.filter((result) => result.ok).length, 64);
+  assert.equal(results.filter((result) => result._idempotent === true).length, 63);
+  assert.equal(results.filter((result) => result._idempotent === false).length, 1);
+
+  const receiptIds = new Set(results.map((result) => result.receipt.receipt_id));
+  assert.equal(receiptIds.size, 1);
+  const receipts = await app.receiptStore.list();
+  assert.equal(receipts.length, 1);
+  assert.equal(receipts[0].receipt_id, [...receiptIds][0]);
+});
+
+test("concurrent idempotency followers reject a different payload", async () => {
+  let calls = 0;
+  let release;
+  const gate = new Promise((resolve) => {
+    release = resolve;
+  });
+  const app = createAgenticApp();
+  app.action({
+    name: "cart.add_item",
+    inputSchema: addItemSchema,
+    annotations: {
+      idempotent: true
+    },
+    handler: async () => {
+      calls += 1;
+      await gate;
+      return { calls };
+    }
+  });
+
+  const leader = app.execute({
+    name: "cart.add_item",
+    input: { sku: "BOOK-1", quantity: 1 },
+    idempotencyKey: "cart-add-conflict"
+  });
+  const follower = app.execute({
+    name: "cart.add_item",
+    input: { sku: "BOOK-1", quantity: 2 },
+    idempotencyKey: "cart-add-conflict"
+  });
+
+  await new Promise((resolve) => setTimeout(resolve, 10));
+  release();
+  const [first, second] = await Promise.all([leader, follower]);
+
+  assert.equal(first.ok, true);
+  assert.equal(second.ok, false);
+  assert.equal(second.error_code, "IDEMPOTENCY_CONFLICT");
+  assert.equal(calls, 1);
+});
+
 test("file receipt store persists receipts and idempotency across app instances", async () => {
   const dir = await mkdtemp(join(tmpdir(), "heros-agentic-"));
   const receiptPath = join(dir, "receipts.json");
