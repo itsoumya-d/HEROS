@@ -292,6 +292,7 @@ export class AgenticApp {
     this.protocolVersion = options.protocolVersion || DEFAULT_PROTOCOL_VERSION;
     this.authorize = options.authorize || defaultAuthorize;
     this.receiptStore = options.receiptStore || createMemoryReceiptStore();
+    this.inflightIdempotency = new Map();
     this.approvalStore = options.approvalStore || createMemoryApprovalStore();
     this.clock = options.clock || (() => new Date());
     this.actions = new Map();
@@ -328,6 +329,48 @@ export class AgenticApp {
   }
 
   async execute(request = {}) {
+    const idempotencyKey = request?.idempotencyKey;
+    if (idempotencyKey === undefined) {
+      return this._execute(request);
+    }
+
+    let pending = this.inflightIdempotency.get(idempotencyKey);
+    const leader = pending === undefined;
+    if (leader) {
+      pending = this._execute(request).finally(() => {
+        this.inflightIdempotency.delete(idempotencyKey);
+      });
+      this.inflightIdempotency.set(idempotencyKey, pending);
+    }
+
+    const result = await pending;
+    if (!leader && result && result.ok) {
+      const existing = await this.receiptStore.findByIdempotencyKey(idempotencyKey);
+      if (existing) {
+        const action = this.actions.get(request.name);
+        if (action) {
+          const actionHash = hashValue({
+            name: action.name,
+            input: request.input ?? {}
+          });
+          if (existing.action_hash !== actionHash) {
+            return failure(
+              ERROR.IDEMPOTENCY_CONFLICT,
+              "Idempotency key was already used for different action input.",
+              false
+            );
+          }
+        }
+        return {
+          ...cloneJson(existing.response),
+          _idempotent: true
+        };
+      }
+    }
+    return cloneJson(result);
+  }
+
+  async _execute(request = {}) {
     const actionName = request.name;
     const action = this.actions.get(actionName);
     if (!action) {
