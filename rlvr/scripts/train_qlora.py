@@ -43,8 +43,16 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--dataset", required=True, help="JSONL migration dataset")
     parser.add_argument("--output-dir", default="outputs/project-01")
     parser.add_argument("--model", default=None, help="override the default base model")
+    parser.add_argument(
+        "--adapter-path",
+        default=None,
+        help="initialize the trainable policy from an existing LoRA adapter",
+    )
     parser.add_argument("--max-steps", type=int, default=500)
     parser.add_argument("--group-size", type=int, default=4)
+    parser.add_argument("--temperature", type=float, default=1.0)
+    parser.add_argument("--max-completion-tokens", type=int, default=512)
+    parser.add_argument("--gradient-accumulation", type=int, default=8)
     parser.add_argument("--limit", type=int, default=None, help="cap the number of tasks loaded")
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--no-4bit", action="store_true", help="disable NF4 quantization")
@@ -71,11 +79,16 @@ def main(argv: list[str] | None = None) -> int:
         "output_dir": args.output_dir,
         "group_size": args.group_size,
         "max_steps": args.max_steps,
+        "temperature": args.temperature,
+        "max_completion_tokens": args.max_completion_tokens,
+        "gradient_accumulation": args.gradient_accumulation,
         "seed": args.seed,
         "load_in_4bit": not args.no_4bit,
     }
     if args.model:
         config_kwargs["model_name"] = args.model
+    if args.adapter_path:
+        config_kwargs["adapter_path"] = args.adapter_path
     config = RunnerConfig(**config_kwargs)
 
     if args.dry_run:
@@ -89,6 +102,7 @@ def main(argv: list[str] | None = None) -> int:
                     "group_size": config.group_size,
                     "hazards": dict(sorted(hazards.items())),
                     "output_dir": config.output_dir,
+                    "adapter_path": config.adapter_path or None,
                 },
                 indent=2,
                 sort_keys=True,

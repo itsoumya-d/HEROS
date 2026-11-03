@@ -497,6 +497,7 @@ class RunnerConfig:
     max_grad_norm: float = 1.0
     checkpoint_every: int = 50
     save_final: bool = True
+    adapter_path: str = ""
 
     def __post_init__(self) -> None:
         if self.group_size < 2:
@@ -750,7 +751,12 @@ class HFPolicy:
     def load(cls, config: RunnerConfig, reference: bool = False) -> "HFPolicy":
         try:
             import torch
-            from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
+            from peft import (
+                LoraConfig,
+                PeftModel,
+                get_peft_model,
+                prepare_model_for_kbit_training,
+            )
             from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
         except ImportError as error:  # pragma: no cover - requires the train extra
             raise RuntimeError(
@@ -783,23 +789,30 @@ class HFPolicy:
         if not reference:
             if config.load_in_4bit and cuda:
                 model = prepare_model_for_kbit_training(model)
-            lora = LoraConfig(
-                r=config.lora_r,
-                lora_alpha=config.lora_alpha,
-                lora_dropout=0.05,
-                bias="none",
-                task_type="CAUSAL_LM",
-                target_modules=[
-                    "q_proj",
-                    "k_proj",
-                    "v_proj",
-                    "o_proj",
-                    "gate_proj",
-                    "up_proj",
-                    "down_proj",
-                ],
-            )
-            model = get_peft_model(model, lora)
+            if config.adapter_path:
+                model = PeftModel.from_pretrained(
+                    model,
+                    config.adapter_path,
+                    is_trainable=True,
+                )
+            else:
+                lora = LoraConfig(
+                    r=config.lora_r,
+                    lora_alpha=config.lora_alpha,
+                    lora_dropout=0.05,
+                    bias="none",
+                    task_type="CAUSAL_LM",
+                    target_modules=[
+                        "q_proj",
+                        "k_proj",
+                        "v_proj",
+                        "o_proj",
+                        "gate_proj",
+                        "up_proj",
+                        "down_proj",
+                    ],
+                )
+                model = get_peft_model(model, lora)
             model.gradient_checkpointing_enable()
         model.eval()
         return cls(model, tokenizer, config, reference=reference)
