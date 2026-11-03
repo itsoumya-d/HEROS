@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>HEROS signed receipt proof</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg: #0b0d10;
+      --panel: #12161c;
+      --text: #e8edf5;
+      --muted: #9aa7b8;
+      --ok: #54d49a;
+      --bad: #ff7a7a;
+      --line: #26303c;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      background: radial-gradient(circle at 20% 0%, #18222d 0, var(--bg) 45%);
+      color: var(--text);
+      font: 15px/1.55 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    }
+    main {
+      width: min(760px, calc(100vw - 32px));
+      padding: 32px;
+      border: 1px solid var(--line);
+      border-radius: 20px;
+      background: color-mix(in srgb, var(--panel) 92%, transparent);
+      box-shadow: 0 24px 80px rgb(0 0 0 / 0.35);
+    }
+    .eyebrow {
+      margin: 0 0 8px;
+      color: var(--muted);
+      font-size: 12px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+    h1 { margin: 0 0 6px; font-size: clamp(24px, 4vw, 34px); letter-spacing: -0.03em; }
+    p { margin: 0 0 24px; color: var(--muted); }
+    #status {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 24px;
+      padding: 10px 14px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      font-weight: 650;
+    }
+    #status::before {
+      content: "";
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+      background: var(--muted);
+    }
+    #status.ok { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 45%, var(--line)); }
+    #status.ok::before { background: var(--ok); }
+    #status.bad { color: var(--bad); border-color: color-mix(in srgb, var(--bad) 45%, var(--line)); }
+    #status.bad::before { background: var(--bad); }
+    dl {
+      display: grid;
+      grid-template-columns: 130px minmax(0, 1fr);
+      gap: 10px 18px;
+      margin: 0;
+      padding-top: 22px;
+      border-top: 1px solid var(--line);
+    }
+    dt { color: var(--muted); }
+    dd { margin: 0; overflow-wrap: anywhere; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 13px; }
+    footer { margin-top: 24px; color: var(--muted); font-size: 13px; }
+  </style>
+</head>
+<body>
+  <main>
+    <p class="eyebrow">HEROS / receipt verification</p>
+    <h1>Signed inclusion proof</h1>
+    <p>Verifies the Merkle path and the Ed25519 root signature in this browser. No network call is made beyond loading this page and <code>proof.json</code>.</p>
+    <div id="status">verifying…</div>
+    <dl>
+      <dt>Leaf</dt><dd id="leaf">—</dd>
+      <dt>Root</dt><dd id="root">—</dd>
+      <dt>Tree size</dt><dd id="size">—</dd>
+      <dt>Signature</dt><dd id="signature">—</dd>
+    </dl>
+    <footer id="detail">Waiting for proof.json.</footer>
+  </main>
+  <script>
+    const status = document.getElementById("status");
+    const detail = document.getElementById("detail");
+    const hexBytes = (hex) => {
+      if (!/^[0-9a-f]{64}$/.test(hex)) throw new Error("invalid hex digest");
+      return new Uint8Array(hex.match(/.{2}/g).map((byte) => parseInt(byte, 16)));
+    };
+    const b64Bytes = (value) => Uint8Array.from(atob(value), (char) => char.charCodeAt(0));
+    const bytesHex = (value) => [...value].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+    async function sha256(bytes) {
+      return new Uint8Array(await crypto.subtle.digest("SHA-256", bytes));
+    }
+    async function parent(left, right) {
+      const input = new Uint8Array(1 + left.length + right.length);
+      input[0] = 1;
+      input.set(left, 1);
+      input.set(right, 1 + left.length);
+      return sha256(input);
+    }
+    async function verifyInclusion(proof) {
+      let cursor = hexBytes(proof.leaf);
+      for (const step of proof.proof) {
+        const sibling = hexBytes(step.hash);
+        cursor = step.position === "left"
+          ? await parent(sibling, cursor)
+          : await parent(cursor, sibling);
+      }
+      return bytesHex(cursor) === proof.root;
+    }
+    async function verifySignature(proof) {
+      if (proof.domain_b64 !== btoa(String.fromCharCode(...new TextEncoder().encode("HEROS-MERKLE-ROOT-v1\u0000")))) {
+        throw new Error("unexpected signature domain");
+      }
+      const key = await crypto.subtle.importKey(
+        "spki",
+        b64Bytes(proof.signer_public_key),
+        { name: "Ed25519" },
+        false,
+        ["verify"]
+      );
+      const payload = new Uint8Array([
+        ...b64Bytes(proof.domain_b64),
+        ...hexBytes(proof.root)
+      ]);
+      return crypto.subtle.verify({ name: "Ed25519" }, key, b64Bytes(proof.signature), payload);
+    }
+    (async () => {
+      try {
+        const proof = await (await fetch("./proof.json", { cache: "no-store" })).json();
+        document.getElementById("leaf").textContent = proof.leaf;
+        document.getElementById("root").textContent = proof.root;
+        document.getElementById("size").textContent = String(proof.size);
+        document.getElementById("signature").textContent = proof.signature;
+        const inclusion = await verifyInclusion(proof);
+        const signature = await verifySignature(proof);
+        if (inclusion && signature) {
+          status.className = "ok";
+          status.textContent = "PASS — signed inclusion proof verified";
+          detail.textContent = "Both the Merkle path and the Ed25519 root signature are valid.";
+        } else {
+          status.className = "bad";
+          status.textContent = "FAIL — proof rejected";
+          detail.textContent = `Merkle path: ${inclusion}; signature: ${signature}`;
+        }
+      } catch (error) {
+        status.className = "bad";
+        status.textContent = "FAIL — verifier error";
+        detail.textContent = error.message;
+      }
+    })();
+  </script>
+</body>
+</html>

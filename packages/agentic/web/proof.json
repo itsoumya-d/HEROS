@@ -1,0 +1,19 @@
+{
+  "leaf": "eb810087a7d2786721040d7f4ec4cfe51f743f33693aedd4f0779ac8121f955a",
+  "index": 1,
+  "size": 3,
+  "root": "0a93299c43d409de89027839c9fb1cbc32f1b8ae1437f8f560b9f3f9a584e24a",
+  "proof": [
+    {
+      "hash": "1a70e2cd1416a9c3e1183376bc3a534aafc51e057e0c07fce8a9f83d4b7f5c15",
+      "position": "left"
+    },
+    {
+      "hash": "da1a1360cb1bfd8894531f185bf79967baef662068ed9a28f8ee3a1847680ae4",
+      "position": "right"
+    }
+  ],
+  "signature": "M8eFNhK6Qg2O7eAQWqWJlmV0YnxQIkwN5ees/SRvIDnwGLqpN3YrZnw0PHXAHUDrw/O3K4urPJBhshkkWDJICQ==",
+  "signer_public_key": "MCowBQYDK2VwAyEAWwngVApc/OQrWS1xnzwLplijgyCVDzw8fBiu5Rwoi7U=",
+  "domain_b64": "SEVST1MtTUVSS0xFLVJPT1QtdjEA"
+}
