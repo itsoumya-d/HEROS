@@ -156,6 +156,8 @@ Set `approvalRequired: true` when an action needs a human decision before execut
 
 Pass `idempotencyKey` for actions that should be safe to retry. HEROS replays the original response for the same key and same input, and returns `IDEMPOTENCY_CONFLICT` if the key is reused with different input.
 
+Concurrent callers are serialized. Inside one process an in-flight map makes followers wait for the leader. With `createFileReceiptStore()`, the store also takes a host-local lock file derived from the key, plus a global lock around file writes, so separate Node processes replay instead of both executing. This is **host-local**, not a distributed lock; a handler that runs longer than the 120 s stale threshold can lose exclusivity. See `THREAT_MODEL.md`.
+
 ## Receipt
 
 Every successful action emits a receipt with:
@@ -170,7 +172,7 @@ Every successful action emits a receipt with:
 - action annotations
 - timestamp
 
-Receipts are stored in memory by default. Use `createFileReceiptStore()` for dependency-free single-process persistence, or provide a database-backed `receiptStore` for multi-process production deployments.
+Receipts are stored in memory by default. Use `createFileReceiptStore()` for dependency-free persistence; it takes host-local lock files so separate processes on one machine do not overwrite each other. For multi-host or high-volume deployments, provide a database-backed `receiptStore`.
 
 ## Merkle receipts
 
@@ -210,6 +212,10 @@ Guarantees:
 - `verify()` recomputes every leaf, checks the `prev_hash` chain, checks the
   deliberation trace hash, and recomputes the root.
 - Odd tree levels promote the final node unchanged.
+- Append recomputes the root over the whole log (**O(n)**). Measured p99 was
+  **33.8 ms at 5000 receipts**, versus **0.245 ms** for the policy path alone.
+  Use an external index/cache or wait for the incremental tree before claiming
+  high-throughput logging.
 
 ## Score-triggered reflection
 
@@ -256,7 +262,7 @@ const heros = createAgenticApp({
 });
 ```
 
-The file stores persist receipts, idempotency records, and approval tokens across process restarts. Use a database-backed store when multiple app processes write to the same action surface.
+The file stores persist receipts, idempotency records, and approval tokens across process restarts. They use host-local lock files so concurrent processes on one machine do not lose updates. They are **not** a distributed lock: use a database-backed store when multiple hosts write to the same action surface, and read `THREAT_MODEL.md` for the remaining limits.
 
 ## Production Checklist
 
@@ -265,6 +271,8 @@ The file stores persist receipts, idempotency records, and approval tokens acros
 - Require approval for destructive or high-value actions.
 - Use strict schemas with `additionalProperties: false`, length limits, charset limits, and `safeText: true` on user-facing strings.
 - Persist receipts and idempotency records outside process memory.
+- Keep the receipt file on one host, or use a database-backed store when multiple hosts write.
 - Wrap the receipt store with `createMerkleReceiptStore` and verify the log on a schedule.
+- Read `THREAT_MODEL.md`; keep the documented limits aligned with the tests.
 - Use score-triggered reflection only for actions with a real verifier; never enable it unconditionally.
 - Run `npm run test:agentic`, `npm run test:agentic-site`, and `npm run demo:agentic` before shipping.
