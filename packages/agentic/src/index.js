@@ -4,22 +4,32 @@ import { dirname } from "node:path";
 import { canonicalStringify } from "./canonical.js";
 import {
   createMerkleReceiptStore,
+  exportPublicKey,
   GENESIS_HASH,
   inclusionProof,
   leafHash,
   merkleRoot,
   receiptProjection,
-  verifyInclusionProof
+  signInclusionProof,
+  signMerkleRoot,
+  verifyInclusionProof,
+  verifyMerkleRoot,
+  verifySignedInclusionProof
 } from "./merkle.js";
 
 export {
   createMerkleReceiptStore,
+  exportPublicKey,
   GENESIS_HASH,
   inclusionProof,
   leafHash,
   merkleRoot,
   receiptProjection,
-  verifyInclusionProof
+  signInclusionProof,
+  signMerkleRoot,
+  verifyInclusionProof,
+  verifyMerkleRoot,
+  verifySignedInclusionProof
 };
 export { canonicalStringify };
 
