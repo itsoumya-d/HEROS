@@ -5,10 +5,11 @@
 // Parent: SHA256(0x01 || left_digest || right_digest)
 // Odd nodes are promoted unchanged.
 
-import { createHash } from "node:crypto";
+import { createHash, createPublicKey, sign, verify } from "node:crypto";
 import { canonicalStringify } from "./canonical.js";
 
 export const GENESIS_HASH = "0".repeat(64);
+const ROOT_SIGNATURE_DOMAIN = Buffer.from("HEROS-MERKLE-ROOT-v1\u0000", "utf8");
 
 const UNSIGNED_KEYS = [
   "receipt_id",
@@ -134,7 +135,69 @@ export function verifyInclusionProof({ leaf, root, proof }) {
   return cursor === root;
 }
 
-export function createMerkleReceiptStore({ store } = {}) {
+export function exportPublicKey(publicKey) {
+  if (typeof publicKey === "string") return publicKey;
+  return publicKey.export({ type: "spki", format: "der" }).toString("base64");
+}
+
+function importPublicKey(publicKey) {
+  if (typeof publicKey !== "string") return publicKey;
+  return createPublicKey({
+    key: Buffer.from(publicKey, "base64"),
+    format: "der",
+    type: "spki"
+  });
+}
+
+export function signMerkleRoot(root, privateKey) {
+  if (typeof root !== "string" || !/^[0-9a-f]{64}$/.test(root)) {
+    throw new Error("root must be a 64-character lowercase hex digest");
+  }
+  return sign(
+    null,
+    Buffer.concat([ROOT_SIGNATURE_DOMAIN, Buffer.from(root, "hex")]),
+    privateKey
+  ).toString("base64");
+}
+
+export function verifyMerkleRoot(root, signature, publicKey) {
+  try {
+    if (typeof signature !== "string") return false;
+    return verify(
+      null,
+      Buffer.concat([ROOT_SIGNATURE_DOMAIN, Buffer.from(root, "hex")]),
+      importPublicKey(publicKey),
+      Buffer.from(signature, "base64")
+    );
+  } catch {
+    return false;
+  }
+}
+
+export function signInclusionProof(proof, privateKey, publicKey) {
+  if (!proof || typeof proof.root !== "string") {
+    throw new Error("inclusion proof with a root is required");
+  }
+  return {
+    ...proof,
+    signature: signMerkleRoot(proof.root, privateKey),
+    signer_public_key: exportPublicKey(publicKey)
+  };
+}
+
+export function verifySignedInclusionProof(proof) {
+  if (!proof || typeof proof !== "object") return false;
+  return (
+    verifyInclusionProof(proof) &&
+    verifyMerkleRoot(
+      proof.root,
+      proof.signature,
+      proof.signer_public_key
+    )
+  );
+}
+
+export function createMerkleReceiptStore({ store, signer } = {}) {
   if (!store || typeof store.append !== "function" || typeof store.list !== "function") {
     throw new Error("createMerkleReceiptStore requires a receipt store with append() and list().");
   }
@@ -180,6 +243,10 @@ export function createMerkleReceiptStore({ store } = {}) {
         entry_hash: leaf,
         merkle_root: root
       };
+      if (signer) {
+        saved.merkle_root_signature = signMerkleRoot(root, signer.privateKey);
+        saved.signer_public_key = exportPublicKey(signer.publicKey);
+      }
 
       const appended = await store.append(saved);
       entries.push({ receipt_id: saved.receipt_id, leaf });
@@ -215,6 +282,12 @@ export function createMerkleReceiptStore({ store } = {}) {
       return inclusionProof(currentLeaves(), index);
     },
 
+    signedInclusionProof(receiptId, privateKey = signer?.privateKey, publicKey = signer?.publicKey) {
+      const proof = this.inclusionProof(receiptId);
+      if (!proof || !privateKey || !publicKey) return null;
+      return signInclusionProof(proof, privateKey, publicKey);
+    },
+
     async verify() {
       const receipts = await store.list();
       const failures = [];
@@ -224,12 +297,37 @@ export function createMerkleReceiptStore({ store } = {}) {
       receipts.forEach((receipt, index) => {
         const leaf = leafHash(receipt);
         leaves.push(leaf);
+        const prefixRoot = merkleRoot(leaves);
 
         if (receipt.entry_hash !== undefined && receipt.entry_hash !== leaf) {
           failures.push({
             index,
             receipt_id: receipt.receipt_id,
             reason: "ENTRY_HASH_MISMATCH"
+          });
+        }
+        if (
+          receipt.merkle_root !== undefined &&
+          receipt.merkle_root !== prefixRoot
+        ) {
+          failures.push({
+            index,
+            receipt_id: receipt.receipt_id,
+            reason: "MERKLE_ROOT_MISMATCH"
+          });
+        }
+        if (
+          receipt.merkle_root_signature !== undefined &&
+          !verifyMerkleRoot(
+            receipt.merkle_root,
+            receipt.merkle_root_signature,
+            receipt.signer_public_key
+          )
+        ) {
+          failures.push({
+            index,
+            receipt_id: receipt.receipt_id,
+            reason: "SIGNATURE_MISMATCH"
           });
         }
         if (receipt.prev_hash !== undefined && receipt.prev_hash !== previous) {

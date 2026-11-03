@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createHash } from "node:crypto";
+import { createHash, generateKeyPairSync } from "node:crypto";
 import { mkdtemp } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -14,7 +14,10 @@ import {
   inclusionProof,
   leafHash,
   merkleRoot,
-  verifyInclusionProof
+  signMerkleRoot,
+  verifyInclusionProof,
+  verifyMerkleRoot,
+  verifySignedInclusionProof
 } from "../src/index.js";
 
 function receipt(index, overrides = {}) {
@@ -178,6 +181,49 @@ test("file-backed Merkle log survives a new wrapper instance", async () => {
   assert.equal(second.inclusionProof("hr_0002").root, second.root());
   assert.notEqual(second.root(), root);
   assert.equal((await second.verify()).ok, true);
+});
+
+test("Ed25519 root signatures verify and reject tampering", () => {
+  const { privateKey, publicKey } = generateKeyPairSync("ed25519");
+  const root = "a".repeat(64);
+  const signature = signMerkleRoot(root, privateKey);
+  assert.equal(verifyMerkleRoot(root, signature, publicKey), true);
+  assert.equal(verifyMerkleRoot("b".repeat(64), signature, publicKey), false);
+  assert.equal(verifyMerkleRoot(root, "not-base64", publicKey), false);
+});
+
+test("signed inclusion proofs verify and detect proof/signature tampering", async () => {
+  const { privateKey, publicKey } = generateKeyPairSync("ed25519");
+  const base = createTamperableStore();
+  const store = createMerkleReceiptStore({
+    store: base,
+    signer: { privateKey, publicKey }
+  });
+  await store.append(receipt(1));
+  await store.append(receipt(2));
+  await store.append(receipt(3));
+
+  const proof = store.signedInclusionProof("hr_0002");
+  assert.equal(verifySignedInclusionProof(proof), true);
+
+  const tamperedProof = {
+    ...proof,
+    proof: proof.proof.map((step, index) =>
+      index === 0 ? { ...step, hash: "0".repeat(64) } : step
+    )
+  };
+  assert.equal(verifySignedInclusionProof(tamperedProof), false);
+
+  const tamperedSignature = { ...proof, signature: "AAAA" };
+  assert.equal(verifySignedInclusionProof(tamperedSignature), false);
+
+  assert.equal((await store.verify()).ok, true);
+  base.receipts[1].merkle_root_signature = "AAAA";
+  const verified = await store.verify();
+  assert.equal(verified.ok, false);
+  assert.ok(verified.failures.some((failure) =>
+    failure.reason === "SIGNATURE_MISMATCH"
+  ));
 });
 
 test("proof helpers reject malformed input", () => {
