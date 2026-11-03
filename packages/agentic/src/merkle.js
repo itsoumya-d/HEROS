@@ -263,6 +263,13 @@ export function createMerkleReceiptStore({ store, signer } = {}) {
       return store.recordIdempotency(key, actionHash, response);
     },
 
+    withIdempotencyLock(key, fn) {
+      if (typeof store.withIdempotencyLock === "function") {
+        return store.withIdempotencyLock(key, fn);
+      }
+      return fn();
+    },
+
     async list() {
       await ensureLoaded();
       return store.list();

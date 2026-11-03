@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from "node:crypto";
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { mkdir, open, readFile, rename, stat, unlink, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import { canonicalStringify } from "./canonical.js";
 import {
@@ -37,6 +37,10 @@ const DEFAULT_PROTOCOL_VERSION = "2025-11-25";
 const ACTION_NAME_RE = /^[A-Za-z0-9_.:-]{1,96}$/;
 const IDEMPOTENCY_KEY_RE = /^[A-Za-z0-9_.:-]{1,160}$/;
 const SAFE_TEXT_RE = /^[\x20-\x7E]*$/;
+const LOCK_RETRY_MIN_MS = 5;
+const LOCK_RETRY_JITTER_MS = 20;
+const LOCK_TIMEOUT_MS = 30_000;
+const LOCK_STALE_MS = 120_000;
 
 const ERROR = {
   UNKNOWN_ACTION: "UNKNOWN_ACTION",
@@ -52,6 +56,58 @@ const ERROR = {
 
 export function createAgenticApp(options = {}) {
   return new AgenticApp(options);
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+// Exclusive lock file with bounded retry and stale-lock recovery. This is a
+// cooperative lock for HEROS stores on one host; it is not a distributed lock.
+async function withFileLock(lockPath, fn) {
+  await mkdir(dirname(lockPath), { recursive: true });
+  const deadline = Date.now() + LOCK_TIMEOUT_MS;
+  let handle;
+
+  while (handle === undefined) {
+    try {
+      handle = await open(lockPath, "wx");
+    } catch (error) {
+      const code = error && error.code;
+      if (code !== "EEXIST" && code !== "EPERM" && code !== "EACCES") {
+        throw error;
+      }
+      let info = null;
+      try {
+        info = await stat(lockPath);
+      } catch (statError) {
+        if (statError && statError.code === "ENOENT") continue;
+        if (statError && (statError.code === "EPERM" || statError.code === "EACCES")) {
+          await sleep(LOCK_RETRY_MIN_MS);
+          continue;
+        }
+        throw statError;
+      }
+      if (info && Date.now() - info.mtimeMs > LOCK_STALE_MS) {
+        await unlink(lockPath).catch(() => {});
+        continue;
+      }
+      if (Date.now() >= deadline) {
+        throw new Error(`Timed out waiting for lock file: ${lockPath}`);
+      }
+      await sleep(
+        LOCK_RETRY_MIN_MS + Math.floor(Math.random() * LOCK_RETRY_JITTER_MS)
+      );
+    }
+  }
+
+  try {
+    await handle.writeFile(`${process.pid}\n${Date.now()}\n`);
+    return await fn();
+  } finally {
+    await handle.close().catch(() => {});
+    await unlink(lockPath).catch(() => {});
+  }
 }
 
 export function createMemoryReceiptStore() {
@@ -73,6 +129,9 @@ export function createMemoryReceiptStore() {
         action_hash: actionHash,
         response: cloneJson(response)
       });
+    },
+    async withIdempotencyLock(_key, fn) {
+      return fn();
     },
     async list() {
       return cloneJson(receipts);
@@ -110,12 +169,14 @@ export function createFileReceiptStore({ path }) {
   }
 
   function enqueue(mutator) {
-    const run = writeChain.catch(() => {}).then(async () => {
-      const state = await readState();
-      const result = await mutator(state);
-      await writeState(state);
-      return result;
-    });
+    const run = writeChain.catch(() => {}).then(() =>
+      withFileLock(`${path}.lock`, async () => {
+        const state = await readState();
+        const result = await mutator(state);
+        await writeState(state);
+        return result;
+      })
+    );
     writeChain = run.then(() => undefined, () => undefined);
     return run;
   }
@@ -141,6 +202,10 @@ export function createFileReceiptStore({ path }) {
           response: cloneJson(response)
         };
       });
+    },
+    async withIdempotencyLock(key, fn) {
+      const digest = createHash("sha256").update(key).digest("hex");
+      return withFileLock(`${path}.key.${digest}.lock`, fn);
     },
     async list() {
       await writeChain;
@@ -226,12 +291,14 @@ export function createFileApprovalStore({ path, ttlMs = 5 * 60 * 1000 }) {
   }
 
   function enqueue(mutator) {
-    const run = writeChain.catch(() => {}).then(async () => {
-      const state = await readState();
-      const result = await mutator(state);
-      await writeState(state);
-      return result;
-    });
+    const run = writeChain.catch(() => {}).then(() =>
+      withFileLock(`${path}.lock`, async () => {
+        const state = await readState();
+        const result = await mutator(state);
+        await writeState(state);
+        return result;
+      })
+    );
     writeChain = run.then(() => undefined, () => undefined);
     return run;
   }
@@ -330,14 +397,18 @@ export class AgenticApp {
 
   async execute(request = {}) {
     const idempotencyKey = request?.idempotencyKey;
-    if (idempotencyKey === undefined) {
+    if (
+      idempotencyKey === undefined ||
+      typeof idempotencyKey !== "string" ||
+      !IDEMPOTENCY_KEY_RE.test(idempotencyKey)
+    ) {
       return this._execute(request);
     }
 
     let pending = this.inflightIdempotency.get(idempotencyKey);
     const leader = pending === undefined;
     if (leader) {
-      pending = this._execute(request).finally(() => {
+      pending = this._runIdempotent(request, idempotencyKey).finally(() => {
         this.inflightIdempotency.delete(idempotencyKey);
       });
       this.inflightIdempotency.set(idempotencyKey, pending);
@@ -370,6 +441,20 @@ export class AgenticApp {
     return cloneJson(result);
   }
 
+  async _runIdempotent(request, idempotencyKey) {
+    const run = () => this._execute(request);
+    if (typeof this.receiptStore.withIdempotencyLock !== "function") {
+      return run();
+    }
+    try {
+      return await this.receiptStore.withIdempotencyLock(idempotencyKey, run);
+    } catch (error) {
+      return failure(ERROR.ACTION_FAILED, "Idempotency lock unavailable.", true, {
+        message: safeErrorMessage(error)
+      });
+    }
+  }
+
   async _execute(request = {}) {
     const actionName = request.name;
     const action = this.actions.get(actionName);
@@ -386,7 +471,10 @@ export class AgenticApp {
     }
 
     const idempotencyKey = request.idempotencyKey;
-    if (idempotencyKey !== undefined && !IDEMPOTENCY_KEY_RE.test(idempotencyKey)) {
+    if (
+      idempotencyKey !== undefined &&
+      (typeof idempotencyKey !== "string" || !IDEMPOTENCY_KEY_RE.test(idempotencyKey))
+    ) {
       return failure(ERROR.INVALID_INPUT, "Idempotency key must be ASCII letters, digits, dot, colon, underscore, or dash.", false);
     }
 
