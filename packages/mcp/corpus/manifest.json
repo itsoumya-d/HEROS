@@ -1,0 +1,161 @@
+{
+  "schema_version": 1,
+  "name": "heros-adversarial-corpus",
+  "version": "1.0.0",
+  "case_count": 500,
+  "source_tests": [
+    "packages/mcp/test/adversarial.test.mjs",
+    "packages/mcp/test/corpus211.test.mjs"
+  ],
+  "groups": [
+    {
+      "name": "jsonrpc-base",
+      "surface": "jsonrpc",
+      "asi": [
+        "ASI05",
+        "ASI09"
+      ],
+      "count": 60,
+      "source": "adversarial.test.mjs"
+    },
+    {
+      "name": "agentic-base",
+      "surface": "agentic",
+      "asi": [
+        "ASI01",
+        "ASI02"
+      ],
+      "count": 78,
+      "source": "adversarial.test.mjs"
+    },
+    {
+      "name": "auth-base",
+      "surface": "auth",
+      "asi": [
+        "ASI03",
+        "ASI10"
+      ],
+      "count": 31,
+      "source": "adversarial.test.mjs"
+    },
+    {
+      "name": "forge-base",
+      "surface": "forge",
+      "asi": [
+        "ASI05",
+        "ASI06"
+      ],
+      "count": 60,
+      "source": "adversarial.test.mjs"
+    },
+    {
+      "name": "shadow-base",
+      "surface": "shadow",
+      "asi": [
+        "ASI05"
+      ],
+      "count": 30,
+      "source": "adversarial.test.mjs"
+    },
+    {
+      "name": "approval-base",
+      "surface": "approval",
+      "asi": [
+        "ASI02",
+        "ASI07"
+      ],
+      "count": 30,
+      "source": "adversarial.test.mjs"
+    },
+    {
+      "name": "jsonrpc-extra",
+      "surface": "jsonrpc",
+      "asi": [
+        "ASI05",
+        "ASI09"
+      ],
+      "count": 40,
+      "source": "corpus211.test.mjs"
+    },
+    {
+      "name": "agentic-extra",
+      "surface": "agentic",
+      "asi": [
+        "ASI01",
+        "ASI02"
+      ],
+      "count": 30,
+      "source": "corpus211.test.mjs"
+    },
+    {
+      "name": "auth-extra",
+      "surface": "auth",
+      "asi": [
+        "ASI03",
+        "ASI10"
+      ],
+      "count": 25,
+      "source": "corpus211.test.mjs"
+    },
+    {
+      "name": "forge-extra",
+      "surface": "forge",
+      "asi": [
+        "ASI05",
+        "ASI06"
+      ],
+      "count": 30,
+      "source": "corpus211.test.mjs"
+    },
+    {
+      "name": "shadow-extra",
+      "surface": "shadow",
+      "asi": [
+        "ASI05"
+      ],
+      "count": 30,
+      "source": "corpus211.test.mjs"
+    },
+    {
+      "name": "approval-extra",
+      "surface": "approval",
+      "asi": [
+        "ASI02",
+        "ASI07"
+      ],
+      "count": 30,
+      "source": "corpus211.test.mjs"
+    },
+    {
+      "name": "destructive-gate",
+      "surface": "destructive",
+      "asi": [
+        "ASI08",
+        "ASI09"
+      ],
+      "count": 26,
+      "source": "corpus211.test.mjs"
+    }
+  ],
+  "surfaces": {
+    "jsonrpc": 100,
+    "agentic": 108,
+    "auth": 56,
+    "forge": 90,
+    "shadow": 60,
+    "approval": 60,
+    "destructive": 26
+  },
+  "asi": {
+    "ASI01": 108,
+    "ASI02": 168,
+    "ASI03": 56,
+    "ASI05": 250,
+    "ASI06": 90,
+    "ASI07": 60,
+    "ASI08": 26,
+    "ASI09": 126,
+    "ASI10": 56
+  },
+  "sha256": "03f0608cb9b0d9b86c4216daa9843dbad05d353986c09b4e6247bb933462ba92"
+}

@@ -14,6 +14,7 @@ import { join } from "node:path";
 import { createSession } from "../src/server.js";
 import { createAgenticApp } from "../../agentic/src/index.js";
 import { makeHarness } from "./helpers.mjs";
+import { recordCase } from "../corpus/recorder.mjs";
 
 const USER_SCHEMA =
   "TABLE users\nCOLUMN id serial NOT_NULL PRIMARY_KEY\nCOLUMN email text NOT_NULL";
@@ -150,6 +151,15 @@ test("ASI05/ASI09: 40 additional malformed JSON-RPC messages are bounded", async
 
   const failures = [];
   for (const [index, message] of messages.entries()) {
+    recordCase({
+      group: "jsonrpc-extra",
+      index,
+      surface: "jsonrpc",
+      asi: ["ASI05", "ASI09"],
+      source: "corpus211.test.mjs",
+      input: message,
+      expected: "bounded"
+    });
     try {
       const response = await harness.server.handleMessage(message, harness.session);
       if (response !== null) {
@@ -212,6 +222,15 @@ test("ASI01/ASI02: 30 additional agentic schema mutations fail closed", async ()
 
   const failures = [];
   for (const [index, input] of mutations.entries()) {
+    recordCase({
+      group: "agentic-extra",
+      index,
+      surface: "agentic",
+      asi: ["ASI01", "ASI02"],
+      source: "corpus211.test.mjs",
+      input: { name: "cart.add_item", input },
+      expected: "INVALID_INPUT"
+    });
     try {
       const response = await app.execute({ name: "cart.add_item", input });
       assert.equal(response.ok, false, `case ${index} unexpectedly succeeded`);
@@ -242,6 +261,23 @@ test("ASI03/ASI10: 25 additional API-key variants cannot execute a tool", async 
   for (const [index, key] of keys.entries()) {
     const session = createSession({ id: `corpus-auth-${index}`, apiKey: key });
     session.initialized = true;
+    const expected =
+      key === authKeys.validRo
+        ? "INSUFFICIENT_SCOPE"
+        : key === authKeys.revoked
+          ? "API_KEY_REVOKED"
+          : key === ""
+            ? "NO_ORG_REGISTERED"
+            : "INVALID_API_KEY";
+    recordCase({
+      group: "auth-extra",
+      index,
+      surface: "auth",
+      asi: ["ASI03", "ASI10"],
+      source: "corpus211.test.mjs",
+      input: { api_key: key, tool: "ledger_invoice_create" },
+      expected
+    });
     try {
       const response = await authHarness.rpc(
         "tools/call",
@@ -300,6 +336,16 @@ test("ASI05/ASI06: 30 additional hostile forge payloads are bounded", async () =
 
   const failures = [];
   for (const [index, payload] of payloads.entries()) {
+    recordCase({
+      group: "forge-extra",
+      index,
+      surface: "forge",
+      asi: ["ASI05", "ASI06"],
+      source: "corpus211.test.mjs",
+      input: payload,
+      expected: "bounded_or_error",
+      allowedErrorCodes: [...ALLOWED_FORGE_ERRORS].sort()
+    });
     try {
       const result = await harness.call("forge_analyze", payload);
       if (result.error_code) {
@@ -349,6 +395,16 @@ test("ASI05: 30 additional malformed shadow schemas fail without SQL", async () 
 
   const failures = [];
   for (const [index, schema] of schemas.entries()) {
+    recordCase({
+      group: "shadow-extra",
+      index,
+      surface: "shadow",
+      asi: ["ASI05"],
+      source: "corpus211.test.mjs",
+      input: { from_schema: schema, to_schema: USER_SCHEMA },
+      expected: "rejected",
+      allowedErrorCodes: [...ALLOWED_SHADOW_ERRORS].sort()
+    });
     try {
       const result = await harness.call("forge_shadow_analyze", {
         from_schema: schema,
@@ -411,6 +467,38 @@ test("ASI02/ASI07: 30 additional approval replay/rebind cases fail", async () =>
 
   const failures = [];
   for (const [index, entry] of cases.entries()) {
+    const expected =
+      index < 10
+        ? "INVALID_ACKNOWLEDGMENT_TOKEN"
+        : Buffer.byteLength(entry.token, "utf8") > 64
+          ? "INVALID_INPUT"
+          : "INVALID_ACKNOWLEDGMENT_TOKEN";
+    const runtimeToken = index < 10;
+    recordCase({
+      group: "approval-extra",
+      index,
+      surface: "approval",
+      asi: ["ASI02", "ASI07"],
+      source: "corpus211.test.mjs",
+      input: {
+        from_schema: entry.from_schema,
+        to_schema: entry.to_schema,
+        human_acknowledgment_token: runtimeToken
+          ? { $runtime: "approval_nonce" }
+          : entry.token
+      },
+      expected,
+      setup: runtimeToken
+        ? {
+            kind: "approval_replay",
+            issue_for: {
+              from_schema: USER_SCHEMA,
+              to_schema: "TABLE users\nCOLUMN id serial NOT_NULL PRIMARY_KEY"
+            },
+            consume_before_use: false
+          }
+        : undefined
+    });
     try {
       const result = await harness.call("forge_analyze", {
         from_schema: entry.from_schema,
@@ -438,6 +526,15 @@ test("ASI08/ASI09: 26 destructive migrations require a fresh approval", async ()
     const table = `t${index}`;
     const from = `TABLE ${table}\nCOLUMN id serial NOT_NULL PRIMARY_KEY\nCOLUMN email text NOT_NULL`;
     const to = `TABLE ${table}\nCOLUMN id serial NOT_NULL PRIMARY_KEY`;
+    recordCase({
+      group: "destructive-gate",
+      index,
+      surface: "destructive",
+      asi: ["ASI08", "ASI09"],
+      source: "corpus211.test.mjs",
+      input: { from_schema: from, to_schema: to },
+      expected: "DECISION_REQUIRED"
+    });
     try {
       const result = await harness.call("forge_analyze", {
         from_schema: from,

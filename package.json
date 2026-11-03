@@ -16,6 +16,8 @@
     "test:mcp": "node --test packages/mcp/test/*.test.mjs",
     "bench:policy": "node packages/agentic/bench/policy-latency.mjs",
     "bench:merkle": "node packages/agentic/bench/merkle-latency.mjs",
+    "corpus:build": "node packages/mcp/corpus/build.mjs",
+    "corpus:check": "node packages/mcp/corpus/build.mjs --check",
     "pack:mcp": "npm pack --dry-run --workspace @soumyadebnath1619/mcp",
     "build:inspector": "node packages/mcp/ui/build-inspector.mjs",
     "audit:ui": "node packages/mcp/ui/audit-browser.mjs"

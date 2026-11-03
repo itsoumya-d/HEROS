@@ -12,6 +12,7 @@ import { join } from "node:path";
 import { createSession } from "../src/server.js";
 import { createAgenticApp } from "../../agentic/src/index.js";
 import { makeHarness } from "./helpers.mjs";
+import { recordCase } from "../corpus/recorder.mjs";
 
 const USER_SCHEMA = "TABLE users\nCOLUMN id serial NOT_NULL PRIMARY_KEY\nCOLUMN email text NOT_NULL";
 const DROP_EMAIL_SCHEMA = "TABLE users\nCOLUMN id serial NOT_NULL PRIMARY_KEY";
@@ -195,6 +196,15 @@ test("ASI05/ASI09: 60 malformed JSON-RPC messages never crash the server", async
 
   const failures = [];
   for (const [caseIndex, entry] of cases.entries()) {
+    recordCase({
+      group: "jsonrpc-base",
+      index: caseIndex,
+      surface: "jsonrpc",
+      asi: ["ASI05", "ASI09"],
+      source: "adversarial.test.mjs",
+      input: entry.message,
+      expected: "bounded"
+    });
     try {
       const response = await harness.server.handleMessage(entry.message, entry.session);
       if (response !== null) {
@@ -318,6 +328,20 @@ test("ASI01/ASI02: 78 agentic inputs fail closed under schema validation", async
   let caseCount = 0;
   for (const [index, request] of cases.entries()) {
     caseCount += 1;
+    const expected = request.name.startsWith("unknown.")
+      ? "UNKNOWN_ACTION"
+      : index < mutations.length
+        ? "INVALID_INPUT"
+        : "OK";
+    recordCase({
+      group: "agentic-base",
+      index,
+      surface: "agentic",
+      asi: ["ASI01", "ASI02"],
+      source: "adversarial.test.mjs",
+      input: request,
+      expected
+    });
     try {
       const response = await app.execute(request);
       if (request.name.startsWith("unknown.")) {
@@ -382,6 +406,23 @@ test("ASI03/ASI10: 31 invalid or over-scoped API keys never execute a tool", asy
       apiKey: key
     });
     session.initialized = true;
+    const expected =
+      key === authKeys.validRo
+        ? "INSUFFICIENT_SCOPE"
+        : key === ""
+          ? "NO_ORG_REGISTERED"
+          : key === authKeys.revoked
+            ? "API_KEY_REVOKED"
+            : "INVALID_API_KEY";
+    recordCase({
+      group: "auth-base",
+      index,
+      surface: "auth",
+      asi: ["ASI03", "ASI10"],
+      source: "adversarial.test.mjs",
+      input: { api_key: key, tool: "ledger_invoice_create" },
+      expected
+    });
     try {
       const response = await authHarness.rpc(
         "tools/call",
@@ -454,6 +495,16 @@ test("ASI05/ASI06: 60 hostile forge schema payloads are bounded or rejected", as
 
   const failures = [];
   for (const [index, payload] of payloads.entries()) {
+    recordCase({
+      group: "forge-base",
+      index,
+      surface: "forge",
+      asi: ["ASI05", "ASI06"],
+      source: "adversarial.test.mjs",
+      input: payload,
+      expected: "bounded_or_error",
+      allowedErrorCodes: [...ALLOWED_FORGE_ERRORS].sort()
+    });
     try {
       const result = await harness.call("forge_analyze", payload);
       if (result.error_code) {
@@ -511,6 +562,16 @@ test("ASI05: 30 malformed shadow schemas fail without executing SQL", async () =
 
   const failures = [];
   for (const [index, schema] of schemas.entries()) {
+    recordCase({
+      group: "shadow-base",
+      index,
+      surface: "shadow",
+      asi: ["ASI05"],
+      source: "adversarial.test.mjs",
+      input: { from_schema: schema, to_schema: USER_SCHEMA },
+      expected: "rejected",
+      allowedErrorCodes: [...ALLOWED_SHADOW_ERRORS].sort()
+    });
     try {
       const result = await harness.call("forge_shadow_analyze", {
         from_schema: schema,
@@ -588,6 +649,47 @@ test("ASI02/ASI07: 30 approval tokens cannot be replayed or rebound", async () =
 
   const failures = [];
   for (const [index, entry] of cases.entries()) {
+    const invalidInput =
+      typeof entry.token === "number" ||
+      typeof entry.token === "boolean" ||
+      Array.isArray(entry.token) ||
+      (typeof entry.token === "object" && entry.token !== null) ||
+      (typeof entry.token === "string" && entry.token.length > 64);
+    const expected = invalidInput
+      ? "INVALID_INPUT"
+      : entry.token === null
+        ? "OK"
+        : "INVALID_ACKNOWLEDGMENT_TOKEN";
+    const runtimeToken = entry.token === first.approval_nonce;
+    recordCase({
+      group: "approval-base",
+      index,
+      surface: "approval",
+      asi: ["ASI02", "ASI07"],
+      source: "adversarial.test.mjs",
+      input: {
+        from_schema: entry.from_schema,
+        to_schema: entry.to_schema,
+        ...(entry.token === undefined
+          ? {}
+          : {
+              human_acknowledgment_token: runtimeToken
+                ? { $runtime: "approval_nonce" }
+                : entry.token
+            })
+      },
+      expected,
+      setup: runtimeToken
+        ? {
+            kind: "approval_replay",
+            issue_for: {
+              from_schema: USER_SCHEMA,
+              to_schema: DROP_EMAIL_SCHEMA
+            },
+            consume_before_use: true
+          }
+        : undefined
+    });
     try {
       const result = await harness.call("forge_analyze", {
         from_schema: entry.from_schema,
