@@ -78,6 +78,32 @@ export function merkleRoot(leaves) {
   return level[0];
 }
 
+// Append one leaf to a Merkle frontier (one perfect subtree root per level).
+// This yields the same root as merkleRoot() in O(log n) instead of O(n).
+function appendFrontier(frontier, leaf) {
+  const next = frontier.slice();
+  let carry = leaf;
+  let level = 0;
+  while (next[level] !== undefined) {
+    carry = parentHash(next[level], carry);
+    next[level] = undefined;
+    level += 1;
+  }
+  next[level] = carry;
+  return next;
+}
+
+function frontierRoot(frontier) {
+  let root;
+  for (let level = 0; level < frontier.length; level += 1) {
+    if (frontier[level] === undefined) continue;
+    root = root === undefined
+      ? frontier[level]
+      : parentHash(frontier[level], root);
+  }
+  return root ?? GENESIS_HASH;
+}
+
 export function inclusionProof(leaves, index) {
   if (!Array.isArray(leaves) || !Number.isInteger(index)) return null;
   if (index < 0 || index >= leaves.length) return null;
@@ -203,16 +229,20 @@ export function createMerkleReceiptStore({ store, signer } = {}) {
   }
 
   const entries = [];
+  let frontier = [];
+  let appendChain = Promise.resolve();
   let loaded = false;
 
   async function ensureLoaded() {
     if (loaded) return;
     const receipts = await store.list();
     for (const receipt of receipts) {
+      const leaf = leafHash(receipt);
       entries.push({
         receipt_id: receipt.receipt_id,
-        leaf: leafHash(receipt)
+        leaf
       });
+      frontier = appendFrontier(frontier, leaf);
     }
     loaded = true;
   }
@@ -222,35 +252,41 @@ export function createMerkleReceiptStore({ store, signer } = {}) {
   }
 
   return {
-    async append(receipt) {
-      await ensureLoaded();
+    append(receipt) {
+      const run = appendChain.catch(() => {}).then(async () => {
+        await ensureLoaded();
 
-      const projected = receiptProjection(receipt);
-      const previous = entries.length > 0
-        ? entries[entries.length - 1].leaf
-        : GENESIS_HASH;
+        const projected = receiptProjection(receipt);
+        const previous = entries.length > 0
+          ? entries[entries.length - 1].leaf
+          : GENESIS_HASH;
 
-      const candidate = {
-        ...receipt,
-        approval_state: projected.approval_state,
-        deliberation_hash: projected.deliberation_hash,
-        prev_hash: previous
-      };
-      const leaf = leafHash(candidate);
-      const root = merkleRoot([...currentLeaves(), leaf]);
-      const saved = {
-        ...candidate,
-        entry_hash: leaf,
-        merkle_root: root
-      };
-      if (signer) {
-        saved.merkle_root_signature = signMerkleRoot(root, signer.privateKey);
-        saved.signer_public_key = exportPublicKey(signer.publicKey);
-      }
+        const candidate = {
+          ...receipt,
+          approval_state: projected.approval_state,
+          deliberation_hash: projected.deliberation_hash,
+          prev_hash: previous
+        };
+        const leaf = leafHash(candidate);
+        const nextFrontier = appendFrontier(frontier, leaf);
+        const root = frontierRoot(nextFrontier);
+        const saved = {
+          ...candidate,
+          entry_hash: leaf,
+          merkle_root: root
+        };
+        if (signer) {
+          saved.merkle_root_signature = signMerkleRoot(root, signer.privateKey);
+          saved.signer_public_key = exportPublicKey(signer.publicKey);
+        }
 
-      const appended = await store.append(saved);
-      entries.push({ receipt_id: saved.receipt_id, leaf });
-      return appended;
+        const appended = await store.append(saved);
+        entries.push({ receipt_id: saved.receipt_id, leaf });
+        frontier = nextFrontier;
+        return appended;
+      });
+      appendChain = run.then(() => undefined, () => undefined);
+      return run;
     },
 
     async findByIdempotencyKey(key) {
@@ -276,7 +312,7 @@ export function createMerkleReceiptStore({ store, signer } = {}) {
     },
 
     root() {
-      return merkleRoot(currentLeaves());
+      return frontierRoot(frontier);
     },
 
     size() {

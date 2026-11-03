@@ -89,10 +89,12 @@ These are known and must not be presented as solved.
    dependency-free, but it is not a database: there is no `fsync`, no
    incremental write, and no compaction. Large logs will be slow and a full
    disk can corrupt the last write.
-5. **Merkle append is O(n).** The signed wrapper recomputes the root over every
-   leaf on each append. Measured p99 was **33.8 ms at 5000 receipts** with the
-   wrapper, versus **0.245 ms** for the policy path alone. An incremental tree
-   is required before claiming high-throughput logging.
+5. **Merkle root updates are incremental; the file store is still not.** The
+   wrapper maintains a frontier and updates the root in **O(log n)**. Measured
+   p99 was **0.62 ms at 5200 signed receipts** with an in-memory store, versus
+   **33.8 ms** at 5000 receipts before the frontier. `createFileReceiptStore`
+   still rewrites the whole JSON file on each append, and `verify()` recomputes
+   every leaf, so end-to-end file-store logging remains O(n).
 6. **Signing-key custody is out of scope.** The repository has no key rotation,
    revocation, or HSM integration. A leaked key can sign a different root.
 7. **A valid proof is not a freshness proof.** It proves inclusion in the tree

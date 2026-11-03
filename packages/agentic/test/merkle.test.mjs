@@ -226,6 +226,37 @@ test("signed inclusion proofs verify and detect proof/signature tampering", asyn
   ));
 });
 
+test("incremental frontier root matches merkleRoot at every size", async () => {
+  const base = createTamperableStore();
+  const store = createMerkleReceiptStore({ store: base });
+  const leaves = [];
+
+  for (let index = 0; index < 96; index += 1) {
+    const saved = await store.append(receipt(index + 1));
+    leaves.push(saved.entry_hash);
+    assert.equal(saved.merkle_root, merkleRoot(leaves), `append size ${leaves.length}`);
+    assert.equal(store.root(), merkleRoot(leaves), `root size ${leaves.length}`);
+  }
+
+  const reloaded = createMerkleReceiptStore({ store: base });
+  await reloaded.list();
+  assert.equal(reloaded.root(), merkleRoot(leaves));
+});
+
+test("concurrent appends serialize the frontier", async () => {
+  const base = createTamperableStore();
+  const store = createMerkleReceiptStore({ store: base });
+  await Promise.all(
+    Array.from({ length: 32 }, (_, index) => store.append(receipt(index + 1)))
+  );
+
+  const receipts = await store.list();
+  const leaves = receipts.map((item) => leafHash(item));
+  assert.equal(receipts.length, 32);
+  assert.equal(new Set(receipts.map((item) => item.merkle_root)).size, 32);
+  assert.equal(store.root(), merkleRoot(leaves));
+});
+
 test("proof helpers reject malformed input", () => {
   assert.equal(inclusionProof([], 0), null);
   assert.equal(inclusionProof(["a"], 1), null);

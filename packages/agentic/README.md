@@ -212,10 +212,12 @@ Guarantees:
 - `verify()` recomputes every leaf, checks the `prev_hash` chain, checks the
   deliberation trace hash, and recomputes the root.
 - Odd tree levels promote the final node unchanged.
-- Append recomputes the root over the whole log (**O(n)**). Measured p99 was
-  **33.8 ms at 5000 receipts**, versus **0.245 ms** for the policy path alone.
-  Use an external index/cache or wait for the incremental tree before claiming
-  high-throughput logging.
+- Append maintains a Merkle frontier and updates the root in **O(log n)**.
+  With Ed25519 signing and an in-memory store, measured p99 was **0.62 ms at
+  5200 receipts**; the pre-frontier implementation measured **33.8 ms** at
+  5000 receipts. `createFileReceiptStore` still rewrites its whole JSON file and
+  `verify()` still recomputes every leaf, so end-to-end file-store append is not
+  O(log n).
 
 ## Score-triggered reflection
 
