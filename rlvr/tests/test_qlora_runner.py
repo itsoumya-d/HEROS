@@ -70,6 +70,10 @@ class RunnerConfigTests(unittest.TestCase):
         self.assertGreaterEqual(config.group_size, 2)
         self.assertIn("model_name", config.to_dict())
 
+    def test_adapter_path_round_trips(self) -> None:
+        config = RunnerConfig(adapter_path="outputs/sft/final")
+        self.assertEqual(config.to_dict()["adapter_path"], "outputs/sft/final")
+
     def test_rejects_invalid_group_size(self) -> None:
         with self.assertRaises(ValueError):
             RunnerConfig(group_size=1)
