@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: MIT
-// 290-case adversarial boundary corpus. Cases are grouped by OWASP Agentic
+// 289-case adversarial boundary corpus. Cases are grouped by OWASP Agentic
 // Security Initiative (ASI) vector families. Each case must fail closed or
 // return a bounded JSON result; no case may throw or crash the server.
+// corpus211.test.mjs adds 211 deterministic cases for a total of 500.
 
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
