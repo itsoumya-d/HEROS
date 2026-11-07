@@ -1,0 +1,8 @@
+{
+  "name": "@soumyadebnath1619/contract-agent",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Contract review agent tools: clause retrieval, obligation extraction, risk scoring and approval plans",
+  "scripts": { "test": "node --experimental-strip-types --test test/*.test.ts" }
+}
