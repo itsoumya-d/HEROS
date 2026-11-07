@@ -5,10 +5,11 @@
   "workspaces": [
     "packages/agentic",
     "packages/mcp",
-    "examples/agentic-site"
+    "examples/agentic-site",
+    "packages/fleet"
   ],
   "scripts": {
-    "test": "npm run test:agentic && npm run test:agentic-site && npm run test:mcp && npm run demo:agentic",
+    "test": "npm run test:agentic && npm run test:agentic-site && npm run test:mcp && npm run demo:agentic && npm run test:fleet",
     "test:agentic": "node --test packages/agentic/test/agentic.test.mjs packages/agentic/test/cli.test.mjs packages/agentic/test/merkle.test.mjs packages/agentic/test/reflection.test.mjs",
     "test:agentic-site": "node --test examples/agentic-site/test/routes.test.mjs",
     "pack:agentic": "npm pack --dry-run --workspace @soumyadebnath1619/agentic",
@@ -16,6 +17,7 @@
     "test:mcp": "node --test packages/mcp/test/*.test.mjs",
     "pack:mcp": "npm pack --dry-run --workspace @soumyadebnath1619/mcp",
     "build:inspector": "node packages/mcp/ui/build-inspector.mjs",
-    "audit:ui": "node packages/mcp/ui/audit-browser.mjs"
+    "audit:ui": "node packages/mcp/ui/audit-browser.mjs",
+    "test:fleet": "npm run test --workspace @soumyadebnath1619/fleet"
   }
 }

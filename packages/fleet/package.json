@@ -1,0 +1,10 @@
+{
+  "name": "@soumyadebnath1619/fleet",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Agentic-founder fleet opportunity scoring, capital allocation and unit-economics gates",
+  "scripts": {
+    "test": "node --experimental-strip-types --test test/*.test.ts"
+  }
+}

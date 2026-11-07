@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Feltsense Fleet Control</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+  :root{--bg:#000;--surface:#18181b;--text:#fff;--muted:#a1a1aa;--lime:#d4ff00;--line:#27272a}
+  *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:14px/1.5 Geist,system-ui,sans-serif}
+  header{padding:28px 32px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center}
+  h1{font-size:22px;letter-spacing:-.04em;margin:0}header span{font:12px Geist Mono,monospace;color:var(--lime)}
+  main{max-width:1100px;margin:0 auto;padding:28px 32px}section{margin-bottom:28px}
+  h2{font:11px Geist Mono,monospace;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin:0 0 12px}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:1px;background:var(--line)}
+  .card{background:var(--surface);padding:18px;border-radius:0}.card b{display:block;font:28px Geist Mono,monospace;color:var(--lime)}.card small{color:var(--muted)}
+  table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:12px 10px;border-bottom:1px solid var(--line)}th{font:10px Geist Mono,monospace;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+  .pass{color:var(--lime);font:12px Geist Mono,monospace}.kill{color:#ff2bd6;font:12px Geist Mono,monospace}
+  .bar{height:4px;background:#27272a;display:inline-block;width:90px;vertical-align:middle;margin-right:8px}.bar i{display:block;height:100%;background:var(--lime)}
+  footer{padding:24px 32px;color:var(--muted);font:11px Geist Mono,monospace;border-top:1px solid var(--line)}
+</style>
+</head>
+<body>
+<header><h1>FELTSENSE FLEET CONTROL</h1><span>REMOTE / SF · AGENTIC FOUNDERS</span></header>
+<main>
+  <section><h2>Fleet cycle</h2><div class="grid"><div class="card"><small>Signals ingested</small><b>18</b></div><div class="card"><small>Qualified launches</small><b>3</b></div><div class="card"><small>Budget allocated</small><b>$7,500</b></div><div class="card"><small>Killed / deferred</small><b>15</b></div></div></section>
+  <section><h2>Opportunity gate</h2><table><thead><tr><th>Opportunity</th><th>Score</th><th>Payback</th><th>LTV/CAC</th><th>Decision</th></tr></thead><tbody>
+    <tr><td>Gutcheck</td><td><span class="bar"><i style="width:74%"></i></span>0.735</td><td>3.0 mo</td><td>6.67x</td><td class="pass">ALLOCATE · $2,500</td></tr>
+    <tr><td>Compliance copilot</td><td><span class="bar"><i style="width:61%"></i></span>0.612</td><td>4.2 mo</td><td>4.10x</td><td class="pass">ALLOCATE · $3,000</td></tr>
+    <tr><td>Local services agent</td><td><span class="bar"><i style="width:48%"></i></span>0.481</td><td>5.9 mo</td><td>3.20x</td><td class="pass">ALLOCATE · $2,000</td></tr>
+    <tr><td>Generic newsletter tool</td><td><span class="bar"><i style="width:18%"></i></span>0.180</td><td>—</td><td>1.10x</td><td class="kill">KILL · weak margin</td></tr>
+  </tbody></table></section>
+  <section><h2>Cycle rules</h2><p style="color:var(--muted);max-width:780px">Credit cards down before code goes up. Every launch needs paid preorders, human verification, positive contribution margin, CAC payback under six months and LTV/CAC above 3x. Every allocation, deferral and kill emits an immutable audit receipt.</p></section>
+</main>
+<footer>Geist / Geist Mono · #d4ff00 · #18181b · 0px radius · 8px spacing · public reference implementation</footer>
+</body>
+</html>
