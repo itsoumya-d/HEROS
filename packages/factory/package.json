@@ -1,0 +1,10 @@
+{
+  "name": "@soumyadebnath1619/factory",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Agentic software-factory flow metrics, bottleneck ranking and cycle-time simulation",
+  "scripts": {
+    "test": "node --experimental-strip-types --test test/*.test.ts"
+  }
+}

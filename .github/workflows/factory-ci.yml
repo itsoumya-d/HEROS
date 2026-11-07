@@ -1,0 +1,24 @@
+name: Factory CI
+on:
+  push:
+    paths:
+      - "packages/factory/**"
+      - ".github/workflows/factory-ci.yml"
+  pull_request:
+    paths:
+      - "packages/factory/**"
+      - ".github/workflows/factory-ci.yml"
+permissions:
+  contents: read
+jobs:
+  factory:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node-version: ["22", "24"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+      - run: npm run test:factory
