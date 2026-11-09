@@ -89,12 +89,25 @@ class DeterministicForgeShadowVerifier:
         shadow execution  0.75
         calibration       1.00  (0.50 risk tier + 0.25 data loss + 0.25 approval)
         miracle penalty  -0.40  (destructive claim without a reasoning trace)
+
+    Optional experiment weights scale the requirement (shadow/schema-match)
+    and risk-calibration terms; defaults (1.0, 1.0) reproduce the spec above.
     """
 
     THINK_PATTERN = re.compile(r"<think>(.*?)</think>", re.DOTALL)
     SQL_PATTERN = re.compile(r"<sql_migration>(.*?)</sql_migration>", re.DOTALL)
     JSON_PATTERN = re.compile(r"<forge_manifest>(.*?)</forge_manifest>", re.DOTALL)
     DESTRUCTIVE_KEYWORDS = ("drop table", "drop column", "truncate", "delete from")
+
+    def __init__(
+        self,
+        risk_calibration_weight: float = 1.0,
+        requirement_weight: float = 1.0,
+    ) -> None:
+        if risk_calibration_weight <= 0 or requirement_weight <= 0:
+            raise ValueError("reward weights must be positive")
+        self.risk_calibration_weight = risk_calibration_weight
+        self.requirement_weight = requirement_weight
 
     def verify_rollout(self, task: MigrationTask, completion: str) -> VerificationReceipt:
         think_match = self.THINK_PATTERN.search(completion)
@@ -142,7 +155,7 @@ class DeterministicForgeShadowVerifier:
         if not exec_ok:
             return VerificationReceipt(
                 task_id=task.task_id,
-                total_reward=-0.5,
+                total_reward=round(format_reward - 0.75 * self.requirement_weight, 4),
                 format_reward=format_reward,
                 shadow_exec_reward=-0.75,
                 risk_calibration_reward=0.0,
@@ -177,7 +190,12 @@ class DeterministicForgeShadowVerifier:
         if (pred_loss or has_destructive_sql) and len(think_text) < 20:
             miracle_penalty = 0.4
 
-        total = format_reward + shadow_exec_reward + calibration_score - miracle_penalty
+        total = (
+            format_reward
+            + shadow_exec_reward * self.requirement_weight
+            + calibration_score * self.risk_calibration_weight
+            - miracle_penalty
+        )
         return VerificationReceipt(
             task_id=task.task_id,
             total_reward=round(total, 4),

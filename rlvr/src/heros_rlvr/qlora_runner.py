@@ -497,11 +497,15 @@ class RunnerConfig:
     max_grad_norm: float = 1.0
     checkpoint_every: int = 50
     save_final: bool = True
+    risk_calibration_weight: float = 1.0
+    requirement_weight: float = 1.0
     adapter_path: str = ""
 
     def __post_init__(self) -> None:
         if self.group_size < 2:
             raise ValueError("group_size must be at least 2")
+        if self.risk_calibration_weight <= 0 or self.requirement_weight <= 0:
+            raise ValueError("reward weights must be positive")
         if self.max_prompt_tokens < 1 or self.max_completion_tokens < 1:
             raise ValueError("token limits must be positive")
         if self.learning_rate <= 0:
@@ -574,7 +578,10 @@ class QLoRARunner:
         self.policy = policy
         self.reference_policy = reference_policy
         self.optimizer = optimizer
-        self.verifier = verifier or DeterministicForgeShadowVerifier()
+        self.verifier = verifier or DeterministicForgeShadowVerifier(
+            risk_calibration_weight=config.risk_calibration_weight,
+            requirement_weight=config.requirement_weight,
+        )
         self.recorder = recorder or RunRecorder(config.output_dir)
         self._pending_steps = 0
         self.optimizer.zero_grad(set_to_none=True)

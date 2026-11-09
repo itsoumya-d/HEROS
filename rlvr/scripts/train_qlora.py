@@ -57,6 +57,18 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--no-4bit", action="store_true", help="disable NF4 quantization")
     parser.add_argument(
+        "--risk-calibration-weight",
+        type=float,
+        default=1.0,
+        help="multiplier on the verifier risk-calibration term (default 1.0)",
+    )
+    parser.add_argument(
+        "--requirement-weight",
+        type=float,
+        default=1.0,
+        help="multiplier on the verifier requirement (shadow/schema-match) term",
+    )
+    parser.add_argument(
         "--dry-run",
         action="store_true",
         help="load and validate the dataset, print the plan, and exit",
@@ -82,6 +94,8 @@ def main(argv: list[str] | None = None) -> int:
         "temperature": args.temperature,
         "max_completion_tokens": args.max_completion_tokens,
         "gradient_accumulation": args.gradient_accumulation,
+        "risk_calibration_weight": args.risk_calibration_weight,
+        "requirement_weight": args.requirement_weight,
         "seed": args.seed,
         "load_in_4bit": not args.no_4bit,
     }

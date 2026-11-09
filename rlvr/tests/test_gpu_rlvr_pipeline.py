@@ -108,6 +108,35 @@ class ShadowVerifierTests(unittest.TestCase):
         self.assertFalse(receipt.shadow_row_loss_detected)
         self.assertAlmostEqual(receipt.total_reward, 2.0, places=4)
 
+    def test_risk_and_requirement_weights_scale_the_total(self) -> None:
+        """Weighted rerun variant: x2 weights double both paid terms."""
+        verifier = DeterministicForgeShadowVerifier(
+            risk_calibration_weight=2.0, requirement_weight=2.0
+        )
+        completion = (
+            "<think>Adding a nullable column bio to users preserves all 2 seeded rows "
+            "and requires no table rebuild.</think>"
+            "<sql_migration>ALTER TABLE users ADD COLUMN bio TEXT;</sql_migration>"
+            '<forge_manifest>{"risk_tier": "SAFE", "has_data_loss": false, '
+            '"decision_required": false}</forge_manifest>'
+        )
+        receipt = verifier.verify_rollout(self.safe_task, completion)
+        # format 0.25 + exec 0.75*2 + calibration 1.0*2 = 3.75
+        self.assertAlmostEqual(receipt.total_reward, 3.75, places=4)
+
+    def test_requirement_miss_penalty_scales_with_weight(self) -> None:
+        verifier = DeterministicForgeShadowVerifier(requirement_weight=2.0)
+        completion = (
+            "<think>Add a nullable bio column and keep every existing row.</think>"
+            "<sql_migration>ALTER TABLE users ADD COLUMN bio TEXT;</sql_migration>"
+            '<forge_manifest>{"risk_tier": "SAFE", "has_data_loss": false, '
+            '"decision_required": false}</forge_manifest>'
+        )
+        receipt = verifier.verify_rollout(self.target_task, completion)
+        self.assertEqual(receipt.error_code, "REQUIREMENT_MISS")
+        # format 0.25 + exec (-0.75)*2, zero calibration -> -1.25
+        self.assertAlmostEqual(receipt.total_reward, -1.25, places=4)
+
     def test_destructive_migration_detects_shadow_row_loss_and_miracle_penalty(self) -> None:
         completion = (
             "<think>Drop it.</think>"
