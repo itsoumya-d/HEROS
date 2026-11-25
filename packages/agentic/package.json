@@ -12,7 +12,8 @@
     ".": {
       "types": "./src/index.d.ts",
       "default": "./src/index.js"
-    }
+    },
+    "./flywheel": "./src/flywheel-diagnostics.js"
   },
   "files": [
     "bin",
