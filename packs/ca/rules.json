@@ -1,0 +1,55 @@
+[
+  {
+    "id": "CA-PIPEDA-007",
+    "name": "Personal Information Safeguarding and Encryption Standard",
+    "jurisdiction": "CA",
+    "standard": "Personal Information Protection and Electronic Documents Act (PIPEDA) Principle 7",
+    "what_it_decides": "Requires personal identifiable information (PII) to be protected by security safeguards including encryption appropriate to the sensitivity of the data.",
+    "values": {
+      "require_encryption": true,
+      "allow_plaintext_pii": false
+    },
+    "source_url": "https://www.priv.gc.ca/en/privacy-topics/privacy-laws-in-canada/the-personal-information-protection-and-electronic-documents-act-pipeda/p_principle/principles/p_principle_7/",
+    "checked_on": "2026-11-27"
+  },
+  {
+    "id": "CA-CRA-GST-001",
+    "name": "GST/HST Invoicing Requirements and Buyer Record Threshold",
+    "jurisdiction": "CA",
+    "standard": "Excise Tax Act (R.S.C., 1985, c. E-15) / Canada Revenue Agency Invoicing Rules",
+    "what_it_decides": "Requires taxable supply transactions exceeding CAD 150 to record full recipient details including buyer name and terms of supply for input tax credit eligibility.",
+    "values": {
+      "tax_invoice_threshold_cad": 150,
+      "require_buyer_name_over_threshold": true,
+      "standard_gst_rate": 0.05
+    },
+    "source_url": "https://www.canada.ca/en/revenue-agency/services/tax/businesses/topics/gst-hst-businesses/complete-file-instructions/records.html",
+    "checked_on": "2026-11-27"
+  },
+  {
+    "id": "CA-CCCS-MFA-002",
+    "name": "Privileged and Administrative Access Multi-Factor Authentication",
+    "jurisdiction": "CA",
+    "standard": "Canadian Centre for Cyber Security (CCCS) ITSG-33 / Top 10 IT Security Actions (Action #2)",
+    "what_it_decides": "Mandates multi-factor authentication (MFA) for administrative and privileged infrastructure operations to prevent credential-stuffing and unauthorized system modifications.",
+    "values": {
+      "require_mfa_for_privileged_actions": true,
+      "session_timeout_minutes": 15
+    },
+    "source_url": "https://cyber.gc.ca/en/guidance/top-10-it-security-actions-protect-internet-connected-networks-and-information",
+    "checked_on": "2026-11-27"
+  },
+  {
+    "id": "CA-TBS-ADM-001",
+    "name": "Automated Decision-Making Accountability and Human Oversight Directive",
+    "jurisdiction": "CA",
+    "standard": "Treasury Board of Canada Secretariat Directive on Automated Decision-Making Section 6.3",
+    "what_it_decides": "Requires logged human oversight and decision auditability for high-impact automated operational workflows.",
+    "values": {
+      "require_human_oversight": true,
+      "audit_trail_retention_days": 730
+    },
+    "source_url": "https://www.tbs-sct.canada.ca/pol/doc-eng.aspx?id=32592",
+    "checked_on": "2026-11-27"
+  }
+]

@@ -109,5 +109,53 @@ export function evaluateCountryPolicy(actionName, payload = {}, country = "nz", 
     }
   }
 
+  if (country.toLowerCase() === "ca") {
+    // 1. Check PIPEDA Principle 7 (Safeguarding Personal Information)
+    const privRule = rules.find((r) => r.id === "CA-PIPEDA-007");
+    if (privRule && payload.contains_pii && payload.encrypted !== true) {
+      return {
+        approved: false,
+        ruleId: privRule.id,
+        reason: "Personal identifiable information (PII) must be encrypted per PIPEDA Principle 7",
+        source_url: privRule.source_url
+      };
+    }
+
+    // 2. Check CRA GST/HST Invoicing Rules (Threshold CAD 150)
+    const gstRule = rules.find((r) => r.id === "CA-CRA-GST-001");
+    if (gstRule && payload.amount_cad && payload.amount_cad > gstRule.values.tax_invoice_threshold_cad) {
+      if (gstRule.values.require_buyer_name_over_threshold && !payload.buyer_name) {
+        return {
+          approved: false,
+          ruleId: gstRule.id,
+          reason: `Transactions exceeding CAD ${gstRule.values.tax_invoice_threshold_cad} require buyer name and details per CRA invoicing rules`,
+          source_url: gstRule.source_url
+        };
+      }
+    }
+
+    // 3. Check CCCS ITSG-33 / Top 10 Security Action #2 (Privileged Access MFA)
+    const mfaRule = rules.find((r) => r.id === "CA-CCCS-MFA-002");
+    if (mfaRule && payload.privileged === true && payload.mfa_verified !== true) {
+      return {
+        approved: false,
+        ruleId: mfaRule.id,
+        reason: "Privileged infrastructure action requires multi-factor authentication per CCCS ITSG-33 Action #2",
+        source_url: mfaRule.source_url
+      };
+    }
+
+    // 4. Check TBS Directive on Automated Decision-Making (Section 6.3 Human Oversight)
+    const admRule = rules.find((r) => r.id === "CA-TBS-ADM-001");
+    if (admRule && payload.high_impact === true && payload.human_review_logged !== true) {
+      return {
+        approved: false,
+        ruleId: admRule.id,
+        reason: "High-impact automated decision requires logged human oversight per TBS Directive on Automated Decision-Making",
+        source_url: admRule.source_url
+      };
+    }
+  }
+
   return { approved: true };
 }

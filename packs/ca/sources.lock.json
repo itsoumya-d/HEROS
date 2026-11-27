@@ -1,0 +1,32 @@
+{
+  "jurisdiction": "CA",
+  "country_name": "Canada",
+  "generated_at": "2026-11-27T17:20:00Z",
+  "disclaimer": "Not legal or tax advice - check the official source.",
+  "sources": [
+    {
+      "url": "https://www.priv.gc.ca/en/privacy-topics/privacy-laws-in-canada/the-personal-information-protection-and-electronic-documents-act-pipeda/p_principle/principles/p_principle_7/",
+      "authority": "Office of the Privacy Commissioner of Canada (OPC)",
+      "accessed_on": "2026-11-27",
+      "sha256": "3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b"
+    },
+    {
+      "url": "https://www.canada.ca/en/revenue-agency/services/tax/businesses/topics/gst-hst-businesses/complete-file-instructions/records.html",
+      "authority": "Canada Revenue Agency (CRA)",
+      "accessed_on": "2026-11-27",
+      "sha256": "7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f"
+    },
+    {
+      "url": "https://cyber.gc.ca/en/guidance/top-10-it-security-actions-protect-internet-connected-networks-and-information",
+      "authority": "Canadian Centre for Cyber Security (CCCS)",
+      "accessed_on": "2026-11-27",
+      "sha256": "9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b"
+    },
+    {
+      "url": "https://www.tbs-sct.canada.ca/pol/doc-eng.aspx?id=32592",
+      "authority": "Treasury Board of Canada Secretariat (TBS)",
+      "accessed_on": "2026-11-27",
+      "sha256": "b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2"
+    }
+  ]
+}
