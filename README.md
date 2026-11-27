@@ -264,6 +264,7 @@ Jurisdiction-specific compliance policies and regulatory thresholds compiled as 
 | Country | Code | Standard / Official Authorities | Status | Rules as of |
 |---|---|---|---|---|
 | New Zealand | `nz` | Privacy Act 2020 (IPP 5), IRD GST Act 1985 Section 24, NZISM v3.8, Algorithm Charter | Active | 2026-11-27 |
+| Canada | `ca` | PIPEDA Principle 7, CRA Excise Tax Act (GST/HST Invoicing), CCCS ITSG-33 MFA, TBS Directive on ADM | Active | 2026-11-27 |
 
 > Not legal or tax advice - check the official source.
 
