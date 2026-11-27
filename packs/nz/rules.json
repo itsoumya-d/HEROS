@@ -1,0 +1,55 @@
+[
+  {
+    "id": "NZ-PRIV-005",
+    "name": "Personal Information Storage and Security Guardrail",
+    "jurisdiction": "NZ",
+    "standard": "New Zealand Privacy Act 2020 (Principle 5)",
+    "what_it_decides": "Requires personal identifiable information (PII) to be protected against unauthorized access, use, modification, or disclosure through storage encryption.",
+    "values": {
+      "require_encryption": true,
+      "allow_plaintext_pii": false
+    },
+    "source_url": "https://www.privacy.org.nz/privacy-act-2020/privacy-principles/5-storage-and-security-of-personal-information/",
+    "checked_on": "2026-11-27"
+  },
+  {
+    "id": "NZ-IRD-GST-001",
+    "name": "Tax Invoice Threshold and Buyer Details Rule",
+    "jurisdiction": "NZ",
+    "standard": "Goods and Services Tax Act 1985 Section 24",
+    "what_it_decides": "Mandates that taxable supply transactions exceeding NZD 1,000 must include full tax invoice details (seller and buyer GST registration numbers).",
+    "values": {
+      "tax_invoice_threshold_nzd": 1000,
+      "require_buyer_gst_over_threshold": true,
+      "standard_gst_rate": 0.15
+    },
+    "source_url": "https://www.ird.govt.nz/gst/tax-invoices-for-gst/issuing-tax-invoices/tax-invoices-over-1000",
+    "checked_on": "2026-11-27"
+  },
+  {
+    "id": "NZ-NZISM-1611",
+    "name": "Privileged Access Identity and Authentication Control",
+    "jurisdiction": "NZ",
+    "standard": "New Zealand Information Security Manual (NZISM v3.8) Section 16.1.1",
+    "what_it_decides": "Enforces identity verification and multi-factor authentication for automated administrative or privileged infrastructure actions.",
+    "values": {
+      "require_mfa_for_privileged_actions": true,
+      "session_timeout_minutes": 15
+    },
+    "source_url": "https://www.nzism.gcsb.govt.nz/ism-document/#Section-19361",
+    "checked_on": "2026-11-27"
+  },
+  {
+    "id": "NZ-DATA-ETH-001",
+    "name": "Automated Decisions Human Oversight and Audit Standard",
+    "jurisdiction": "NZ",
+    "standard": "New Zealand Government Algorithm Charter",
+    "what_it_decides": "Requires human review and audit logging for high-impact automated operational and customer risk decisions.",
+    "values": {
+      "require_human_oversight": true,
+      "log_retention_days": 2555
+    },
+    "source_url": "https://www.data.govt.nz/toolkit/data-ethics/government-algorithm-transparency-and-accountability/algorithm-charter/",
+    "checked_on": "2026-11-27"
+  }
+]

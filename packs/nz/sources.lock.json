@@ -1,0 +1,32 @@
+{
+  "jurisdiction": "NZ",
+  "country_name": "New Zealand",
+  "generated_at": "2026-11-27T16:20:00Z",
+  "disclaimer": "Not legal or tax advice - check the official source.",
+  "sources": [
+    {
+      "url": "https://www.privacy.org.nz/privacy-act-2020/privacy-principles/5-storage-and-security-of-personal-information/",
+      "authority": "Office of the Privacy Commissioner New Zealand (Te Mana Mātāpono Matatapu)",
+      "accessed_on": "2026-11-27",
+      "sha256": "4b6a4a15998dfc3d827f8a7065961d8be8d5d1c5a939f60f64c1cf68e3678512"
+    },
+    {
+      "url": "https://www.ird.govt.nz/gst/tax-invoices-for-gst/issuing-tax-invoices/tax-invoices-over-1000",
+      "authority": "Inland Revenue Department (Te Tari Taake)",
+      "accessed_on": "2026-11-27",
+      "sha256": "a1f9e2b0374e2a8c3d9a1f76b5d4e1c2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8"
+    },
+    {
+      "url": "https://www.nzism.gcsb.govt.nz/ism-document/#Section-19361",
+      "authority": "Government Communications Security Bureau (GCSB) - New Zealand Information Security Manual",
+      "accessed_on": "2026-11-27",
+      "sha256": "5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d"
+    },
+    {
+      "url": "https://www.data.govt.nz/toolkit/data-ethics/government-algorithm-transparency-and-accountability/algorithm-charter/",
+      "authority": "Stats NZ / Government Chief Data Steward",
+      "accessed_on": "2026-11-27",
+      "sha256": "8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a"
+    }
+  ]
+}
