@@ -117,7 +117,7 @@ async function createStarter(t) {
   const installed = join(target, "node_modules", "@soumyadebnath1619", "agentic");
   await mkdir(join(installed, "src"), { recursive: true });
   await copyFile(join(sdkPath, "package.json"), join(installed, "package.json"));
-  for (const file of ["index.js", "canonical.js", "merkle.js", "webhook.js"]) {
+  for (const file of ["index.js", "canonical.js", "merkle.js", "webhook.js", "packs.js"]) {
     await copyFile(join(sdkPath, "src", file), join(installed, "src", file));
   }
   // Exercise the generated server and real SDK without installing packages or opening sockets.
